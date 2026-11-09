@@ -1,12 +1,17 @@
 'use strict';
-// Base de datos de Atalaya: SQLite integrado en Node.js (sin dependencias externas).
+// Base de datos de NodeCat: SQLite integrado en Node.js (sin dependencias externas).
 const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
 const fs = require('node:fs');
 const config = require('./config');
 
 fs.mkdirSync(config.DATA_DIR, { recursive: true });
-const db = new DatabaseSync(path.join(config.DATA_DIR, config.DEMO ? 'atalaya-demo.db' : 'atalaya.db'));
+// Antes se llamaba Atalaya: se conserva la base de datos de esa versión
+for (const [viejo, nuevo] of [['atalaya.db', 'nodecat.db'], ['atalaya-demo.db', 'nodecat-demo.db']]) {
+  const v = path.join(config.DATA_DIR, viejo), n = path.join(config.DATA_DIR, nuevo);
+  if (fs.existsSync(v) && !fs.existsSync(n)) for (const ext of ['', '-wal', '-shm']) if (fs.existsSync(v + ext)) fs.renameSync(v + ext, n + ext);
+}
+const db = new DatabaseSync(path.join(config.DATA_DIR, config.DEMO ? 'nodecat-demo.db' : 'nodecat.db'));
 
 db.exec(`
   PRAGMA journal_mode = WAL;

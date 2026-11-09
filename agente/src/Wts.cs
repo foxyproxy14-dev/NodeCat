@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace Atalaya
+namespace NodeCat
 {
     public class Sesion
     {

@@ -6,7 +6,7 @@ using System.Management;
 using System.Reflection;
 using System.Xml;
 
-namespace Atalaya
+namespace NodeCat
 {
     public class Disco
     {

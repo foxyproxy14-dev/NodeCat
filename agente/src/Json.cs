@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace Atalaya
+namespace NodeCat
 {
     /// <summary>JSON mínimo: escribe diccionarios, listas, textos, números y booleanos; lee a Dictionary/List.</summary>
     public static class Json

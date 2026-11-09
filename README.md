@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/img/gato.png" alt="El gato de Atalaya, asomado a un servidor" width="150">
+  <img src="docs/img/gato.png" alt="El gato de NodeCat, asomado a un servidor" width="150">
 </p>
 
-<h1 align="center">Atalaya</h1>
+<h1 align="center">NodeCat</h1>
 
 <p align="center">
   Todos tus clientes, todos sus servidores, desde un mismo lugar.<br>
@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/clientes.png" alt="Atalaya: resumen de todos los clientes" width="900">
+  <img src="docs/img/clientes.png" alt="NodeCat: resumen de todos los clientes" width="900">
 </p>
 
 ---
 
-Atalaya es un panel web para quien da soporte a varias empresas. Cada cliente tiene su propio agente: lo instalas en sus servidores y aparecen solos dentro de su cliente, sin VPN y sin abrir puertos en su red. El agente solo necesita salida a Internet hacia Atalaya.
+NodeCat es un panel web para quien da soporte a varias empresas. Cada cliente tiene su propio agente: lo instalas en sus servidores y aparecen solos dentro de su cliente, sin VPN y sin abrir puertos en su red. El agente solo necesita salida a Internet hacia NodeCat.
 
 Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vigia), con el mismo diseño y el mismo agente.
 
@@ -47,9 +47,19 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
   </tr>
 </table>
 
+## Si venías de Atalaya
+
+NodeCat antes se llamaba Atalaya. Al actualizar, la base de datos se renombra sola y no se pierde nada; los agentes ya instalados siguen funcionando. Como el contenedor también cambia de nombre, la primera vez actualiza así:
+
+```bash
+git remote set-url origin https://github.com/foxyproxy14-dev/nodecat.git
+git pull
+docker compose up -d --build --remove-orphans
+```
+
 ## El gato
 
-Atalaya tiene mascota. Repara el servidor cuando todo va bien, corre mientras algo carga, programa cuando una lista está vacía, se impacienta si algo tarda demasiado y se avergüenza cuando hay un error. Si tu sistema tiene activado "reducir movimiento", se queda quieto.
+NodeCat tiene mascota. Repara el servidor cuando todo va bien, corre mientras algo carga, programa cuando una lista está vacía, se impacienta si algo tarda demasiado y se avergüenza cuando hay un error. Si tu sistema tiene activado "reducir movimiento", se queda quieto.
 
 <p align="center"><img src="docs/img/gato-poses.png" alt="Las cinco poses del gato: reparando, corriendo, programando, molesto y avergonzado" width="760"></p>
 
@@ -58,47 +68,47 @@ Atalaya tiene mascota. Repara el servidor cuando todo va bien, corre mientras al
 Necesitas un servidor Linux con Docker.
 
 ```bash
-git clone https://github.com/foxyproxy14-dev/atalaya.git
-cd atalaya
+git clone https://github.com/foxyproxy14-dev/nodecat.git
+cd nodecat
 docker compose up -d --build
-docker compose logs atalaya      # aquí aparece el código de 6 cifras de la primera vez
+docker compose logs nodecat      # aquí aparece el código de 6 cifras de la primera vez
 ```
 
 Abre `http://IP-DEL-SERVIDOR:8080`, escribe el código y crea tu cuenta de administrador.
 
 ### Publicarlo en Internet
 
-Los agentes de los clientes sin VPN necesitan llegar a Atalaya por Internet. Lo más sencillo y seguro es **Cloudflare Tunnel**: no abre puertos en tu router y pone HTTPS solo.
+Los agentes de los clientes sin VPN necesitan llegar a NodeCat por Internet. Lo más sencillo y seguro es **Cloudflare Tunnel**: no abre puertos en tu router y pone HTTPS solo.
 
 1. En Cloudflare Zero Trust > Networks > Tunnels, crea un túnel y copia su token.
-2. Agrega un *Public hostname*, por ejemplo `atalaya.tuempresa.com`, que apunte a `http://atalaya:8080`.
+2. Agrega un *Public hostname*, por ejemplo `nodecat.tuempresa.com`, que apunte a `http://nodecat:8080`.
 3. En `docker-compose.yml`, descomenta el bloque `cloudflared`, pega el token y pon `CONFIAR_PROXY: "1"`.
-4. `docker compose up -d`. En Atalaya, en *Clientes y agentes > Dirección de Atalaya para los agentes*, escribe `https://atalaya.tuempresa.com`.
+4. `docker compose up -d`. En NodeCat, en *Clientes y agentes > Dirección de NodeCat para los agentes*, escribe `https://nodecat.tuempresa.com`.
 
 Los clientes que sí tienen VPN pueden usar la IP interna (`http://10.x.x.x:8080`); el agente funciona igual.
 
 ## Agregar un cliente y sus servidores
 
 1. Menú con tu nombre > **Clientes y agentes** > escribe el nombre > **Crear cliente**.
-2. **Descargar agente**: es un ZIP ya configurado con la dirección de Atalaya y la clave de ese cliente.
+2. **Descargar agente**: es un ZIP ya configurado con la dirección de NodeCat y la clave de ese cliente.
 3. Copia la carpeta a cada servidor del cliente y haz doble clic en **Instalar agente.bat**.
 
-En unos segundos el servidor aparece dentro de su cliente. Para muchos servidores a la vez (GPO o script): `AtalayaAgente.exe instalar /silencioso`.
+En unos segundos el servidor aparece dentro de su cliente. Para muchos servidores a la vez (GPO o script): `NodeCatAgente.exe instalar /silencioso`.
 
-El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *Atalaya Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
+El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *NodeCat Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
 
 ## Agregar un router MikroTik
 
-En la página del cliente: **Agregar router MikroTik**. Atalaya se conecta a la API del router y solo lee; no puede cambiar nada.
+En la página del cliente: **Agregar router MikroTik**. NodeCat se conecta a la API del router y solo lee; no puede cambiar nada.
 
 1. En la terminal del router, crea un usuario de solo lectura y activa la API (cambia la contraseña y la IP):
    ```
-   /user group add name=atalaya policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
-   /user add name=atalaya group=atalaya password=UNA-CLAVE-LARGA
-   /ip service set api disabled=no address=IP-DE-ATALAYA/32
+   /user group add name=nodecat policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
+   /user add name=nodecat group=nodecat password=UNA-CLAVE-LARGA
+   /ip service set api disabled=no address=IP-DE-NODECAT/32
    ```
 2. **Si llegas al router por VPN o red interna**, usa la API normal (puerto 8728).
-   **Si solo tiene IP pública**, usa API‑SSL (puerto 8729) y permite solo la IP pública de Atalaya:
+   **Si solo tiene IP pública**, usa API‑SSL (puerto 8729) y permite solo la IP pública de NodeCat:
    ```
    /certificate add name=api common-name=api days-valid=3650
    /certificate sign api
@@ -106,7 +116,7 @@ En la página del cliente: **Agregar router MikroTik**. Atalaya se conecta a la 
    ```
 3. Escribe la IP, el usuario y la contraseña, pulsa **Probar conexión** y luego **Agregar router**.
 
-Mientras miras la página de un router, Atalaya lo consulta cada 3 segundos; el resto del tiempo, cada 15. Guarda el tráfico de cada interfaz minuto a minuto y la contraseña cifrada en disco.
+Mientras miras la página de un router, NodeCat lo consulta cada 3 segundos; el resto del tiempo, cada 15. Guarda el tráfico de cada interfaz minuto a minuto y la contraseña cifrada en disco.
 
 ## Avisos por Telegram
 
@@ -115,14 +125,14 @@ Menú con tu nombre > **Notificaciones por Telegram**. Crea un bot con @BotFathe
 ## Probarlo sin servidores reales
 
 ```bash
-docker run --rm -p 8080:8080 -e ATALAYA_DEMO=1 $(docker build -q .)
+docker run --rm -p 8080:8080 -e NODECAT_DEMO=1 $(docker build -q .)
 ```
 
-Entra con `demo` / `atalaya-demo` (o `andes` / `atalaya-demo` para ver una cuenta limitada a un cliente). Sin Docker: `cd servidor && ATALAYA_DEMO=1 node atalaya.js` con Node.js 22.
+Entra con `demo` / `nodecat-demo` (o `andes` / `nodecat-demo` para ver una cuenta limitada a un cliente). Sin Docker: `cd servidor && NODECAT_DEMO=1 node nodecat.js` con Node.js 22.
 
 ## Copias de seguridad
 
-Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos (`atalaya.db`) y la llave que cifra el token de Telegram (`secreto.key`). Copia esa carpeta y tendrás todo.
+Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos (`nodecat.db`) y la llave que cifra el token de Telegram (`secreto.key`). Copia esa carpeta y tendrás todo.
 
 ## Ajustes del contenedor
 
@@ -131,7 +141,7 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 | `TZ` | Zona horaria del resumen diario y de los avisos | `America/Caracas` |
 | `CONFIAR_PROXY` | `1` detrás de Cloudflare Tunnel o un proxy inverso | `0` |
 | `PUERTO` | Puerto interno | `8080` |
-| `ATALAYA_DEMO` | `1` para el modo demo | vacío |
+| `NODECAT_DEMO` | `1` para el modo demo | vacío |
 
 ## Cómo está hecho
 

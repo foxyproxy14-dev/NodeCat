@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Atalaya
+namespace NodeCat
 {
     /// <summary>Contador de lecturas en curso (para no apilar consultas colgadas).</summary>
     public class Contador { public int N; }
@@ -34,7 +34,7 @@ namespace Atalaya
                 try { res = f(); }
                 catch (Exception ex) { error = ex; }
                 finally { Interlocked.Decrement(ref enCurso.N); }
-            }) { IsBackground = true, Name = "Atalaya-" + que };
+            }) { IsBackground = true, Name = "NodeCat-" + que };
             if (sta) t.SetApartmentState(ApartmentState.STA);
             t.Start();
             if (!t.Join(TimeSpan.FromSeconds(segundos))) throw new TimeoutException(que + " no respondió en " + segundos + " s");

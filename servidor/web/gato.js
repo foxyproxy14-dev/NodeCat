@@ -1,6 +1,6 @@
 'use strict';
 /* ======================================================================
-   El gato de Atalaya: la mascota. Dibujos SVG propios, animados con CSS.
+   El gato de NodeCat: la mascota. Dibujos SVG propios, animados con CSS.
    Poses: reparando (logo), corriendo (cargando), programando (vacío),
           molesto (tarda mucho), avergonzado (error).
    ====================================================================== */

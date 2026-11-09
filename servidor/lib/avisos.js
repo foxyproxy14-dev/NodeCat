@@ -74,7 +74,7 @@ async function llamar(tk, metodo, datos) {
       body: datos ? JSON.stringify(datos) : undefined, signal: AbortSignal.timeout(15000)
     });
   } catch (e) {
-    const err = new Error(`No se pudo conectar con Telegram (${e.cause ? e.cause.code || e.cause.message : e.message}). Comprueba que el servidor de Atalaya tiene salida a Internet hacia api.telegram.org.`);
+    const err = new Error(`No se pudo conectar con Telegram (${e.cause ? e.cause.code || e.cause.message : e.message}). Comprueba que el servidor de NodeCat tiene salida a Internet hacia api.telegram.org.`);
     err.sinRed = true; throw err;
   }
   let o = null; try { o = await r.json(); } catch { }
@@ -118,7 +118,7 @@ async function probar(t, chatsTexto) {
   const yo = await llamar(tk, 'getMe');
   for (const c of chats) await llamar(tk, 'sendMessage', {
     chat_id: c, parse_mode: 'HTML', disable_web_page_preview: true,
-    text: '✅ <b>Atalaya</b>\nLas notificaciones funcionan. A partir de ahora los avisos llegarán a este chat.' + (config.DEMO ? '\n<i>(modo demo)</i>' : '')
+    text: '✅ <b>NodeCat</b>\nLas notificaciones funcionan. A partir de ahora los avisos llegarán a este chat.' + (config.DEMO ? '\n<i>(modo demo)</i>' : '')
   });
   return '@' + yo.username;
 }
@@ -213,7 +213,7 @@ function evaluar(forzar) {
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
-      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo === 'mikrotik' ? `Atalaya no puede conectar con el router${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
+      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo === 'mikrotik' ? `NodeCat no puede conectar con el router${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
@@ -237,7 +237,7 @@ function evaluar(forzar) {
   let cambio = [...estados.values()].filter(e => e.activa).length !== antes;
   if (primera === 'anunciar') {
     const act = [...estados.values()].filter(e => e.activa).map(e => '• ' + e.texto.split('\n')[0].replace(/<[^>]+>/g, '').replace(/^[🔴🟠] /u, ''));
-    encolar('🔔 <b>Avisos de Atalaya activados</b>\n' + (act.length === 0 ? 'Ahora mismo todo está en orden. Te avisaré cuando algo cambie.'
+    encolar('🔔 <b>Avisos de NodeCat activados</b>\n' + (act.length === 0 ? 'Ahora mismo todo está en orden. Te avisaré cuando algo cambie.'
       : `Ahora mismo hay ${act.length} ${act.length === 1 ? 'problema' : 'problemas'}:\n${H(act.join('\n'))}\n\nTe avisaré de lo nuevo y de lo que se resuelva.`));
     cambio = true;
   }
@@ -280,7 +280,7 @@ function textoResumen() {
     lineas.push(`${caidos.length ? '🔴' : '🟢'} <b>${H(c.nombre)}</b>: ${c.equipos.length - caidos.length} de ${c.equipos.length} en línea` +
       (caidos.length ? ` (sin respuesta: ${caidos.map(e => H(e.nombre)).join(', ')})` : '') + (caidas ? `, ${caidas} ${caidas === 1 ? 'caída' : 'caídas'} en 24 h` : ''));
   }
-  return `📋 <b>Resumen de Atalaya</b>, ${fecha}\n\n<b>Equipos:</b> ${enLinea} de ${total} en línea.\n<b>Ahora:</b> ${act} ${act === 1 ? 'sesión activa' : 'sesiones activas'} y ${dsc} ${dsc === 1 ? 'desconectada' : 'desconectadas'}.\n\n` +
+  return `📋 <b>Resumen de NodeCat</b>, ${fecha}\n\n<b>Equipos:</b> ${enLinea} de ${total} en línea.\n<b>Ahora:</b> ${act} ${act === 1 ? 'sesión activa' : 'sesiones activas'} y ${dsc} ${dsc === 1 ? 'desconectada' : 'desconectadas'}.\n\n` +
     (lineas.join('\n') || 'Todavía no hay equipos.') + (revisar.length ? `\n\n<b>Para revisar:</b>\n• ${revisar.join('\n• ')}` : '\n\nNada pendiente de revisar.');
 }
 const enviarResumen = () => encolar(textoResumen());

@@ -10,13 +10,13 @@ using System.ServiceProcess;
 using System.Text;
 using System.Threading;
 
-[assembly: AssemblyTitle("Atalaya Agente")]
-[assembly: AssemblyDescription("Agente de Atalaya: envía las sesiones, la CPU, la memoria y los discos de este servidor a Atalaya.")]
-[assembly: AssemblyProduct("Atalaya")]
+[assembly: AssemblyTitle("NodeCat Agente")]
+[assembly: AssemblyDescription("Agente de NodeCat: envía las sesiones, la CPU, la memoria y los discos de este servidor a NodeCat.")]
+[assembly: AssemblyProduct("NodeCat")]
 [assembly: AssemblyVersion("1.1.0.0")]
 [assembly: AssemblyFileVersion("1.1.0.0")]
 
-namespace Atalaya
+namespace NodeCat
 {
     public static class Utiles
     {
@@ -30,7 +30,7 @@ namespace Atalaya
         {
             get
             {
-                string d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Atalaya Agente");
+                string d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NodeCat Agente");
                 try { Directory.CreateDirectory(d); } catch { }
                 return d;
             }
@@ -56,7 +56,7 @@ namespace Atalaya
     public static class Agente
     {
         public const string Version = "1.1.0";
-        const string NombreServicio = "AtalayaAgente";
+        const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
         static int intervalo = 15;
@@ -69,12 +69,12 @@ namespace Atalaya
 
         static string Exe { get { return Assembly.GetExecutingAssembly().Location; } }
         static string CarpetaExe { get { return Path.GetDirectoryName(Exe); } }
-        static string CarpetaInstalacion { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Atalaya Agente"); } }
+        static string CarpetaInstalacion { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NodeCat Agente"); } }
 
         static int Main(string[] args)
         {
             try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
-            // Atalaya suele estar detrás de HTTPS (Cloudflare Tunnel, proxy inverso): .NET 4.5 no activa TLS 1.2 por defecto
+            // NodeCat suele estar detrás de HTTPS (Cloudflare Tunnel, proxy inverso): .NET 4.5 no activa TLS 1.2 por defecto
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }
             string cmd = args.Length > 0 ? args[0].ToLowerInvariant().TrimStart('-', '/') : "";
             bool silencioso = args.Any(a => a.TrimStart('-', '/').ToLowerInvariant() == "silencioso");
@@ -100,12 +100,12 @@ namespace Atalaya
         static void Ayuda()
         {
             Console.WriteLine();
-            Console.WriteLine("  Agente de Atalaya " + Version);
-            Console.WriteLine("  Envía a Atalaya las sesiones, la CPU, la memoria y los discos de este servidor.");
+            Console.WriteLine("  Agente de NodeCat " + Version);
+            Console.WriteLine("  Envía a NodeCat las sesiones, la CPU, la memoria y los discos de este servidor.");
             Console.WriteLine();
-            Console.WriteLine("  AtalayaAgente.exe instalar [/silencioso]    Lo instala como servicio (usa agente.json de esta carpeta).");
-            Console.WriteLine("  AtalayaAgente.exe desinstalar               Lo quita de este servidor.");
-            Console.WriteLine("  AtalayaAgente.exe probar                    Comprueba que puede leer los datos y hablar con Atalaya.");
+            Console.WriteLine("  NodeCatAgente.exe instalar [/silencioso]    Lo instala como servicio (usa agente.json de esta carpeta).");
+            Console.WriteLine("  NodeCatAgente.exe desinstalar               Lo quita de este servidor.");
+            Console.WriteLine("  NodeCatAgente.exe probar                    Comprueba que puede leer los datos y hablar con NodeCat.");
             Console.WriteLine();
         }
 
@@ -121,12 +121,12 @@ namespace Atalaya
         static void CargarConfig(string carpeta)
         {
             string f = Path.Combine(carpeta, "agente.json");
-            if (!File.Exists(f)) throw new Exception("No se encuentra agente.json en " + carpeta + ". Descarga el agente de este cliente desde Atalaya (menú con tu nombre > Clientes y agentes).");
+            if (!File.Exists(f)) throw new Exception("No se encuentra agente.json en " + carpeta + ". Descarga el agente de este cliente desde NodeCat (menú con tu nombre > Clientes y agentes).");
             var o = Json.LeerObjeto(File.ReadAllText(f, Encoding.UTF8).TrimStart('﻿'));
             servidor = Json.Txt(o, "servidor").Trim().TrimEnd('/');
             clave = Json.Txt(o, "clave").Trim();
             proxy = Json.Txt(o, "proxy").Trim();   // opcional: "http://proxy.cliente.local:8080" si el servidor solo sale a Internet por un proxy
-            if (!servidor.StartsWith("http://") && !servidor.StartsWith("https://")) throw new Exception("En agente.json, \"servidor\" debe ser la dirección de Atalaya, por ejemplo https://atalaya.miempresa.com");
+            if (!servidor.StartsWith("http://") && !servidor.StartsWith("https://")) throw new Exception("En agente.json, \"servidor\" debe ser la dirección de NodeCat, por ejemplo https://nodecat.miempresa.com");
             if (clave.Length < 16) throw new Exception("En agente.json falta la clave de los agentes.");
         }
 
@@ -170,7 +170,7 @@ namespace Atalaya
                 var req = (HttpWebRequest)WebRequest.Create(servidor + "/api/agente/informe");
                 req.Method = "POST";
                 req.ContentType = "application/json; charset=utf-8";
-                req.Headers["X-Atalaya-Agente"] = clave;
+                req.Headers["X-NodeCat-Agente"] = clave;
                 req.Timeout = 10000;
                 req.ReadWriteTimeout = 10000;
                 req.KeepAlive = false;
@@ -194,7 +194,7 @@ namespace Atalaya
                 {
                     string cuerpo = "";
                     try { using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8)) cuerpo = Json.Txt(Json.LeerObjeto(r.ReadToEnd()), "error"); } catch { }
-                    error = "Atalaya respondió " + (int)res.StatusCode + (cuerpo.Length > 0 ? ": " + cuerpo : "");
+                    error = "NodeCat respondió " + (int)res.StatusCode + (cuerpo.Length > 0 ? ": " + cuerpo : "");
                     if ((int)res.StatusCode == 403) error += " Revisa la clave en agente.json.";
                 }
                 else error = "No se pudo conectar con " + servidor + ": " + ex.Message;
@@ -209,14 +209,14 @@ namespace Atalaya
             lock (pendientes)
             {
                 pendientes.Enqueue(json);
-                while (pendientes.Count > 240) pendientes.Dequeue();   // como mucho una hora guardada si Atalaya no está disponible
+                while (pendientes.Count > 240) pendientes.Dequeue();   // como mucho una hora guardada si NodeCat no está disponible
                 while (pendientes.Count > 0)
                 {
                     string error;
                     if (Enviar(pendientes.Peek(), out error))
                     {
                         pendientes.Dequeue();
-                        if (!conectado) { conectado = true; Utiles.Log("Conectado de nuevo con Atalaya (" + servidor + ").", ConsoleColor.Green); }
+                        if (!conectado) { conectado = true; Utiles.Log("Conectado de nuevo con NodeCat (" + servidor + ").", ConsoleColor.Green); }
                     }
                     else
                     {
@@ -265,7 +265,7 @@ namespace Atalaya
             string error;
             bool ok = Enviar(Json.Escribir(o), out error);
             Console.ForegroundColor = ok ? ConsoleColor.Green : ConsoleColor.Red;
-            Console.WriteLine("  " + (ok ? "Correcto: Atalaya recibió los datos." : error));
+            Console.WriteLine("  " + (ok ? "Correcto: NodeCat recibió los datos." : error));
             Console.ResetColor();
             Pausa(false);
             return ok ? 0 : 1;
@@ -320,7 +320,7 @@ namespace Atalaya
         {
             if (Elevar("instalar" + (silencioso ? " /silencioso" : ""))) return 0;
             Console.WriteLine();
-            Console.WriteLine("  Instalando el agente de Atalaya " + Version);
+            Console.WriteLine("  Instalando el agente de NodeCat " + Version);
             CargarConfig(CarpetaExe);
 
             Console.WriteLine("  > Comprobando la conexión con " + servidor);
@@ -338,7 +338,7 @@ namespace Atalaya
             Console.WriteLine("  > Copiando a " + CarpetaInstalacion);
             QuitarServicio();
             Directory.CreateDirectory(CarpetaInstalacion);
-            string destino = Path.Combine(CarpetaInstalacion, "AtalayaAgente.exe");
+            string destino = Path.Combine(CarpetaInstalacion, "NodeCatAgente.exe");
             if (!Exe.Equals(destino, StringComparison.OrdinalIgnoreCase))
             {
                 File.Copy(Exe, destino, true);
@@ -346,9 +346,9 @@ namespace Atalaya
             }
 
             Console.WriteLine("  > Creando el servicio");
-            int r = Ejecutar("sc.exe", "create " + NombreServicio + " binPath= \"\\\"" + destino + "\\\" servicio\" start= auto DisplayName= \"Atalaya Agente\"");
+            int r = Ejecutar("sc.exe", "create " + NombreServicio + " binPath= \"\\\"" + destino + "\\\" servicio\" start= auto DisplayName= \"NodeCat Agente\"");
             if (r != 0) throw new Exception("No se pudo crear el servicio (código " + r + ").");
-            Ejecutar("sc.exe", "description " + NombreServicio + " \"Envía a Atalaya las sesiones, la CPU, la memoria y los discos de este servidor.\"");
+            Ejecutar("sc.exe", "description " + NombreServicio + " \"Envía a NodeCat las sesiones, la CPU, la memoria y los discos de este servidor.\"");
             Ejecutar("sc.exe", "failure " + NombreServicio + " reset= 86400 actions= restart/30000/restart/60000/restart/300000");
             using (var sc = new ServiceController(NombreServicio))
             {
@@ -356,7 +356,7 @@ namespace Atalaya
                 sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
             }
             Utiles.Log("Agente instalado y en marcha. Envía los datos a " + servidor + ".", ConsoleColor.Green);
-            Console.WriteLine("  En unos segundos este servidor aparecerá en Atalaya con sus datos.");
+            Console.WriteLine("  En unos segundos este servidor aparecerá en NodeCat con sus datos.");
             Console.WriteLine("  Registro: " + Path.Combine(Utiles.CarpetaDatos, "agente.log"));
             Pausa(silencioso);
             return 0;
@@ -379,7 +379,7 @@ namespace Atalaya
                 catch { }
             }
             Utiles.Log("Agente desinstalado.", ConsoleColor.Green);
-            Console.WriteLine("  Si quieres quitarlo también de la lista, hazlo en Atalaya (página del servidor > Editar).");
+            Console.WriteLine("  Si quieres quitarlo también de la lista, hazlo en NodeCat (página del servidor > Editar).");
             Pausa(silencioso);
             return 0;
         }
@@ -391,7 +391,7 @@ namespace Atalaya
 
         public ServicioAgente()
         {
-            ServiceName = "AtalayaAgente";
+            ServiceName = "NodeCatAgente";
             CanStop = true;
             CanShutdown = true;
             CanHandleSessionChangeEvent = true;
@@ -403,11 +403,11 @@ namespace Atalaya
             {
                 try { Agente.Bucle(); }
                 catch (Exception ex) { Utiles.Log("No se pudo iniciar el agente: " + ex.Message, ConsoleColor.Red); Stop(); }
-            }) { IsBackground = true, Name = "AtalayaAgente" };
+            }) { IsBackground = true, Name = "NodeCatAgente" };
             hilo.Start();
         }
 
-        // Inicio, cierre, desconexión o reconexión de una sesión: se avisa a Atalaya al momento
+        // Inicio, cierre, desconexión o reconexión de una sesión: se avisa a NodeCat al momento
         protected override void OnSessionChange(SessionChangeDescription cambio)
         {
             Agente.Despertar("sesion");

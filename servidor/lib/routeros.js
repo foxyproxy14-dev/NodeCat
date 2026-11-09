@@ -46,7 +46,7 @@ class Conexion {
       const { host, puerto, ssl, tiempo } = this.o;
       let hecho = false;
       const fin = e => { if (hecho) return; hecho = true; clearTimeout(t); e ? mal(e) : ok(); };
-      const t = setTimeout(() => { fin(new ErrorRouter(`El router ${host}:${puerto} no responde (tiempo agotado). Revisa la IP, el puerto y que el servicio ${ssl ? 'api-ssl' : 'api'} esté activo y permitido desde Atalaya.`, 'red')); this.cerrar(); }, tiempo);
+      const t = setTimeout(() => { fin(new ErrorRouter(`El router ${host}:${puerto} no responde (tiempo agotado). Revisa la IP, el puerto y que el servicio ${ssl ? 'api-ssl' : 'api'} esté activo y permitido desde NodeCat.`, 'red')); this.cerrar(); }, tiempo);
       const alConectar = () => fin();
       this.sock = ssl
         // Los routers suelen tener certificados propios o ninguno (cifrado anónimo): no se puede verificar la identidad

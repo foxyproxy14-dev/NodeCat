@@ -41,12 +41,12 @@ function prepararInicio() {
   if (hayCuentas()) return;
   codigoInicial = String(crypto.randomInt(100000, 999999));
   log('──────────────────────────────────────────────────────────────');
-  log(`Primera vez: abre Atalaya en el navegador y usa este código para crear la cuenta de administrador: ${codigoInicial}`);
+  log(`Primera vez: abre NodeCat en el navegador y usa este código para crear la cuenta de administrador: ${codigoInicial}`);
   log('──────────────────────────────────────────────────────────────');
 }
 function crearPrimera(codigo, usuario, clave) {
-  if (hayCuentas() || !codigoInicial) throw new Error('Atalaya ya está configurado. Inicia sesión.');
-  if (!iguales(String(codigo || '').trim(), codigoInicial)) throw new Error('El código no coincide. Búscalo en el registro del contenedor (docker compose logs atalaya).');
+  if (hayCuentas() || !codigoInicial) throw new Error('NodeCat ya está configurado. Inicia sesión.');
+  if (!iguales(String(codigo || '').trim(), codigoInicial)) throw new Error('El código no coincide. Búscalo en el registro del contenedor (docker compose logs nodecat).');
   guardarCuenta({ usuario, clave, rol: 'admin', clientes: null }, true);
   codigoInicial = null;
 }

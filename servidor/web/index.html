@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Atalaya</title>
+<title>NodeCat</title>
 <link rel="icon" id="favicon" href="data:,">
 <link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -18,7 +18,7 @@
   <div class="acceso-marca">
     <div>
       <div id="accesoGato"></div>
-      <span class="marca" aria-label="Atalaya">ata<span class="l">l<span class="luz"></span></span>aya</span>
+      <span class="marca" aria-label="NodeCat">no<span class="l">d<span class="luz"></span></span>ecat</span>
       <p>Todos tus clientes, todos sus servidores, desde un mismo lugar.</p>
     </div>
     <small>Servidores Windows, routers MikroTik, sesiones de Escritorio remoto y avisos por Telegram.</small>
@@ -26,7 +26,7 @@
   <div class="acceso-form">
     <form id="formAcceso" novalidate>
       <h2>Inicia sesión</h2>
-      <p class="ayuda">Con la cuenta de Atalaya que te dio el administrador.</p>
+      <p class="ayuda">Con la cuenta de NodeCat que te dio el administrador.</p>
       <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label class="campo">Contraseña<input name="clave" type="password" autocomplete="current-password" required></label>
       <div id="accesoError" hidden></div>
@@ -34,8 +34,8 @@
       <p class="pie">Después de 5 intentos fallidos, hay que esperar 5 minutos.</p>
     </form>
     <form id="formConfigurar" novalidate hidden>
-      <h2>Bienvenido a Atalaya</h2>
-      <p class="ayuda">Crea la cuenta de administrador. El código de 6 cifras aparece en el registro del servidor: <code>docker compose logs atalaya</code></p>
+      <h2>Bienvenido a NodeCat</h2>
+      <p class="ayuda">Crea la cuenta de administrador. El código de 6 cifras aparece en el registro del servidor: <code>docker compose logs nodecat</code></p>
       <label class="campo codigo-inicial">Código de configuración<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
       <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" value="admin" required></label>
       <label class="campo">Contraseña<input name="clave" type="password" autocomplete="new-password" required><span class="ayuda-campo">Mínimo 10 caracteres.</span></label>
@@ -49,7 +49,7 @@
 <!-- ================= Panel ================= -->
 <header class="barra">
   <div class="barra-in">
-    <a class="marca-gato" href="#/" aria-label="Atalaya, ir al resumen"><span id="barraGato"></span><span class="marca">ata<span class="l">l<span class="luz" id="luz"></span></span>aya</span></a>
+    <a class="marca-gato" href="#/" aria-label="NodeCat, ir al resumen"><span id="barraGato"></span><span class="marca">no<span class="l">d<span class="luz" id="luz"></span></span>ecat</span></a>
     <nav class="nav" id="nav" aria-label="Vistas"></nav>
     <div class="herr">
       <span class="reloj" id="reloj" aria-live="polite"></span>

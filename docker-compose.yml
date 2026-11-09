@@ -1,12 +1,12 @@
-# Atalaya
+# NodeCat
 #   Arrancar:          docker compose up -d --build
-#   Ver el código de la primera configuración:  docker compose logs atalaya
+#   Ver el código de la primera configuración:  docker compose logs nodecat
 #   Actualizar:        git pull && docker compose up -d --build
 services:
-  atalaya:
+  nodecat:
     build: .
-    image: atalaya:latest
-    container_name: atalaya
+    image: nodecat:latest
+    container_name: nodecat
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -14,22 +14,22 @@ services:
       - ./datos:/data            # base de datos y ajustes: haz copia de esta carpeta
     environment:
       TZ: America/Caracas        # zona horaria para el resumen diario y las fechas de los avisos
-      # Pon 1 si Atalaya está detrás de Cloudflare Tunnel o de un proxy inverso (nginx, Caddy, Traefik),
+      # Pon 1 si NodeCat está detrás de Cloudflare Tunnel o de un proxy inverso (nginx, Caddy, Traefik),
       # para que vea la IP real de quien entra y sepa que la conexión llegó por HTTPS.
       CONFIAR_PROXY: "0"
-      # Modo demo con clientes inventados (usuario demo / contraseña atalaya-demo):
-      # ATALAYA_DEMO: "1"
+      # Modo demo con clientes inventados (usuario demo / contraseña nodecat-demo):
+      # NODECAT_DEMO: "1"
 
-  # Opcional: publicar Atalaya en Internet con Cloudflare Tunnel, sin abrir puertos en tu router.
+  # Opcional: publicar NodeCat en Internet con Cloudflare Tunnel, sin abrir puertos en tu router.
   # 1. En Cloudflare Zero Trust > Networks > Tunnels, crea un túnel y copia su token.
-  # 2. Agrega un "Public hostname" (por ejemplo atalaya.tuempresa.com) que apunte a http://atalaya:8080
+  # 2. Agrega un "Public hostname" (por ejemplo nodecat.tuempresa.com) que apunte a http://nodecat:8080
   # 3. Descomenta este bloque, pega el token y pon CONFIAR_PROXY: "1" arriba.
   # cloudflared:
   #   image: cloudflare/cloudflared:latest
-  #   container_name: atalaya-tunel
+  #   container_name: nodecat-tunel
   #   restart: unless-stopped
   #   command: tunnel --no-autoupdate run
   #   environment:
   #     TUNNEL_TOKEN: "pega-aquí-el-token-del-túnel"
   #   depends_on:
-  #     - atalaya
+  #     - nodecat

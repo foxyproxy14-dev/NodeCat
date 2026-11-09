@@ -5,7 +5,7 @@ const PERFILES = {
     modelo: 'RB5009UG+S+', arq: 'arm64', version: '7.16.1 (stable)', ram: 1024, cpu: 6, temp: 41, volt: 24.2, ap: false,
     interfaces: [['ether1', 'ether', 'WAN Inter', 95e6, 18e6], ['ether2', 'ether', 'Servidores', 30e6, 60e6], ['ether3', 'ether', 'Recepción', 4e6, 1e6], ['ether8', 'ether', '', 0, 0, false],
       ['sfp-sfpplus1', 'ether', 'Enlace edificio B', 40e6, 22e6], ['bridge-lan', 'bridge', '', 70e6, 110e6], ['vlan20-voip', 'vlan', 'Telefonía', 0.6e6, 0.5e6], ['wg-sedes', 'wg', 'VPN sedes', 2e6, 3e6]],
-    leases: 64, wifi: 0, wg: ['Sede Naguanagua', 'Sede Guacara', 'Soporte (Atalaya)'], ppp: ['vpn-dra.paredes']
+    leases: 64, wifi: 0, wg: ['Sede Naguanagua', 'Sede Guacara', 'Soporte (NodeCat)'], ppp: ['vpn-dra.paredes']
   },
   ccr2004: {
     modelo: 'CCR2004-1G-12S+2XS', arq: 'arm64', version: '7.15.3 (stable)', ram: 4096, cpu: 9, temp: 48, volt: 12.1, ap: false,
@@ -163,8 +163,8 @@ function conexion(id) {
         case '/snmp/community/print': return [{ name: 'public', addresses: '::/0', security: 'none', 'read-access': 'true', 'write-access': 'false', disabled: 'false' }];
         case '/file/print': return [{ name: 'diario.backup', type: 'backup', size: '412345', 'creation-time': '2026-11-09 03:00:02' }, { name: 'flash', type: 'disk', size: '' }];
         case '/container/print': return [];
-        case '/user/print': return [{ name: 'admin', group: 'full', address: '192.168.88.0/24', 'last-logged-in': '2026-11-09 08:12:30', disabled: 'false' }, { name: 'atalaya', group: 'atalaya', address: '', 'last-logged-in': '2026-11-09 12:00:00', disabled: 'false' }];
-        case '/user/active/print': return [{ name: 'atalaya', address: '10.10.0.5', via: 'api', when: '2026-11-09 12:00:00', group: 'atalaya' }];
+        case '/user/print': return [{ name: 'admin', group: 'full', address: '192.168.88.0/24', 'last-logged-in': '2026-11-09 08:12:30', disabled: 'false' }, { name: 'nodecat', group: 'nodecat', address: '', 'last-logged-in': '2026-11-09 12:00:00', disabled: 'false' }];
+        case '/user/active/print': return [{ name: 'nodecat', address: '10.10.0.5', via: 'api', when: '2026-11-09 12:00:00', group: 'nodecat' }];
         case '/ip/firewall/connection/print': {
           const destinos = [['142.250.78.110', 30], ['157.240.12.35', 22], ['104.18.32.7', 18], ['20.190.151.70', 12], ['8.8.8.8', 9], ['52.96.164.18', 8], ['13.107.42.14', 6]];
           const l = [];
@@ -180,7 +180,7 @@ function conexion(id) {
             ['input', 'accept', 'defconf: accept established,related,untracked', { 'connection-state': 'established,related,untracked' }, 2400],
             ['input', 'drop', 'defconf: drop invalid', { 'connection-state': 'invalid' }, 3],
             ['input', 'accept', 'defconf: accept ICMP', { protocol: 'icmp' }, 6],
-            ['input', 'accept', 'Atalaya: API-SSL solo desde la oficina', { protocol: 'tcp', 'dst-port': '8729', 'src-address': '200.44.9.18' }, 1.2],
+            ['input', 'accept', 'NodeCat: API-SSL solo desde la oficina', { protocol: 'tcp', 'dst-port': '8729', 'src-address': '200.44.9.18' }, 1.2],
             ['input', 'accept', 'WireGuard', { protocol: 'udp', 'dst-port': '13231' }, 40],
             ['input', 'drop', 'defconf: drop all not coming from LAN', { 'in-interface-list': '!LAN' }, 18],
             ['forward', 'fasttrack-connection', 'defconf: fasttrack', { 'connection-state': 'established,related' }, 90000],

@@ -47,9 +47,9 @@ const equiposDemo = [];   // { id, clave, cfg, perfil, sesiones, arranque, disco
 function preparar() {
   if (!q('SELECT COUNT(*) n FROM clientes').get().n) { sembrar(); transaccion(sembrarRouters); }
   if (!auth.hayCuentas()) {
-    auth.guardarCuenta({ usuario: 'demo', clave: 'atalaya-demo', rol: 'admin', clientes: null }, true);
+    auth.guardarCuenta({ usuario: 'demo', clave: 'nodecat-demo', rol: 'admin', clientes: null }, true);
     const g = q("SELECT grupo_id FROM clientes WHERE nombre = 'Transportes Andes'").get().grupo_id;
-    auth.guardarCuenta({ usuario: 'andes', clave: 'atalaya-demo', rol: 'lector', clientes: null, grupos: [g] }, true);
+    auth.guardarCuenta({ usuario: 'andes', clave: 'nodecat-demo', rol: 'lector', clientes: null, grupos: [g] }, true);
   }
   for (const c of CLIENTES) {
     const cli = q('SELECT id, clave FROM clientes WHERE nombre = ?').get(c.nombre); if (!cli) continue;
@@ -63,7 +63,7 @@ function preparar() {
       });
     }
   }
-  log('Modo demo: entra con el usuario "demo" y la contraseña "atalaya-demo" (o "andes" para ver un solo cliente).');
+  log('Modo demo: entra con el usuario "demo" y la contraseña "nodecat-demo" (o "andes" para ver un solo cliente).');
 }
 
 function sembrar() {

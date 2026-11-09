@@ -127,7 +127,7 @@ function limpiarInforme(c) {
 
 function recibir(clave, c, ip) {
   const cli = clave && q('SELECT id, nombre FROM clientes WHERE clave = ?').get(String(clave));
-  if (!cli) { const e = new Error('La clave del agente no es válida. Descarga de nuevo el agente desde Atalaya.'); e.status = 403; throw e; }
+  if (!cli) { const e = new Error('La clave del agente no es válida. Descarga de nuevo el agente desde NodeCat.'); e.status = 403; throw e; }
   const nombre = txt(c && c.nombre, 63).trim().toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(nombre)) { const e = new Error('El informe no trae un nombre de equipo válido.'); e.status = 400; throw e; }
   const d = limpiarInforme(c);

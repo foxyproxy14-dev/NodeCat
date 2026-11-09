@@ -6,7 +6,7 @@
 @font-face { font-family: 'Atkinson Next'; font-style: normal; font-weight: 800; font-display: swap; src: url(fuentes/atkinson-hyperlegible-next-latin-ext-800-normal.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 /* ======================================================================
-   Atalaya: tokens (misma familia que Vigía)
+   NodeCat: tokens (misma familia que Vigía)
    ====================================================================== */
 :root {
   color-scheme: light;
@@ -71,7 +71,7 @@ a { color: var(--senal); }
 .tenue { color: var(--tinta-3); }
 .num { font-variant-numeric: tabular-nums; }
 
-/* ---------- La marca: la luz de estado se enciende sobre la "l", la torre de la atalaya ---------- */
+/* ---------- La marca: la luz de estado se enciende sobre el asta de la "d" ---------- */
 
 .marca {
   font-weight: 800; letter-spacing: -.035em; line-height: 1; white-space: nowrap;
@@ -79,7 +79,7 @@ a { color: var(--senal); }
 }
 .marca .l { position: relative; display: inline-block; }
 .marca .luz {
-  position: absolute; left: 50%; top: -.1em; width: .2em; height: .2em; margin-left: -.1em;
+  position: absolute; left: 79%; top: -.1em; width: .2em; height: .2em; margin-left: -.1em;
   border-radius: 50%; background: var(--senal);
 }
 .estado-ok .marca .luz { background: var(--ok); }
@@ -458,7 +458,7 @@ dialog::backdrop { background: var(--velo); backdrop-filter: blur(2px); }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 
 /* ======================================================================
-   Atalaya: clientes
+   NodeCat: clientes
    ====================================================================== */
 .miga { display: flex; align-items: center; gap: 6px; margin: 36px 0 -32px; font-size: 14px; color: var(--tinta-3); }
 .miga a { color: var(--tinta-2); text-decoration: none; }
@@ -522,7 +522,7 @@ dialog::backdrop { background: var(--velo); backdrop-filter: blur(2px); }
 }
 
 /* ======================================================================
-   Atalaya: routers MikroTik, modo consola (al estilo de MikroDash)
+   NodeCat: routers MikroTik, modo consola (al estilo de MikroDash)
    La página de un router siempre usa el tema oscuro, más denso y en vivo.
    ====================================================================== */
 body.consola {
@@ -642,7 +642,7 @@ body.consola .barra { background: color-mix(in srgb, var(--papel) 90%, transpare
 }
 
 /* ======================================================================
-   El gato de Atalaya
+   El gato de NodeCat
    ====================================================================== */
 .gato { display: block; overflow: visible; --gato-caja: #1d2327; --gato-rejilla: #3a444b; }
 body.consola .gato, :root[data-tema="oscuro"] .gato { --gato-caja: #2b343a; --gato-rejilla: #4b565e; }

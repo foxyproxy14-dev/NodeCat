@@ -1,6 +1,6 @@
 'use strict';
 /* ======================================================================
-   Atalaya: routers MikroTik (página en modo consola, al estilo de MikroDash)
+   NodeCat: routers MikroTik (página en modo consola, al estilo de MikroDash)
    Usa las utilidades de app.js ($, esc, api, cuando…).
    ====================================================================== */
 const COL = { bajada: '#4cc3d9', subida: '#f2a65a' };
@@ -446,12 +446,12 @@ async function dialogoRouter(clienteId, id) {
   const demo = cfg && cfg.demo;
   let confirmar = false;
   const dlg = libre(`<form novalidate><h3>${id ? 'Editar router' : 'Agregar un router MikroTik'}</h3>
-    ${!id ? `<p>Atalaya se conecta al router por su API y <b>solo lee</b>: no puede cambiar nada. Funciona con RouterOS 6 y 7.</p>
+    ${!id ? `<p>NodeCat se conecta al router por su API y <b>solo lee</b>: no puede cambiar nada. Funciona con RouterOS 6 y 7.</p>
     <details class="clave" style="margin-bottom:16px"><summary>Prepara el router (una sola vez)</summary>
-      <p>En la terminal del router, crea un usuario de solo lectura y activa la API. Cambia la contraseña y la IP de Atalaya:</p>
-      <code class="codigo pasos-cmd">/user group add name=atalaya policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
-/user add name=atalaya group=atalaya password=UNA-CLAVE-LARGA
-/ip service set api disabled=no address=IP-DE-ATALAYA/32</code>
+      <p>En la terminal del router, crea un usuario de solo lectura y activa la API. Cambia la contraseña y la IP de NodeCat:</p>
+      <code class="codigo pasos-cmd">/user group add name=nodecat policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
+/user add name=nodecat group=nodecat password=UNA-CLAVE-LARGA
+/ip service set api disabled=no address=IP-DE-NODECAT/32</code>
       <p><b>Si llegas al router por VPN o red interna</b>, usa la API normal (puerto 8728).<br><b>Si solo tiene IP pública</b>, usa API‑SSL (puerto 8729) y deja entrar solo a tu IP pública:</p>
       <code class="codigo pasos-cmd">/certificate add name=api common-name=api days-valid=3650
 /certificate sign api
@@ -461,7 +461,7 @@ async function dialogoRouter(clienteId, id) {
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Router principal" required></label>
     ${demo ? '' : `<div class="tres">
       <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
-      <label class="campo">Usuario<input name="usuario" spellcheck="false" autocomplete="off" value="${esc(cfg ? cfg.usuario : 'atalaya')}" required></label>
+      <label class="campo">Usuario<input name="usuario" spellcheck="false" autocomplete="off" value="${esc(cfg ? cfg.usuario : 'nodecat')}" required></label>
       <label class="campo">Puerto<input name="puerto" type="number" min="1" max="65535" value="${cfg ? cfg.puerto : 8728}"></label>
     </div>
     <label class="campo">Contraseña<input name="clave" type="password" autocomplete="new-password" placeholder="${cfg && cfg.claveGuardada ? 'Guardada. Déjala vacía para conservarla.' : ''}"></label>
@@ -471,7 +471,7 @@ async function dialogoRouter(clienteId, id) {
       <label class="campo">Ping adicional <span class="ayuda-campo">Opcional. Además de Cloudflare, Google y la puerta de enlace.</span><input name="ping" spellcheck="false" value="${esc(cfg ? cfg.ping : '')}" placeholder="10.0.0.1, oficina.ejemplo.com"></label>
     </div>`}
     <div class="msg" role="status" hidden></div>
-    <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de Atalaya</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar router'}</button></div></form>`, true);
+    <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar router'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
   const msg = (t, tipo) => {
     if (!t || tipo !== 'bien') return gatoDice(m, t);
@@ -499,7 +499,7 @@ async function dialogoRouter(clienteId, id) {
   const bq = f.querySelector('[data-quitar]');
   if (bq) bq.onclick = async () => {
     if (!confirmar) { confirmar = true; bq.className = 'btn peligro'; bq.textContent = '¿Seguro? Se borra su historial'; return; }
-    try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso('Router quitado de Atalaya.'); location.hash = '#/c/' + clienteId; await cargar(true); }
+    try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso('Router quitado de NodeCat.'); location.hash = '#/c/' + clienteId; await cargar(true); }
     catch (x) { if (!x.login) msg(x.message); }
   };
 }
@@ -667,7 +667,7 @@ function herramientasRt() {
 }
 
 /* ---------------- Caídas y sucesos de este router ---------------- */
-const NOMBRE_SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Se agregó a Atalaya'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
+const NOMBRE_SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Se agregó a NodeCat'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
 async function cargarSucesosRt(dias = rt.diasSucesos || 30) {
   rt.diasSucesos = dias;
   const cuerpo = $('#rtCuerpo'), id = rt.id;

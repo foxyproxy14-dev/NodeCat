@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.4.0 (noviembre de 2026)
+
+- Atalaya pasa a llamarse **NodeCat**. La base de datos se renombra sola al actualizar y los agentes ya instalados siguen funcionando (Atalaya Agente); los nuevos se instalan como NodeCat Agente.
+- La primera vez, actualiza con `docker compose up -d --build --remove-orphans` (cambia el nombre del contenedor).
+
 ## 0.3.1 (noviembre de 2026)
 
 - Grupos de clientes: junta las sedes de una misma empresa. El resumen las muestra juntas.

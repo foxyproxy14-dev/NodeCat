@@ -1,4 +1,4 @@
-# Atalaya: imagen mínima con Node.js 22 (SQLite integrado, sin dependencias externas)
+# NodeCat: imagen mínima con Node.js 22 (SQLite integrado, sin dependencias externas)
 FROM node:22-alpine
 
 ENV NODE_ENV=production \
@@ -21,4 +21,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:8080/salud || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrada"]
-CMD ["node", "atalaya.js"]
+CMD ["node", "nodecat.js"]

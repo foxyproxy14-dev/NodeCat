@@ -1,5 +1,5 @@
 'use strict';
-// Atalaya: panel de monitoreo por clientes. Punto de entrada y servidor web.
+// NodeCat: panel de monitoreo por clientes. Punto de entrada y servidor web.
 process.removeAllListeners('warning');   // el aviso "SQLite is experimental" no aporta nada al registro
 const http = require('node:http');
 const fs = require('node:fs');
@@ -110,12 +110,12 @@ ruta('POST', '/api/configurar', { publica: true }, ({ cuerpo, res, req }) => {
 ruta('POST', '/api/login', { publica: true }, ({ cuerpo, req, res }) => iniciarSesion(req, res, String(cuerpo.usuario || '').trim(), cuerpo.clave));
 function iniciarSesion(req, res, usuario, clave) {
   const id = auth.iniciar(usuario, clave, ipDe(req));
-  res.setHeader('Set-Cookie', `atalaya=${id}; Path=/; HttpOnly; SameSite=Strict${esHttps(req) ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `nodecat=${id}; Path=/; HttpOnly; SameSite=Strict${esHttps(req) ? '; Secure' : ''}`);
   const s = auth.sesion(id);
   log(`${s.usuario} inició sesión desde ${ipDe(req)}.`);
   return { usuario: s.usuario, rol: s.rol, csrf: s.csrf, clientes: s.clientes, version: config.VERSION, demo: config.DEMO };
 }
-ruta('POST', '/api/logout', {}, ({ sesion, res }) => { auth.cerrar(sesion.id); res.setHeader('Set-Cookie', 'atalaya=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); return { ok: true }; });
+ruta('POST', '/api/logout', {}, ({ sesion, res }) => { auth.cerrar(sesion.id); res.setHeader('Set-Cookie', 'nodecat=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); return { ok: true }; });
 ruta('POST', '/api/clave', {}, ({ sesion, cuerpo }) => { auth.cambiarClave(sesion.usuario, cuerpo.actual, cuerpo.nueva); return { ok: true }; });
 
 // Estado e historial
@@ -151,7 +151,7 @@ ruta('GET', '/api/historial/sesiones', {}, ({ sesion, url, res }) => {
   const lineas = ['Cliente;Equipo;Usuario;Dominio;Desde el equipo;Inicio;Fin;Duración (min);Desconexiones'];
   for (const s of filas) lineas.push([s.cliente, s.equipo, s.usuario, s.dominio, s.origen, fecha(s.inicio), s.fin ? fecha(s.fin) : 'Abierta', Math.round(((s.fin || Date.now()) - s.inicio) / 60000), s.desconexiones].map(c).join(';'));
   const b = Buffer.from('﻿' + lineas.join('\r\n'), 'utf8');
-  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="atalaya-sesiones.csv"`, 'Cache-Control': 'no-store' });
+  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="nodecat-sesiones.csv"`, 'Cache-Control': 'no-store' });
   res.end(b);
 });
 ruta('GET', '/api/eventos', {}, ({ sesion }) => ({ eventos: flota.eventosRecientes(sesion) }));
@@ -179,13 +179,13 @@ ruta('POST', '/api/clientes/:id/clave', soloAdmin, ({ p, sesion }) => {
 ruta('GET', '/api/clientes/:id/agente', { ...soloAdmin, token: true }, ({ p, req, res }) => {
   const c = flota.cliente(Number(p.id)); if (!c) throw error(404, 'Ese cliente no existe.');
   const b = paquete.crear(c, urlPublica(req));
-  const nombre = 'Atalaya-Agente-' + c.nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.zip';
+  const nombre = 'NodeCat-Agente-' + c.nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.zip';
   res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${nombre}"`, 'Content-Length': b.length, 'Cache-Control': 'no-store' });
   res.end(b);
 });
 ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   const u = String(cuerpo.url || '').trim().replace(/\/+$/, '');
-  if (u && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw error(400, 'Escribe una dirección completa, por ejemplo https://atalaya.miempresa.com');
+  if (u && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw error(400, 'Escribe una dirección completa, por ejemplo https://nodecat.miempresa.com');
   ajustes.guardar('urlAgentes', u); return { ok: true };
 });
 ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null }); return { ok: true }; });
@@ -215,7 +215,7 @@ ruta('POST', '/api/agente/informe', { publica: true, agente: true }, async ({ re
   const ip = ipDe(req);
   const f = malasClaves.get(ip);
   if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
-  const clave = req.headers['x-atalaya-agente'] || req.headers['x-vigia-agente'];
+  const clave = req.headers['x-nodecat-agente'] || req.headers['x-atalaya-agente'] || req.headers['x-vigia-agente'];   // los agentes antiguos siguen funcionando
   const cuerpo = await leerCuerpo(req, 2 * 1024 * 1024);
   try { const r = flota.recibir(clave, cuerpo, ip); avisos.evaluar(); return r; }
   catch (e) { if (e.status === 403) claveFallida(ip); throw e; }
@@ -231,14 +231,14 @@ async function atender(req, res) {
     return json(res, 404, { error: 'No existe esa dirección.' });
   }
   const p = url.pathname.match(r.patron).groups || {};
-  const sesion = auth.sesion(cookie(req, 'atalaya'));
+  const sesion = auth.sesion(cookie(req, 'nodecat'));
   if (!r.publica) {
     if (!sesion) throw Object.assign(error(401, 'Tu sesión terminó. Vuelve a entrar.'), { login: true });
     if (r.admin && sesion.rol !== 'admin') throw error(403, 'Solo un administrador puede hacer esto.');
     // Protección CSRF: las peticiones que cambian algo llevan el token de la sesión; las descargas, en ?t=
-    const tk = req.headers['x-atalaya-token'] || (r.token ? url.searchParams.get('t') : null);
+    const tk = req.headers['x-nodecat-token'] || (r.token ? url.searchParams.get('t') : null);
     if ((req.method !== 'GET' || r.token) && !iguales(tk, sesion.csrf)) throw error(403, 'Falta el token de seguridad. Recarga la página.');
-  } else if (req.method === 'POST' && !r.agente && req.headers['x-atalaya'] !== '1') {
+  } else if (req.method === 'POST' && !r.agente && req.headers['x-nodecat'] !== '1') {
     throw error(403, 'Petición no permitida.');
   }
   const cuerpo = (req.method === 'POST' || req.method === 'PUT') && !r.agente ? await leerCuerpo(req) : {};
@@ -251,7 +251,7 @@ const servidor = http.createServer((req, res) => {
     const interno = e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError || e.code;
     const status = e.status || (interno ? 500 : 400);
     if (status >= 500) log(`Error en ${req.method} ${req.url}: ${e.stack || e.message}`);
-    if (!res.headersSent) json(res, status, { error: status >= 500 ? 'Error interno de Atalaya. Revisa el registro del contenedor.' : e.message, login: e.login || undefined });
+    if (!res.headersSent) json(res, status, { error: status >= 500 ? 'Error interno de NodeCat. Revisa el registro del contenedor.' : e.message, login: e.login || undefined });
     else res.end();
   });
 });
@@ -273,7 +273,7 @@ setInterval(() => { try { flota.mantenimiento(); } catch (e) { log('Mantenimient
 setTimeout(() => { try { flota.mantenimiento(); } catch (e) { log('Mantenimiento: ' + e.message); } }, 60000).unref();
 
 servidor.listen(config.PUERTO, () => {
-  log(`Atalaya ${config.VERSION}${config.DEMO ? ' (modo demo)' : ''} escuchando en el puerto ${config.PUERTO}. Datos en ${config.DATA_DIR}.`);
-  if (!paquete.disponible()) log('Aviso: falta agente/AtalayaAgente.exe; no se podrá descargar el agente.');
+  log(`NodeCat ${config.VERSION}${config.DEMO ? ' (modo demo)' : ''} escuchando en el puerto ${config.PUERTO}. Datos en ${config.DATA_DIR}.`);
+  if (!paquete.disponible()) log('Aviso: falta agente/NodeCatAgente.exe; no se podrá descargar el agente.');
 });
-for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log('Deteniendo Atalaya…'); servidor.close(); process.exit(0); });
+for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log('Deteniendo NodeCat…'); servidor.close(); process.exit(0); });

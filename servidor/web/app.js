@@ -1,12 +1,12 @@
 'use strict';
 /* ======================================================================
-   Atalaya: interfaz web
+   NodeCat: interfaz web
    ====================================================================== */
 const ALTO = 90, MEDIO = 75;
 let CSRF = null, SESION = null, sondeo = null;
 let estado = null, version = null, montada = null;
-const guardar = (k, v) => { try { localStorage.setItem('atalaya.' + k, JSON.stringify(v)); } catch (e) { } };
-const leer = (k, d) => { try { const v = localStorage.getItem('atalaya.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const guardar = (k, v) => { try { localStorage.setItem('nodecat.' + k, JSON.stringify(v)); } catch (e) { } };
+const leer = (k, d) => { try { const v = localStorage.getItem('nodecat.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -53,18 +53,18 @@ function cuando(t) {
    API y sesión
    ====================================================================== */
 async function api(ruta, opc = {}) {
-  const cab = { 'X-Atalaya': '1', 'Content-Type': 'application/json' };
-  if (CSRF) cab['X-Atalaya-Token'] = CSRF;
+  const cab = { 'X-NodeCat': '1', 'Content-Type': 'application/json' };
+  if (CSRF) cab['X-NodeCat-Token'] = CSRF;
   let r;
   try { r = await fetch(ruta, { ...opc, headers: cab, credentials: 'same-origin' }); }
-  catch (e) { throw new Error('No hay conexión con Atalaya.'); }
+  catch (e) { throw new Error('No hay conexión con NodeCat.'); }
   let d = null;
   try { d = await r.json(); } catch (e) { }
   if (r.status === 401 && d && d.login && ruta !== '/api/login') {
     mostrarAcceso(SESION ? 'Tu sesión terminó. Vuelve a entrar.' : '');
     const e = new Error(d.error); e.login = true; throw e;
   }
-  if (!r.ok) throw new Error((d && d.error) || `Atalaya respondió con el error ${r.status}.`);
+  if (!r.ok) throw new Error((d && d.error) || `NodeCat respondió con el error ${r.status}.`);
   return d;
 }
 const enviar = (ruta, metodo, datos) => api(ruta, { method: metodo, body: JSON.stringify(datos || {}) });
@@ -172,7 +172,7 @@ async function cargar(forzar) {
   } catch (err) {
     if (err.login) return;
     const a = $('#aviso');
-    const t = err.message === 'No hay conexión con Atalaya.' ? 'Uy, perdí la conexión con Atalaya. Comprueba que el servidor sigue en marcha; lo sigo intentando.' : err.message;
+    const t = err.message === 'No hay conexión con NodeCat.' ? 'Uy, perdí la conexión con NodeCat. Comprueba que el servidor sigue en marcha; lo sigo intentando.' : err.message;
     if (a.dataset.t !== t || a.hidden) { a.innerHTML = gatoError(esc(t)); a.dataset.t = t; }
     a.hidden = false;
   }
@@ -230,7 +230,7 @@ function avisoGato(pose, titulo, texto, idEquipo, malo) {
   const quitar = () => { d.classList.add('fuera'); setTimeout(() => d.remove(), 350); };
   setTimeout(quitar, malo ? 15000 : 8000);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    try { const n = new Notification(titulo, { body: texto, icon: $('#favicon').href, tag: 'atalaya-' + idEquipo }); n.onclick = () => { window.focus(); if (idEquipo) ir('#/e/' + idEquipo); }; } catch (x) { }
+    try { const n = new Notification(titulo, { body: texto, icon: $('#favicon').href, tag: 'nodecat-' + idEquipo }); n.onclick = () => { window.focus(); if (idEquipo) ir('#/e/' + idEquipo); }; } catch (x) { }
   }
 }
 
@@ -688,7 +688,7 @@ function vistaEquipo(id) {
   $('#srvMeta').textContent = meta.join(', ') + '.';
 
   let av = '';
-  if (s.estado === 'caido') av += gatoError(`<b>No responde.</b> El agente no envía datos desde ${cuando(s.ultimo)}. Puede que el servidor esté apagado, sin conexión a Internet o que el servicio “Atalaya Agente” esté detenido. Los datos de abajo son los últimos que llegaron.`);
+  if (s.estado === 'caido') av += gatoError(`<b>No responde.</b> El agente no envía datos desde ${cuando(s.ultimo)}. Puede que el servidor esté apagado, sin conexión a Internet o que el servicio “NodeCat Agente” esté detenido. Los datos de abajo son los últimos que llegaron.`);
   if (s.estado === 'pendiente') av += `<div class="msg atencion">Este servidor está en la lista pero su agente todavía no ha enviado ningún informe.</div>`;
   if (s.estado === 'sinMetricas') av += `<div class="msg atencion"><b>El agente no puede leer la CPU, la memoria ni los discos.</b> ${esc(s.errorMetricas || '')}</div>`;
   if (s.errorSesiones) av += `<div class="msg atencion"><b>El agente no puede leer las sesiones.</b> ${esc(s.errorSesiones)}</div>`;
@@ -892,7 +892,7 @@ async function gestionClientes(abrirId, crear) {
     const eqDe = id => { const c = cliente(id); return c ? c.equipos.length : 0; };
     const dlg = libre(`<h3>Clientes y agentes</h3>
       <p>Cada cliente tiene su propio agente con su clave. Al instalarlo en un servidor, este aparece solo dentro de su cliente. El agente envía los datos por HTTPS, así que no hace falta VPN ni abrir puertos en el cliente.</p>
-      ${!datos.agente ? '<div class="msg atencion">Esta instalación no incluye el ejecutable del agente (agente/AtalayaAgente.exe), así que la descarga no funcionará.</div>' : ''}
+      ${!datos.agente ? '<div class="msg atencion">Esta instalación no incluye el ejecutable del agente (agente/NodeCatAgente.exe), así que la descarga no funcionará.</div>' : ''}
       ${msg ? `<div class="msg bien" role="status">${esc(msg)}</div>` : ''}
       <form id="fNuevo" class="en-linea" style="margin-bottom:14px">
         <label class="campo">Nuevo cliente o sede<input name="nombre" maxlength="60" placeholder="Nombre de la empresa o la sede" autocomplete="off"></label>
@@ -923,7 +923,7 @@ async function gestionClientes(abrirId, crear) {
         <div class="lista-cli">${datos.grupos.map(g => `<div><span><strong>${esc(g.nombre)}</strong><small>${plural(datos.clientes.filter(c => c.grupo_id === g.id).length, 'sede', 'sedes')}</small></span>
           <span class="acciones"><button class="btn" type="button" data-renombrar-grupo="${g.id}">Cambiar nombre</button><button class="btn ${confirmar === 'grupo' + g.id ? 'peligro' : ''}" type="button" data-borrar-grupo="${g.id}">${confirmar === 'grupo' + g.id ? '¿Seguro? Las sedes quedan sin grupo' : 'Borrar grupo'}</button></span></div>`).join('')}</div>
       </details>` : ''}
-      <details class="clave separado" ${datos.urlGuardada ? '' : ''}><summary>Dirección de Atalaya para los agentes</summary>
+      <details class="clave separado" ${datos.urlGuardada ? '' : ''}><summary>Dirección de NodeCat para los agentes</summary>
         <p>Los agentes envían sus datos a esta dirección. Debe ser accesible desde los servidores de tus clientes, idealmente con HTTPS (por ejemplo, con Cloudflare Tunnel). Si la dejas vacía se usa la dirección con la que abriste esta página.</p>
         <form id="fUrl" class="en-linea"><label class="campo"><span class="sr">Dirección</span><input name="url" placeholder="${esc(datos.url)}" value="${esc(datos.urlGuardada)}" spellcheck="false"></label><button class="btn" type="submit" style="margin-top:0">Guardar</button></form>
       </details>
@@ -1006,7 +1006,7 @@ function editarEquipo(id) {
     <label class="campo">Cliente<select name="cliente">${estado.clientes.map(c => `<option value="${c.id}" ${c.id === s.cliente ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select>
       <span class="ayuda-campo">Si lo cambias de cliente, recuerda que su agente sigue usando la clave del cliente original y volvería a aparecer allí. Lo correcto es reinstalarlo con el agente del cliente nuevo.</span></label>
     <div class="msg error" role="alert" hidden></div>
-    <div class="pie"><button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de Atalaya</button><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
+    <div class="pie"><button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
   const f = dlg.querySelector('form'), e = f.querySelector('.msg');
   f.onsubmit = async ev => {
     ev.preventDefault();
@@ -1027,7 +1027,7 @@ $('#btnCuenta').addEventListener('click', e => {
   if (!$('#menu').hidden) { cerrarMenu(); return; }
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }];
   if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => gestionClientes() }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
-  if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque Atalaya esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
+  if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
   menuEn(e.currentTarget, it, `<div class="menu-cab"><b>${esc(SESION.usuario)}</b><span>${ROLES[SESION.rol] || esc(SESION.rol)}${alcance}${SESION.demo ? ', modo demo' : ''}</span></div>`);
@@ -1120,10 +1120,10 @@ async function notificaciones() {
   const pc = n.porCliente || {};
   const dlg = libre(`<form novalidate>
     <h3>Notificaciones por Telegram</h3>
-    <p>Atalaya te avisa en Telegram cuando algo va mal y también cuando se resuelve.</p>
+    <p>NodeCat te avisa en Telegram cuando algo va mal y también cuando se resuelve.</p>
     <label class="interruptor">${marca('activo', n.activo)}<span><b>Enviar avisos por Telegram</b><small>Puedes dejarlo configurado y desactivarlo cuando quieras.</small></span></label>
     <h4>1. Crea el bot</h4>
-    <ol class="pasos"><li>En Telegram abre <b>@BotFather</b>, escribe <b>/newbot</b> y elige un nombre, por ejemplo “Atalaya Soporte”.</li>
+    <ol class="pasos"><li>En Telegram abre <b>@BotFather</b>, escribe <b>/newbot</b> y elige un nombre, por ejemplo “NodeCat Soporte”.</li>
       <li>Te dará un token. Cópialo y pégalo aquí.</li></ol>
     <label class="campo">Token del bot<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="${n.tokenGuardado ? 'Guardado, termina en …' + esc(n.tokenFin) + '. Déjalo vacío para conservarlo.' : '123456789:AAF…'}"></label>
     <h4>2. Elige dónde llegan los avisos</h4>
@@ -1198,8 +1198,8 @@ $('#btnTema').addEventListener('click', () => {
   if (rutaActual().vista === 'equipo') actualizar();
 });
 
-$('#accesoGato').innerHTML = gatoSVG('reparando', 'El gato de Atalaya reparando un servidor').replace('class="gato', 'class="acceso-gato gato');
+$('#accesoGato').innerHTML = gatoSVG('reparando', 'El gato de NodeCat reparando un servidor').replace('class="gato', 'class="acceso-gato gato');
 $('#barraGato').innerHTML = gatoSVG('reparando');
 $('#inicioCarga').innerHTML = `<div class="ic-caja"><div class="ic-pista">${gatoSVG('corriendo')}</div>
-  <span class="marca">ata<span class="l">l<span class="luz"></span></span>aya</span><p class="ic-texto">Abriendo Atalaya…</p></div>`;
+  <span class="marca">no<span class="l">d<span class="luz"></span></span>ecat</span><p class="ic-texto">Abriendo NodeCat…</p></div>`;
 iniciar();
