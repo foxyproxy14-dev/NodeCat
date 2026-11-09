@@ -14,6 +14,7 @@ const paquete = require('./lib/paquete');
 const mikrotik = require('./lib/mikrotik');
 const fortigate = require('./lib/fortigate');
 const sonda = require('./lib/sonda');
+const compartir = require('./lib/compartir');
 const modRed = e => e.tipo === 'fortigate' ? fortigate : mikrotik;
 
 const WEB = path.join(__dirname, 'web');
@@ -69,7 +70,7 @@ const error = (status, msg) => Object.assign(new Error(msg), { status });
 
 // Archivos de la web: en memoria, con ETag
 const estaticos = new Map();
-function servirEstatico(req, res, ruta) {
+function servirEstatico(req, res, ruta, extra = {}) {
   if (ruta === '/') ruta = '/index.html';
   const archivo = path.normalize(path.join(WEB, ruta));
   if (!archivo.startsWith(WEB + path.sep)) return false;
@@ -81,7 +82,7 @@ function servirEstatico(req, res, ruta) {
     estaticos.set(archivo, e);
   }
   if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, { ETag: e.etag }); res.end(); return true; }
-  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': e.tipo, ETag: e.etag, 'Cache-Control': ruta.startsWith('/fuentes/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Length': e.datos.length });
+  res.writeHead(200, { ...SEGURIDAD, ...extra, 'Content-Type': e.tipo, ETag: e.etag, 'Cache-Control': ruta.startsWith('/fuentes/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Length': e.datos.length });
   res.end(req.method === 'HEAD' ? undefined : e.datos);
   return true;
 }
@@ -247,11 +248,22 @@ ruta('POST', '/api/agente/sonda', { publica: true, agente: true }, async ({ req,
   catch (e) { if (e.status === 403) claveFallida(ip); throw e; }
   return sonda.atender(id, cuerpo.resultados, res);
 });
+// Enlaces de solo lectura para clientes (sin cuenta)
+ruta('GET', '/api/clientes/:id/enlaces', soloAdmin, ({ p }) => ({ enlaces: compartir.lista(Number(p.id)) }));
+ruta('POST', '/api/clientes/:id/enlaces', soloAdmin, ({ p, cuerpo, sesion }) => compartir.crear(Number(p.id), cuerpo, sesion.usuario));
+ruta('DELETE', '/api/clientes/:id/enlaces/:enlace', soloAdmin, ({ p, sesion }) => { compartir.revocar(Number(p.id), p.enlace, sesion.usuario); return { ok: true }; });
+ruta('GET', '/api/compartido/:token', { publica: true }, ({ p, req, res }) => {
+  const d = compartir.vista(decodeURIComponent(p.token), ipDe(req));
+  res.writeHead(200, { ...SEGURIDAD, 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(d));
+});
 ruta('GET', '/salud', { publica: true }, () => ({ ok: true, version: config.VERSION }));
 
 // ---------------------------------------------------------------- servidor
 async function atender(req, res) {
   const url = new URL(req.url, 'http://x');
+  // Página pública de solo lectura: /v/<token>
+  if ((req.method === 'GET' || req.method === 'HEAD') && /^\/v\/[A-Za-z0-9_-]{20,64}$/.test(url.pathname)) { servirEstatico(req, res, '/compartido.html', { 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' }); return; }
   const r = rutas.find(x => x.metodo === req.method && x.patron.test(url.pathname));
   if (!r) {
     if ((req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/') && servirEstatico(req, res, url.pathname)) return;

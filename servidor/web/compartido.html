@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>NodeCat, vista de solo lectura</title>
+<link rel="icon" id="favicon" href="data:,">
+<link rel="preload" href="/fuentes/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fuentes/atkinson-hyperlegible-next-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/estilos.css">
+<script src="/tema.js"></script>
+</head>
+<body class="compartido">
+<header class="barra">
+  <div class="barra-in">
+    <span class="marca-gato"><span id="barraGato"></span><span class="marca">no<span class="l">d<span class="luz" id="luz"></span></span>ecat</span></span>
+    <span class="etq-lectura">Solo lectura</span>
+    <div class="herr">
+      <span class="reloj" id="reloj" aria-live="polite"></span>
+      <button class="btn solo-icono" type="button" id="btnTema" aria-label="Cambiar entre tema claro y oscuro" title="Tema claro u oscuro">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<main id="vista"></main>
+<script src="/gato.js"></script>
+<script src="/compartido.js"></script>
+</body>
+</html>

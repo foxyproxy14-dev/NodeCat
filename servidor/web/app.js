@@ -344,7 +344,7 @@ function montar(r) {
         <div>
           <div class="cab-seccion">
             <h2 id="tituloTablero">Servidores</h2>
-            ${esAdmin() ? `<button class="btn" type="button" id="btnAgente">Agregar servidores</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
+            ${esAdmin() ? `<button class="btn" type="button" id="btnAgente">Agregar servidores</button><button class="btn" type="button" id="btnCompartir">Compartir</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
           </div>
           <div id="tablero"></div>
           <div class="cab-seccion" style="margin-top:36px">
@@ -357,6 +357,7 @@ function montar(r) {
       </div>`;
     if (esAdmin()) {
       $('#btnAgente').addEventListener('click', () => agregarServidores(c.id));
+      $('#btnCompartir').addEventListener('click', () => compartirCliente(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
       $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
       $('#btnForti').addEventListener('click', () => dialogoForti(c.id));
@@ -917,6 +918,51 @@ async function agregarServidores(id) {
       aviso('Clave nueva generada. Descarga el instalador otra vez para los servidores de este cliente.');
     } catch (x) { if (!x.login) gatoDice(dlg.querySelector('.msg'), x.message); }
   };
+}
+
+// Enlace de solo lectura para el cliente: ve el estado de sus equipos sin cuenta y sin poder tocar nada
+async function compartirCliente(id) {
+  const c = cliente(id); if (!c) return;
+  const grupo = c.grupo_id ? (arr(estado.grupos).find(g => g.id === c.grupo_id) || {}).nombre : null;
+  let enlaces = [], nuevo = null, anulando = null;
+  const cargarL = async () => { enlaces = arr((await api(`/api/clientes/${id}/enlaces`)).enlaces); };
+  try { await cargarL(); } catch (x) { if (!x.login) aviso(x.message, true); return; }
+  const dlg = libre('<div></div>', true);
+  const pintar = () => {
+    dlg.querySelector('.dlg').innerHTML = `<div><h3>Compartir ${esc(c.nombre)}</h3>
+      <p>Crea un enlace para que el cliente vea el estado de sus equipos sin cuenta. Es <b>solo lectura</b>: no puede cambiar nada ni entrar a los servidores, routers o FortiGate.</p>
+      <p class="tenue">Ve si cada equipo está en línea, CPU, memoria, disco, tráfico de Internet, latencia, disponibilidad y caídas. <b>No</b> ve sesiones ni usuarios, direcciones IP, configuración, DHCP, VPN, firewall ni registros.</p>
+      ${nuevo ? `<div class="msg bien" style="display:block"><b>Enlace creado.</b> Cópialo ahora: por seguridad no se vuelve a mostrar.
+        <div class="en-linea" style="margin-top:10px"><input class="codigo" id="urlNueva" readonly value="${esc(nuevo)}" style="flex:1"><button class="btn prim" type="button" data-copiar>Copiar</button></div></div>` : ''}
+      <div class="en-linea" style="align-items:end;margin:14px 0 6px">
+        <label class="campo" style="flex:1">Para quién <span class="ayuda-campo">opcional, para reconocerlo</span><input name="nota" maxlength="80" placeholder="Gerencia de ${esc(c.nombre)}"></label>
+        <label class="campo">Dura<select class="selector" name="dias">${[[7, '7 días'], [30, '30 días'], [90, '90 días'], [1, '1 día'], [0, 'Sin vencimiento']].map(([v, t]) => `<option value="${v}" ${v === 30 ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      </div>
+      ${grupo ? `<label class="interruptor" style="margin-bottom:12px"><input type="checkbox" name="grupo"><span><b>Incluir todas las sedes de ${esc(grupo)}</b><small>Verá juntas todas las sedes del grupo, también las que agregues después.</small></span></label>` : ''}
+      <p><button class="btn prim" type="button" data-crear>Crear enlace</button></p>
+      ${enlaces.length ? `<h4 class="separado">Enlaces de ${esc(c.nombre)}</h4><ul class="avisos-lista enlaces">${enlaces.map(e => `<li><span><b>${esc(e.nota || 'Sin nombre')}</b>${e.grupo ? ` <span class="tenue">(todo ${esc(grupo || 'el grupo')})</span>` : ''}
+          <small>${e.vencido ? '<span class="mal">Vencido</span>' : e.vence ? `Vence ${cuando(e.vence)}` : 'Sin vencimiento'}, ${e.vistas ? `abierto ${plural(e.vistas, 'vez', 'veces')}, la última ${cuando(e.visto)}` : 'todavía no se abrió'}. Creado por ${esc(e.creador)} ${cuando(e.creado)}.</small></span>
+          <button class="btn ${anulando === e.id ? 'peligro' : ''}" type="button" data-anular="${esc(e.id)}">${anulando === e.id ? '¿Seguro? Deja de funcionar' : 'Anular'}</button></li>`).join('')}</ul>` : ''}
+      <div class="msg error" role="alert" hidden></div>
+      <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`;
+    const m = dlg.querySelector('.msg.error');
+    dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
+    const bc = dlg.querySelector('[data-copiar]');
+    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#urlNueva'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } aviso('Enlace copiado.'); };
+    dlg.querySelector('[data-crear]').onclick = ev => ocupado(ev.currentTarget, 'Creando…', async () => {
+      try {
+        const g = dlg.querySelector('[name=grupo]');
+        const r = await enviar(`/api/clientes/${id}/enlaces`, 'POST', { nota: dlg.querySelector('[name=nota]').value, dias: +dlg.querySelector('[name=dias]').value, grupo: !!(g && g.checked) });
+        nuevo = `${location.origin}/v/${r.token}`; anulando = null; await cargarL(); pintar();
+      } catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+    dlg.querySelectorAll('[data-anular]').forEach(b => b.onclick = async () => {
+      if (anulando !== b.dataset.anular) { anulando = b.dataset.anular; pintar(); return; }
+      try { await enviar(`/api/clientes/${id}/enlaces/${b.dataset.anular}`, 'DELETE'); anulando = null; nuevo = null; await cargarL(); pintar(); aviso('Enlace anulado. Ya no funciona.'); }
+      catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+  };
+  pintar();
 }
 
 async function gestionClientes(abrirId, crear) {

@@ -193,6 +193,15 @@ Si NodeCat no llega a la red del cliente, cualquier servidor de esa red con el a
 
 El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, las hace en la red local y devuelve el resultado. Solo acepta comandos de lectura. Todo funciona igual que con una conexión directa (secciones, ping, traceroute, avisos); si la sonda se desconecta, el equipo se marca caído en segundos. La contraseña o el token viajan cifrados por HTTPS hasta el agente de ese cliente y no se guardan en el servidor.
 
+## Compartir con un cliente (solo lectura)
+
+En la página del cliente: **Compartir** > **Crear enlace**. El cliente abre el enlace sin cuenta y ve sus equipos: si están en línea, CPU, memoria, disco, tráfico de Internet, latencia, disponibilidad de 24 h y caídas de la última semana. Se actualiza sola.
+
+- **No ve** sesiones ni usuarios, direcciones IP, configuración, DHCP, VPN, firewall, registros ni versiones, y no hay ningún botón que cambie algo ni acceso a los equipos. Esos datos ni siquiera salen del servidor.
+- El enlace puede durar 1, 7, 30 o 90 días, o no vencer. Si el cliente es parte de un grupo, puedes incluir todas las sedes del grupo.
+- En la misma ventana ves cuántas veces se abrió cada enlace y puedes **anularlo** en cualquier momento.
+- El enlace solo se muestra al crearlo (NodeCat guarda una huella, no el enlace).
+
 ## Avisos por Telegram
 
 Menú con tu nombre > **Notificaciones por Telegram**. Puedes decidir los umbrales (por ejemplo, CPU por encima del 90 % durante 5 minutos), recibir un resumen diario y recordar los avisos que sigan sin resolverse.

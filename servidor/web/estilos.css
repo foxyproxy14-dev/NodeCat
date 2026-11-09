@@ -853,3 +853,12 @@ body.iniciando .inicio-carga { display: grid; }
 .bot-chats .mal { color: var(--alerta); font-size: 13px; }
 .bot-editar { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
 .btn.grande { height: 44px; padding: 0 20px; font-size: 15px; }
+/* Página compartida de solo lectura */
+.etq-lectura { margin-left: 14px; font-size: 13px; color: var(--tinta-3); border: 1px solid var(--linea); border-radius: 999px; padding: 3px 10px; }
+.compartido .fila { cursor: default; }
+.compartido .fila:hover { background: transparent; }
+.compartido .nota-lectura { font-size: 14px; margin-top: 8px; }
+.bloque-cli + .bloque-cli { margin-top: 48px; }
+.cli-titulo { font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 18px; }
+.enlaces li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.enlaces li small { display: block; color: var(--tinta-3); }

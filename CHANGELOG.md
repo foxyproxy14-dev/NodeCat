@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.8.0 (noviembre de 2026)
+
+- Compartir con un cliente: enlace de solo lectura, sin cuenta, con el estado de sus equipos (o de todas las sedes de su grupo). Sin sesiones, IP, configuración ni acceso a los equipos. Con vencimiento, contador de visitas y botón para anularlo.
+- "Agregar servidores" dentro de un cliente muestra solo el instalador y la clave de ese cliente; crear clientes y grupos queda en la página principal.
+
 ## 0.7.0 (noviembre de 2026)
 
 - Instalador de un solo `.exe` por cliente, con la configuración dentro: doble clic e instalado.
