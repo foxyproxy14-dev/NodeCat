@@ -69,14 +69,29 @@ async function api(ruta, opc = {}) {
 }
 const enviar = (ruta, metodo, datos) => api(ruta, { method: metodo, body: JSON.stringify(datos || {}) });
 
+// Pantalla de carga: el gato corre al entrar; se queda al menos 1,6 s para que se vea y se va con un fundido
+const inicioCarga = { desde: Date.now() };
+function mostrarInicio(texto) {
+  inicioCarga.desde = Date.now();
+  const el = $('#inicioCarga'); el.classList.remove('saliendo');
+  el.querySelector('.ic-texto').textContent = texto;
+  document.body.classList.add('iniciando');
+}
+function ocultarInicio() {
+  if (!document.body.classList.contains('iniciando')) return;
+  const el = $('#inicioCarga');
+  setTimeout(() => { el.classList.add('saliendo'); setTimeout(() => { document.body.classList.remove('iniciando'); el.classList.remove('saliendo'); }, 450); },
+    Math.max(0, 1600 - (Date.now() - inicioCarga.desde)));
+}
+
 function entrar(info) {
   SESION = info; CSRF = info.csrf;
-  document.body.classList.remove('sin-sesion', 'iniciando');
+  document.body.classList.remove('sin-sesion');
   document.body.classList.toggle('lector', !esAdmin());
   $('#acceso').hidden = true;
   $('#cuentaNombre').textContent = info.usuario;
   montada = null; version = null;
-  cargar(true);
+  cargar(true).finally(ocultarInicio);
   if (!sondeo) {
     sondeo = setInterval(() => { if (SESION && !document.hidden) cargar(); }, 5000);
     setInterval(reloj, 1000);
@@ -85,7 +100,7 @@ function entrar(info) {
 
 function mostrarAcceso(msg, configurar) {
   SESION = null; CSRF = null; estado = null;
-  document.body.classList.remove('iniciando');
+  ocultarInicio();
   document.body.classList.add('sin-sesion');
   cerrarMenu();
   const d = $('#dialogo'); if (d.open) d.close();
@@ -107,6 +122,7 @@ $('#formAcceso').addEventListener('submit', async ev => {
   try {
     const info = await enviar('/api/login', 'POST', { usuario: f.usuario.value.trim(), clave: f.clave.value });
     f.clave.value = '';
+    mostrarInicio(`Hola, ${info.usuario}. Revisando a tus clientes…`);
     entrar(info);
   } catch (err) { errorAcceso(err.message); f.clave.value = ''; f.clave.focus(); }
   finally { b.disabled = false; b.textContent = 'Entrar'; }
@@ -1090,5 +1106,6 @@ $('#btnTema').addEventListener('click', () => {
 
 $('#accesoGato').innerHTML = gatoSVG('reparando', 'El gato de Atalaya reparando un servidor').replace('class="gato', 'class="acceso-gato gato');
 $('#barraGato').innerHTML = gatoSVG('reparando');
-$('#inicioCarga').innerHTML = gatoCargando('Abriendo Atalaya…');
+$('#inicioCarga').innerHTML = `<div class="ic-caja"><div class="ic-pista">${gatoSVG('corriendo')}</div>
+  <span class="marca">ata<span class="l">l<span class="luz"></span></span>aya</span><p class="ic-texto">Abriendo Atalaya…</p></div>`;
 iniciar();

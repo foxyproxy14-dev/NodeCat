@@ -720,7 +720,16 @@ body.consola .gato, :root[data-tema="oscuro"] .gato { --gato-caja: #2b343a; --ga
 .marca-gato .gato { width: 38px; height: 32px; }
 .titular-gato { display: flex; align-items: flex-end; gap: 24px; }
 .titular-gato .gato { width: 120px; height: 100px; flex: none; margin-bottom: -6px; }
-.inicio-carga { position: fixed; inset: 0; display: none; place-items: center; background: var(--papel); z-index: 60; }
+.inicio-carga { position: fixed; inset: 0; display: none; place-items: center; background: var(--papel); z-index: 60; transition: opacity .45s ease; }
+.inicio-carga.saliendo { opacity: 0; }
+.ic-caja { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(420px, 86vw); }
+.ic-pista { position: relative; width: 100%; height: 86px; overflow: hidden; border-bottom: 2px dashed var(--linea-2); }
+.ic-pista .gato { position: absolute; bottom: -4px; width: 100px; height: 84px; animation: ic-cruza 2.2s linear infinite; }
+.ic-caja .marca { font-size: 34px; margin-top: 10px; }
+.ic-caja .marca .luz { animation: latido 1.1s ease-out infinite; }
+.ic-texto { margin: 0; color: var(--tinta-2); font-size: 15px; text-align: center; }
+@keyframes ic-cruza { from { left: -110px; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .ic-pista .gato { left: calc(50% - 50px); } }
 body.iniciando .inicio-carga { display: grid; }
 .toast .gato { width: 34px; height: 28px; flex: none; margin: -4px 0 -4px -4px; }
 .toast.con-gato::before { display: none; }
