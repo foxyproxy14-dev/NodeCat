@@ -862,3 +862,5 @@ body.iniciando .inicio-carga { display: grid; }
 .cli-titulo { font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 18px; }
 .enlaces li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .enlaces li small { display: block; color: var(--tinta-3); }
+.hora-actual { font-weight: 600; color: var(--tinta); margin-right: 12px; font-variant-numeric: tabular-nums; }
+.compartido .herr { margin-left: auto; }

@@ -15,7 +15,7 @@ function durTxt(ms) {
 const duracion = t => t ? durTxt(Date.now() - t) : '—';
 function cuando(t) {
   if (!t) return '—';
-  const d = new Date(t), hh = d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  const d = new Date(t), hh = d.toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
   if (d.toDateString() === new Date().toDateString()) return `hoy ${hh}`;
   if (d.toDateString() === new Date(Date.now() - 864e5).toDateString()) return `ayer ${hh}`;
   return d.toLocaleDateString('es', { day: 'numeric', month: 'short' }) + ' ' + hh;
@@ -105,8 +105,14 @@ async function cargar() {
     else { datos = o; falla = null; recibido = Date.now(); }
   } catch { falla = 'Sin conexión con NodeCat. Se reintentará.'; }
   pintar();
-  const rel = $('#reloj'); if (rel) rel.textContent = falla && datos ? falla : recibido ? 'Actualizado ' + cuando(recibido).replace(/^hoy /, 'a las ') : '';
+  reloj();
 }
+const hora12 = t => new Date(t).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+function reloj() {
+  const rel = $('#reloj'); if (!rel) return;
+  rel.innerHTML = `<b class="hora-actual">${esc(hora12(Date.now()))}</b>` + esc(falla && datos ? falla : recibido ? 'Actualizado a las ' + hora12(recibido) : '');
+}
+setInterval(reloj, 1000);
 
 const g = $('#barraGato'); if (g && typeof gatoSVG === 'function') g.innerHTML = gatoSVG('reparando');
 $('#btnTema').addEventListener('click', () => {

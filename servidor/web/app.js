@@ -13,7 +13,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const arr = x => Array.isArray(x) ? x : (x == null ? [] : [x]);
 const nf = new Intl.NumberFormat('es', { maximumFractionDigits: 1 });
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
-const hora = t => new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+const horaCorta = t => new Date(t).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', hour12: true });   // ejes de los gráficos
+const hora = t => new Date(t).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 const nivel = v => v == null ? '' : v >= ALTO ? 'alerta' : v >= MEDIO ? 'aviso' : 'ok';
 const ROLES = { admin: 'Administrador', lector: 'Solo lectura' };
 const esAdmin = () => !!SESION && SESION.rol === 'admin';
@@ -43,7 +44,7 @@ function inactivo(min, est) {
 function cuando(t) {
   if (!t) return '—';
   const d = new Date(t), hoy = new Date(), ayer = new Date(Date.now() - 864e5);
-  const hh = d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  const hh = d.toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
   if (d.toDateString() === hoy.toDateString()) return `hoy ${hh}`;
   if (d.toDateString() === ayer.toDateString()) return `ayer ${hh}`;
   return d.toLocaleDateString('es', { day: 'numeric', month: 'short' }) + ' ' + hh;
@@ -271,9 +272,10 @@ function luz(latir) {
 function reloj() {
   if (!estado) return;
   const r = $('#reloj');
-  if (!estado.actualizado) { r.textContent = estado.demo ? 'Modo demo' : 'Esperando informes'; return; }
+  const ahora = `<b class="hora-actual">${esc(hora(Date.now()))}</b>`;
+  if (!estado.actualizado) { r.innerHTML = ahora + (estado.demo ? 'Modo demo' : 'Esperando informes'); return; }
   const s = Math.max(0, Math.round((Date.now() - estado.actualizado) / 1000));
-  r.textContent = (estado.demo ? 'Demo. ' : '') + (s < 60 ? `Último informe hace ${s} s` : `Último informe a las ${hora(estado.actualizado)}`);
+  r.innerHTML = ahora + esc((estado.demo ? 'Demo. ' : '') + (s < 60 ? `Último informe hace ${s} s` : `Último informe a las ${hora(estado.actualizado)}`));
 }
 
 /* ======================================================================
@@ -751,8 +753,8 @@ function vistaEquipo(id) {
 function grafico(el, historial, clave, nombre, span) {
   const pts = historial.filter(h => h[clave] != null);
   const largo = span > 36 * 3600e3;
-  const etq = t => largo ? new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short' }) : hora(t);
-  const etqLarga = t => largo ? new Date(t).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : hora(t);
+  const etq = t => largo ? new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short' }) : horaCorta(t);
+  const etqLarga = t => largo ? new Date(t).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : hora(t);
   if (pts.length < 2) { el.innerHTML = `<div class="sin-datos">${historial === null ? 'Cargando…' : 'Todavía no hay datos de este periodo. Se van guardando desde que el agente empezó a informar.'}</div>`; return; }
   const W = Math.max(240, el.clientWidth), H = el.clientHeight || 170;
   const m = { i: 30, d: 44, a: 8, b: 22 };

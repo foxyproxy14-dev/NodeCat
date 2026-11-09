@@ -297,7 +297,7 @@ function graficoTrafico(el, pts, enVivo, span) {
   const dRx = camino('rx'), dTx = camino('tx');
   const area = dRx.split('M').filter(Boolean).map(seg => { const ps = seg.split('L'); const xi = ps[0].split(',')[0], xf = ps[ps.length - 1].split(',')[0]; return `M${xi},${y(0)}L${seg}L${xf},${y(0)}Z`; }).join('');
   const rej = [0, .5, 1].map(f => `<line class="rejilla" x1="${m.i}" x2="${W - m.d}" y1="${y(top * f)}" y2="${y(top * f)}"/><text class="eje" x="${m.i - 8}" y="${y(top * f) + 4}" text-anchor="end">${f ? bps(top * f) : '0'}</text>`).join('');
-  const etq = t => enVivo ? new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : (span > 36 * 3600e3 ? new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short' }) : hora(t));
+  const etq = t => enVivo ? new Date(t).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : (span > 36 * 3600e3 ? new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short' }) : horaCorta(t));
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tráfico: bajada actual ${bps(pts[pts.length - 1].rx)}, subida ${bps(pts[pts.length - 1].tx)}">
     ${rej}<path class="a-bajada" d="${area}"/><path class="l-bajada" d="${dRx}"/><path class="l-subida" d="${dTx}"/>
     <text class="eje" x="${m.i}" y="${H - 4}">${etq(tIni)}</text><text class="eje" x="${W - m.d}" y="${H - 4}" text-anchor="end">${enVivo ? 'ahora' : etq(t1)}</text>
@@ -314,7 +314,7 @@ function graficoTrafico(el, pts, enVivo, span) {
     const [cb, cs] = g.querySelectorAll('circle');
     cb.setAttribute('cx', cx); cb.setAttribute('cy', y(mejor.rx || 0)); cs.setAttribute('cx', cx); cs.setAttribute('cy', y(mejor.tx || 0));
     globo.hidden = false;
-    globo.innerHTML = `${enVivo ? new Date(mejor.t).toLocaleTimeString('es') : new Date(mejor.t).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}&nbsp;&nbsp;↓ <b class="bajada">${bps(mejor.rx)}</b>&nbsp; ↑ <b class="subida">${bps(mejor.tx)}</b>`;
+    globo.innerHTML = `${enVivo ? new Date(mejor.t).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : new Date(mejor.t).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}&nbsp;&nbsp;↓ <b class="bajada">${bps(mejor.rx)}</b>&nbsp; ↑ <b class="subida">${bps(mejor.tx)}</b>`;
     globo.style.left = (cx * r.width / W) + 'px'; globo.style.top = (y(Math.max(mejor.rx || 0, mejor.tx || 0)) * r.height / H) + 'px';
     globo.classList.toggle('abajo', y(Math.max(mejor.rx || 0, mejor.tx || 0)) < 46);
   };
@@ -743,7 +743,7 @@ function vistaSucesos(d, dias) {
       <div class="losa"><h4>Reinicios</h4><div class="v">${r.reinicios}</div><small>detectados por el tiempo encendido</small></div>
     </div>
     ${l.length ? `<section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>Qué pasó</th><th>Empezó</th><th>Terminó</th><th class="num">Duración</th><th>Detalle</th></tr></thead><tbody>
-      ${l.map(x => { const [cl, t] = NOMBRE_SUCESO[x.tipo] || ['', x.tipo]; const f = ms => new Date(ms).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      ${l.map(x => { const [cl, t] = NOMBRE_SUCESO[x.tipo] || ['', x.tipo]; const f = ms => new Date(ms).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
         return `<tr><td><span class="estado-ses"><span class="punto ${cl}" aria-hidden="true"></span>${t}</span></td><td>${f(x.t)}</td>
           <td>${x.hasta ? f(x.hasta) : x.sigue ? '<span class="etq mal">Sigue así</span>' : '<span class="tenue">—</span>'}</td>
           <td class="num">${x.duracion != null ? durTxt(x.duracion) : x.sigue ? durTxt(Date.now() - x.t) : '—'}</td>

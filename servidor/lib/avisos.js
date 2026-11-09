@@ -329,7 +329,7 @@ function evaluar(forzar) {
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
-      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo !== 'windows' ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
+      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo !== 'windows' ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
