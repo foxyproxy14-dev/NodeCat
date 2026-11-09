@@ -201,8 +201,8 @@ function vigilarCambios(e) {
   for (const c of e.clientes) for (const x of c.equipos) ahora.set(x.id, { estado: x.estado, wan: x.red && x.red.wan ? x.red.wan.activa : null, x, c });
   if (previos) {
     for (const [id, n] of ahora) {
-      const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = n.x.tipo === 'mikrotik' ? 'El router' : 'El servidor';
-      if (!p) { avisoGato('reparando', n.x.tipo === 'mikrotik' ? '¡Router nuevo!' : '¡Servidor nuevo!', `${nom} se unió a ${n.c.nombre}. Ya lo estoy vigilando.`, id); continue; }
+      const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = n.x.tipo === 'windows' ? 'El servidor' : n.x.tipo === 'fortigate' ? 'El FortiGate' : 'El router';
+      if (!p) { avisoGato('reparando', n.x.tipo === 'windows' ? '¡Servidor nuevo!' : n.x.tipo === 'fortigate' ? '¡FortiGate nuevo!' : '¡Router nuevo!', `${nom} se unió a ${n.c.nombre}. Ya lo estoy vigilando.`, id); continue; }
       if (p.estado === 'pendiente' && (n.estado === 'ok' || n.estado === 'sinMetricas')) avisoGato('reparando', '¡Conectado!', `${nom} (${n.c.nombre}) ya está enviando datos.`, id);
       else if (p.estado !== 'caido' && n.estado === 'caido') avisoGato('avergonzado', `${nom} no responde`, `${tipo} de ${n.c.nombre} dejó de responder${n.x.errorConexion ? ': ' + n.x.errorConexion : '.'}`, id, true);
       else if (p.estado === 'caido' && n.estado !== 'caido') avisoGato('programando', `${nom} volvió`, `${tipo} de ${n.c.nombre} está otra vez en línea.`, id);
@@ -243,7 +243,7 @@ const todasLasSesiones = (lista = equipos()) => lista.flatMap(e => e.sesiones.ma
 function problemasDe(e) {
   const l = [], n = nombreEq(e);
   if (e.estado === 'caido') { l.push({ e, n: 'alerta', t: `${n} no responde` }); return l; }
-  if (e.red && e.red.wan && !e.red.wan.activa) l.push({ e, n: 'alerta', t: `${n}: WAN caído (${e.red.wan.interfaz})` });
+  for (const w of e.red ? (e.red.wans && e.red.wans.length ? e.red.wans : e.red.wan ? [e.red.wan] : []) : []) if (!w.activa) l.push({ e, n: 'alerta', t: `${n}: WAN caído (${w.interfaz})` });
   if (e.cpu != null && e.cpu >= ALTO) l.push({ e, n: 'alerta', t: `${n}: CPU al ${e.cpu} %` });
   if (e.ramPct != null && e.ramPct >= ALTO) l.push({ e, n: 'alerta', t: `${n}: memoria al ${e.ramPct} %` });
   for (const d of e.discos) if (d.pct >= ALTO) l.push({ e, n: 'alerta', t: `${n}: disco ${d.unidad} al ${d.pct} %` });
@@ -295,7 +295,7 @@ function render() {
   const r = rutaActual();
   if (r.vista === 'cliente' && !cliente(r.id)) { ir('#/'); return; }
   if (r.vista === 'equipo' && !equipo(r.id)) { ir('#/'); return; }
-  const esRouter = r.vista === 'equipo' && equipo(r.id).tipo === 'mikrotik';
+  const esRouter = r.vista === 'equipo' && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo);
   document.body.classList.toggle('consola', esRouter);
   pintarNav(r);
   if (montada !== r.clave) { montar(r); montada = r.clave; }
@@ -349,7 +349,7 @@ function montar(r) {
           <div id="tablero"></div>
           <div class="cab-seccion" style="margin-top:36px">
             <h2 id="tituloRed">Red</h2>
-            ${esAdmin() ? '<button class="btn" type="button" id="btnRouter">Agregar router MikroTik</button>' : ''}
+            ${esAdmin() ? '<button class="btn" type="button" id="btnRouter">Agregar MikroTik</button><button class="btn" type="button" id="btnForti">Agregar FortiGate</button>' : ''}
           </div>
           <div id="tableroRed"></div>
         </div>
@@ -359,6 +359,7 @@ function montar(r) {
       $('#btnAgente').addEventListener('click', () => gestionClientes(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
       $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
+      $('#btnForti').addEventListener('click', () => dialogoForti(c.id));
     }
     cargarSucesos();
   } else if (r.vista === 'sesiones') {
@@ -398,7 +399,7 @@ function montar(r) {
     $('#histTexto').addEventListener('input', e => { clearTimeout(tTexto); tTexto = setTimeout(() => { hist.texto = e.target.value; cargarHistorial(); }, 300); });
     hist.datos = null;
     cargarHistorial();
-  } else if (equipo(r.id).tipo === 'mikrotik') {
+  } else if (['mikrotik', 'fortigate'].includes(equipo(r.id).tipo)) {
     montarRouter(equipo(r.id), cliente(equipo(r.id).cliente));
   } else {
     const e = equipo(r.id), c = cliente(e.cliente);
@@ -439,7 +440,7 @@ function actualizar(r = rutaActual()) {
   else if (r.vista === 'cliente') vistaCliente(r.id);
   else if (r.vista === 'sesiones') vistaSesiones();
   else if (r.vista === 'historial') vistaHistorial();
-  else if (equipo(r.id) && equipo(r.id).tipo === 'mikrotik') vistaRouter(r.id);
+  else if (equipo(r.id) && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo)) vistaRouter(r.id);
   else vistaEquipo(r.id);
 }
 
@@ -470,7 +471,7 @@ function vistaResumen() {
   if (contento && !gatoT) $('#titular').insertAdjacentHTML('beforeend', gatoSVG('arreglando', 'El gato arreglando un servidor'));
   if (!contento && gatoT) gatoT.remove();
   let tt = $('#titular .texto'); if (!tt) { $('#titular').insertAdjacentHTML('afterbegin', '<div class="texto"></div>'); tt = $('#titular .texto'); }
-  tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${plural(eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores')} y ${plural(eq.filter(e => e.tipo === 'mikrotik').length, 'router', 'routers')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
+  tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${[[eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores'], [eq.filter(e => e.tipo === 'mikrotik').length, 'MikroTik', 'MikroTik'], [eq.filter(e => e.tipo === 'fortigate').length, 'FortiGate', 'FortiGate']].filter(x => x[0]).map(x => plural(...x)).join(', ')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
   chipsProblemas(p, true);
   $('#tituloTablero').innerHTML = `Clientes <span>${cs.length}</span>`;
 
@@ -512,7 +513,7 @@ function filaCliente(c) {
   const disco = max(vivos.flatMap(e => e.discos.map(d => ({ ...d, e }))), d => d.pct);
   const act = vivos.reduce((n, e) => n + e.sesiones.filter(s => s.estado === 'activa').length, 0);
   const nS = eq.filter(e => e.tipo === 'windows').length, nR = eq.length - nS;
-  const sub = !eq.length ? 'Sin equipos todavía' : p.length ? p[0].t + (p.length > 1 ? ` y ${p.length - 1} más` : '') : c.notas ? c.notas.split('\n')[0] : [nS && plural(nS, 'servidor', 'servidores'), nR && plural(nR, 'router', 'routers')].filter(Boolean).join(' y ');
+  const sub = !eq.length ? 'Sin equipos todavía' : p.length ? p[0].t + (p.length > 1 ? ` y ${p.length - 1} más` : '') : c.notas ? c.notas.split('\n')[0] : [nS && plural(nS, 'servidor', 'servidores'), nR && plural(nR, 'equipo de red', 'equipos de red')].filter(Boolean).join(' y ');
   const val = (m, etq, extra) => m ? `<span class="medidor" data-etq="${etq}"><span class="valor">${m.v}<i>%</i></span><span class="carril n-${nivel(m.v)}"><span style="width:${m.v}%"></span></span><small>${esc(extra(m))}</small></span>` : `<span class="medidor" data-etq="${etq}"><span class="valor vacio-valor">—</span></span>`;
   return `<button type="button" class="fila cli ${nv}" data-cli="${c.id}" aria-label="${esc(c.nombre)}. Abrir">
     <span class="f-nombre"><span class="punto ${nv === 'alerta' ? 'caido' : nv === 'aviso' ? 'sinMetricas' : eq.length ? 'ok' : ''}" aria-hidden="true"></span><span><strong>${esc(c.nombre)}</strong><small>${esc(sub)}</small></span></span>
@@ -545,11 +546,11 @@ function pintarSucesos() {
 
 /* ---------------- Cliente ---------------- */
 function vistaCliente(id) {
-  const c = cliente(id), todos = c.equipos, eq = todos.filter(e => e.tipo !== 'mikrotik'), routers = todos.filter(e => e.tipo === 'mikrotik'), p = problemas(todos);
+  const c = cliente(id), todos = c.equipos, eq = todos.filter(e => e.tipo === 'windows'), routers = todos.filter(e => e.tipo !== 'windows'), p = problemas(todos);
   $('#tituloRed').innerHTML = `Red <span>${routers.length}</span>`;
   $('#tableroRed').innerHTML = routers.length ? `<div class="tablero">
-    <div class="tablero-cab rt" aria-hidden="true"><span>Router</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Equipos con IP</span><span class="c-up">Encendido</span><span></span></div>
-    ${routers.map(filaRouter).join('')}</div>` : gatoVacio('Sin routers', esAdmin() ? 'Agrega sus MikroTik para ver el tráfico, el enlace a Internet, DHCP, Wi‑Fi y VPN.' : 'Un administrador puede agregar sus routers MikroTik.');
+    <div class="tablero-cab rt" aria-hidden="true"><span>Equipo de red</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Equipos con IP</span><span class="c-up">Encendido</span><span></span></div>
+    ${routers.map(filaRouter).join('')}</div>` : gatoVacio('Sin equipos de red', esAdmin() ? 'Agrega sus MikroTik o FortiGate para ver el tráfico, los enlaces a Internet, la VPN y mucho más.' : 'Un administrador puede agregar sus MikroTik o FortiGate.');
   const vivos = todos.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas').length;
   const ses = todasLasSesiones(eq), act = ses.filter(s => s.estado === 'activa').length, dsc = ses.filter(s => s.estado === 'desconectada').length;
   $('#cliTitulo').textContent = c.nombre;

@@ -12,6 +12,8 @@ const flota = require('./lib/flota');
 const avisos = require('./lib/avisos');
 const paquete = require('./lib/paquete');
 const mikrotik = require('./lib/mikrotik');
+const fortigate = require('./lib/fortigate');
+const modRed = e => e.tipo === 'fortigate' ? fortigate : mikrotik;
 
 const WEB = path.join(__dirname, 'web');
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -130,15 +132,18 @@ ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = 
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
 // Routers MikroTik
-function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik') throw error(404, 'Ese equipo no es un router.'); return e; }
-ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = mikrotik.vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
-ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await mikrotik.seccion(e.id, p.nombre) }; });
-ruta('POST', '/api/routers/:id/herramienta', {}, async ({ sesion, p, cuerpo }) => { const e = routerVisible(sesion, p.id); return { resultado: await mikrotik.herramienta(e.id, cuerpo.tipo, cuerpo.destino) }; });
-ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => mikrotik.probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
+function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik' && e.tipo !== 'fortigate') throw error(404, 'Ese equipo no es un equipo de red.'); return e; }
+ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = modRed(e).vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
+ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await modRed(e).seccion(e.id, p.nombre) }; });
+ruta('POST', '/api/routers/:id/herramienta', {}, async ({ sesion, p, cuerpo }) => { const e = routerVisible(sesion, p.id); if (e.tipo !== 'mikrotik') throw error(400, 'Herramienta solo disponible en MikroTik.'); return { resultado: await mikrotik.herramienta(e.id, cuerpo.tipo, cuerpo.destino) }; });
+ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => (cuerpo.tipo === 'fortigate' ? fortigate : mikrotik).probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
+ruta('POST', '/api/clientes/:id/fortigates', soloAdmin, ({ p, cuerpo, sesion }) => {
+  const id = fortigate.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el FortiGate ${cuerpo.nombre}.`); return { id };
+});
 ruta('POST', '/api/clientes/:id/routers', soloAdmin, ({ p, cuerpo, sesion }) => {
   const id = mikrotik.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el router ${cuerpo.nombre}.`); return { id };
 });
-ruta('PUT', '/api/routers/:id', soloAdmin, ({ p, cuerpo }) => { mikrotik.editar(Number(p.id), cuerpo.nombre, cuerpo); return { ok: true }; });
+ruta('PUT', '/api/routers/:id', soloAdmin, ({ p, cuerpo, sesion }) => { const e = routerVisible(sesion, p.id); modRed(e).editar(e.id, cuerpo.nombre, cuerpo); return { ok: true }; });
 
 ruta('GET', '/api/historial/sesiones', {}, ({ sesion, url, res }) => {
   const f = Object.fromEntries(url.searchParams);
@@ -189,7 +194,7 @@ ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   ajustes.guardar('urlAgentes', u); return { ok: true };
 });
 ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null }); return { ok: true }; });
-ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { mikrotik.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
+ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { mikrotik.quitar(e.id); fortigate.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
 
 // Cuentas
 ruta('GET', '/api/cuentas', soloAdmin, () => ({ cuentas: auth.cuentas() }));
@@ -262,9 +267,10 @@ const demo = config.DEMO ? require('./lib/demo') : null;
 if (demo) demo.preparar();
 flota.arrancar();
 avisos.arrancar();
-flota.alBorrarEquipo = id => mikrotik.quitar(id);
+flota.alBorrarEquipo = id => { mikrotik.quitar(id); fortigate.quitar(id); };
 flota.alCambiar(() => avisos.evaluar(true));   // caídas y vueltas: aviso por Telegram sin esperar al siguiente repaso
 mikrotik.arrancar(demo ? require('./lib/mikrotik-demo') : null);
+fortigate.arrancar(demo ? require('./lib/fortigate-demo') : null);
 if (demo) demo.arrancar();
 auth.prepararInicio();
 setInterval(() => { flota.vigilar(); }, 10000).unref();

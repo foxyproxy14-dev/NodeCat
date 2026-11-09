@@ -177,13 +177,13 @@ function recibir(clave, c, ip) {
 }
 
 // ---------------------------------------------------------------- routers (los consulta lib/mikrotik.js)
-function crearRouter(clienteId, nombre, config) {
+function crearRouter(clienteId, nombre, config, tipo = 'mikrotik') {
   nombre = String(nombre || '').trim().replace(/\s+/g, ' ');
   if (!nombre) throw new Error('Escribe un nombre para el router.');
   if (nombre.length > 60) throw new Error('El nombre es demasiado largo (máximo 60).');
   if (!cliente(clienteId)) throw new Error('Ese cliente no existe.');
-  if (q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'mikrotik' AND nombre = ?").get(clienteId, nombre)) throw new Error(`Ese cliente ya tiene un router llamado ${nombre}.`);
-  const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, intervalo, config) VALUES (?, 'mikrotik', ?, ?, 30, ?)").run(clienteId, nombre, Date.now(), JSON.stringify(config));
+  if (q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = ? AND nombre = ?").get(clienteId, tipo, nombre)) throw new Error(`Ese cliente ya tiene un equipo de red llamado ${nombre}.`);
+  const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, intervalo, config) VALUES (?, ?, ?, ?, 30, ?)").run(clienteId, tipo, nombre, Date.now(), JSON.stringify(config));
   const id = Number(r.lastInsertRowid);
   cargarVivo(id);
   return id;
@@ -192,7 +192,7 @@ function renombrarRouter(id, nombre) {
   nombre = String(nombre || '').trim().replace(/\s+/g, ' ');
   if (!nombre || nombre.length > 60) throw new Error('Escribe un nombre de hasta 60 caracteres.');
   const e = equipo(id);
-  const otro = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'mikrotik' AND nombre = ?").get(e.cliente_id, nombre);
+  const otro = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = ? AND nombre = ?").get(e.cliente_id, e.tipo, nombre);
   if (otro && otro.id !== id) throw new Error(`Ese cliente ya tiene un router llamado ${nombre}.`);
   q('UPDATE equipos SET nombre = ? WHERE id = ?').run(nombre, id);
   cargarVivo(id);
@@ -204,9 +204,12 @@ function actualizarRouter(id, d, ip, version) {
   transaccion(() => {
     q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = 30, datos = ? WHERE id = ?').run(ahora, version || '', ip || '', JSON.stringify(d), id);
     if (antes && d.arranque && antes.arranque && d.arranque - antes.arranque > 120000) evento(id, 'reinicio', 'El router se reinició.', d.arranque);
-    const wa = antes && antes.red && antes.red.wan, wn = d.red && d.red.wan;
-    if (wa && wn && wa.interfaz === wn.interfaz && wa.activa !== wn.activa)
-      evento(id, wn.activa ? 'wan-vuelta' : 'wan-caida', wn.activa ? `El enlace WAN (${wn.interfaz}) volvió.` : `El enlace WAN (${wn.interfaz}) se cayó.`, ahora);
+    // Cada enlace WAN por separado (un FortiGate con SD-WAN puede tener varios)
+    for (const wn of wansDe(d)) {
+      const wa = wansDe(antes).find(x => x.interfaz === wn.interfaz);
+      if (wa && wa.activa !== wn.activa)
+        evento(id, wn.activa ? 'wan-vuelta' : 'wan-caida', wn.activa ? `El enlace WAN (${wn.interfaz}) volvió.` : `El enlace WAN (${wn.interfaz}) se cayó.`, ahora);
+    }
   });
   cargarVivo(id);
   const v = vivo.get(id);
@@ -220,6 +223,7 @@ function actualizarRouter(id, d, ip, version) {
 }
 
 // El recolector de MikroTik confirma que el router no responde (dos intentos seguidos): se marca al momento
+const wansDe = d => !d || !d.red ? [] : d.red.wans && d.red.wans.length ? d.red.wans : d.red.wan ? [d.red.wan] : [];
 function routerSinRespuesta(id, mensaje) {
   const v = vivo.get(id); if (!v) return;
   v.errorConexion = mensaje;
@@ -411,5 +415,5 @@ module.exports = {
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
 };

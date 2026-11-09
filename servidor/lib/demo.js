@@ -6,7 +6,8 @@ const auth = require('./auth');
 const { log } = require('./util');
 
 const ROUTERS = {
-  'Clínica San Rafael': [['Router principal', 'rb5009']],
+  'Clínica San Rafael': [['Router principal', 'rb5009'], ['Firewall perimetral', 'fg100f', 'fortigate']],
+  'Andes Logística Barquisimeto': [['FortiGate sede', 'fg40f', 'fortigate']],
   'Transportes Andes': [['Core sede Valencia', 'ccr2004'], ['Almacén Puerto Cabello', 'hapax2']],
   'Estudio Contable Mérida': [['Router oficina', 'hex']],
   'Ferretería El Tornillo': [['Router tienda', 'hapac2']]
@@ -123,12 +124,13 @@ function sembrar() {
 // Routers simulados con su historial de CPU, memoria y tráfico
 function sembrarRouters() {
   const ahora = Date.now();
-  const { PERFILES } = require('./mikrotik-demo');
+  const PERFILES = { ...require('./mikrotik-demo').PERFILES, ...require('./fortigate-demo').PERFILES };
   for (const [cliNombre, lista] of Object.entries(ROUTERS)) {
     const cli = q('SELECT id FROM clientes WHERE nombre = ?').get(cliNombre); if (!cli) continue;
-    for (const [nombre, perfil] of lista) {
-      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil });
+    for (const [nombre, perfil, tipo = 'mikrotik'] of lista) {
+      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil }, tipo);
       const p = PERFILES[perfil], creado = ahora - 32 * 864e5;
+      if (!p.cpu) p.cpu = 8;
       q('UPDATE equipos SET creado = ? WHERE id = ?').run(creado, id);
       const insM = q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, NULL, ?)');
       const insT = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -147,6 +149,7 @@ function sembrarRouters() {
         const t = Math.round(ahora - entre(2, 6) * 864e5);
         ev.run(id, t, 'wan-caida', 'El enlace WAN (ether1) se cayó.'); ev.run(id, t + 23 * 60000, 'wan-vuelta', 'El enlace WAN (ether1) volvió.');
       }
+      if (perfil === 'fg100f') { const t = Math.round(ahora - entre(1, 4) * 864e5); ev.run(id, t, 'wan-caida', 'El enlace WAN (wan1) se cayó.'); ev.run(id, t + 41 * 60000, 'wan-vuelta', 'El enlace WAN (wan1) volvió.'); }
       if (perfil === 'hex') { const t = Math.round(ahora - entre(8, 20) * 864e5); ev.run(id, t, 'caida', 'Dejó de responder.'); ev.run(id, t + 14 * 60000, 'vuelta', 'Volvió a responder tras 14 min.'); }
     }
   }

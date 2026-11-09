@@ -213,7 +213,7 @@ function evaluar(forzar) {
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
-      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo === 'mikrotik' ? `NodeCat no puede conectar con el router${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
+      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo !== 'windows' ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
@@ -222,11 +222,12 @@ function evaluar(forzar) {
     regla(s + '|ram', A.ram, ram == null ? null : ram >= A.ramUmbral, ram != null && ram < A.ramUmbral - 3, A.ramMin,
       () => `🟠 <b>${hs}: memoria al ${ram} %</b>${hc}\n${e.ramTotal ? `${gb(e.ramUsada)} de ${gb(e.ramTotal)} GB en uso.` : ''}`,
       t => `✅ <b>${hs}: memoria normal</b> (${ram} %)${hc}\nEstuvo alta ${duracion(t)}.`, ahora, primera, e.cliente);
-    const wan = vivo && e.red && e.red.wan;
-    regla(s + '|wan', A.wan, wan ? !wan.activa : null, wan ? wan.activa : false, 0,
-      () => `🔴 <b>${hs}: se cayó el enlace WAN</b>${hc}\nLa interfaz ${H(wan.interfaz)} está sin enlace. El router sigue respondiendo (quizá por un respaldo).`,
-      t => `🟢 <b>${hs}: el enlace WAN volvió</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
-    if (vivo && e.tipo !== 'mikrotik') for (const d of e.discos) {
+    for (const wan of vivo ? flota.wansDe({ red: e.red }) : []) {
+      regla(`${s}|wan|${wan.interfaz}`, A.wan, !wan.activa, wan.activa, 0,
+        () => `🔴 <b>${hs}: se cayó el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEl equipo sigue respondiendo (quizá por otro enlace).`,
+        t => `🟢 <b>${hs}: volvió el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
+    }
+    if (vivo && e.tipo === 'windows') for (const d of e.discos) {
       if (d.pct == null) continue;
       regla(`${s}|disco|${d.unidad}`, A.disco, d.pct >= A.discoUmbral, d.pct < A.discoUmbral - 2, 0,
         () => `🟠 <b>${hs}: disco ${H(d.unidad)} al ${d.pct} %</b>${hc}\nQuedan ${gb(d.libre)} GB libres de ${gb(d.total)} GB.`,

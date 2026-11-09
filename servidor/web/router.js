@@ -33,11 +33,23 @@ const MENU_RT = [
   ['Sistema', [['registro', 'Registro'], ['paquetes', 'Paquetes y firmware'], ['servicios', 'Servicios'], ['scripts', 'Scripts'], ['tareas', 'Tareas programadas'], ['reloj', 'Reloj y NTP'], ['logging', 'Destinos del registro'], ['snmp', 'SNMP'], ['archivos', 'Archivos'], ['contenedores', 'Contenedores'], ['usuarios', 'Usuarios']]],
   ['Herramientas', [['herramientas', 'Ping y traceroute']]]
 ];
-const TITULO_RT = Object.fromEntries(MENU_RT.flatMap(([, l]) => l));
+// FortiGate: su propio menú (todo de solo lectura)
+const MENU_FG = [
+  ['Panel', [['resumen', 'Resumen'], ['sucesos', 'Caídas y sucesos']]],
+  ['Red', [['interfaces', 'Interfaces'], ['fg-rutas', 'Rutas'], ['fg-dhcp', 'DHCP']]],
+  ['SD-WAN', [['fg-sdwan', 'Enlaces y SLA'], ['ancho', 'Ancho de banda']]],
+  ['VPN', [['fg-ipsec', 'Túneles IPsec'], ['fg-sslvpn', 'SSL-VPN']]],
+  ['Seguridad', [['fg-politicas', 'Políticas'], ['fg-usuarios', 'Usuarios autenticados']]],
+  ['Sistema', [['fg-licencias', 'Licencias FortiGuard'], ['fg-ha', 'Alta disponibilidad'], ['fg-eventos', 'Registro de eventos']]]
+];
+let MENU_ACTUAL = MENU_RT;
+const TITULO_RT = Object.fromEntries([...MENU_RT, ...MENU_FG].flatMap(([, l]) => l));
 const LOCALES_RT = ['resumen', 'interfaces', 'ancho', 'herramientas', 'sucesos'];   // no piden sección al router
 let gruposAbiertos = new Set(leer('gruposRt', ['Panel', 'Red']));
 
 function montarRouter(e, c) {
+  MENU_ACTUAL = e.tipo === 'fortigate' ? MENU_FG : MENU_RT;
+  if (!MENU_ACTUAL.some(([, l]) => l.some(([k]) => k === rt.pestana))) rt.pestana = 'resumen';
   rt.id = e.id; rt.vivo = null; rt.seccion = {}; rt.filtro = ''; rt.red = null; rt.herr = null; rt.sucesos = null;
   if (!TITULO_RT[rt.pestana]) rt.pestana = 'resumen';
   $('#vista').innerHTML = `
@@ -49,7 +61,7 @@ function montarRouter(e, c) {
     <div id="rtAvisos"></div>
     <div class="rt-marco">
       <nav class="rt-lateral" id="rtMenu" aria-label="Secciones del router"></nav>
-      <label class="rt-menu-movil"><span class="sr">Sección</span><select class="selector" id="rtMenuMovil">${MENU_RT.map(([g, l]) => `<optgroup label="${g}">${l.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label class="rt-menu-movil"><span class="sr">Sección</span><select class="selector" id="rtMenuMovil">${MENU_ACTUAL.map(([g, l]) => `<optgroup label="${g}">${l.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <div class="rt-contenido"><h2 class="rt-titulo" id="rtTitulo"></h2><div id="rtCuerpo"></div></div>
     </div>`;
   $('#rtMenu').onclick = ev => {
@@ -58,7 +70,7 @@ function montarRouter(e, c) {
     const b = ev.target.closest('[data-pest]'); if (b) irSeccionRt(b.dataset.pest);
   };
   $('#rtMenuMovil').onchange = ev => irSeccionRt(ev.target.value);
-  const be = $('#btnEditarRt'); if (be) be.onclick = () => dialogoRouter(c.id, e.id);
+  const be = $('#btnEditarRt'); if (be) be.onclick = () => e.tipo === 'fortigate' ? dialogoForti(c.id, e.id) : dialogoRouter(c.id, e.id);
   pintarMenuRt();
   pintarCuerpoRt(true);
   pedirVivo();
@@ -70,9 +82,9 @@ function irSeccionRt(k) {
 }
 function pintarMenuRt() {
   const e = equipo(rt.id), red = (e && e.red) || {};
-  const cuentas = { interfaces: red.interfaces ? red.interfaces.filter(i => !i.deshabilitada).length : 0, dhcp: red.dhcp, vpn: red.vpnTotal };
-  const grupoActual = MENU_RT.find(([, l]) => l.some(([k]) => k === rt.pestana))[0];
-  $('#rtMenu').innerHTML = MENU_RT.map(([g, l]) => {
+  const cuentas = { interfaces: red.interfaces ? red.interfaces.filter(i => !i.deshabilitada).length : 0, dhcp: red.dhcp, vpn: red.vpnTotal, 'fg-dhcp': red.dhcp, 'fg-ipsec': red.vpnTotal, 'fg-sdwan': red.wans && red.wans.length > 1 ? red.wans.length : null };
+  const grupoActual = MENU_ACTUAL.find(([, l]) => l.some(([k]) => k === rt.pestana))[0];
+  $('#rtMenu').innerHTML = MENU_ACTUAL.map(([g, l]) => {
     const abierto = gruposAbiertos.has(g) || g === grupoActual;
     return `<div class="rt-grupo ${abierto ? 'abierto' : ''}"><button type="button" class="rt-grupo-cab" data-grupo="${g}" aria-expanded="${abierto}">${g}</button>
       ${abierto ? `<ul>${l.map(([k, t]) => `<li><button type="button" data-pest="${k}" ${rt.pestana === k ? 'aria-current="page"' : ''}>${t}${cuentas[k] ? `<span class="cuenta">${cuentas[k]}</span>` : ''}</button></li>`).join('')}</ul>` : ''}</div>`;
@@ -96,7 +108,7 @@ async function pedirVivo() {
   rt.temporizador = setTimeout(pedirVivo, 3000);
 }
 // Secciones que casi no cambian: se piden al abrirlas y cada minuto
-const ESTATICAS_RT = ['ip', 'dns', 'bridges', 'redeswifi', 'dhcpserv', 'pools', 'wgif', 'tuneles', 'nat', 'mangle', 'paquetes', 'servicios', 'scripts', 'tareas', 'reloj', 'logging', 'snmp', 'archivos', 'contenedores', 'usuarios'];
+const ESTATICAS_RT = ['fg-licencias', 'fg-ha', 'fg-rutas', 'ip', 'dns', 'bridges', 'redeswifi', 'dhcpserv', 'pools', 'wgif', 'tuneles', 'nat', 'mangle', 'paquetes', 'servicios', 'scripts', 'tareas', 'reloj', 'logging', 'snmp', 'archivos', 'contenedores', 'usuarios'];
 async function cargarSeccion(forzar) {
   const nombre = rt.pestana, id = rt.id;
   const s = rt.seccion[nombre];
@@ -114,7 +126,8 @@ function vistaRouter(id) {
   $('#rtPunto').className = 'punto ' + e.estado;
   $('#rtNombre').textContent = e.nombre;
   const meta = [e.estado === 'caido' ? 'Sin respuesta' : e.estado === 'pendiente' ? 'Conectando…' : 'En línea'];
-  if (red.version) meta.push(`RouterOS ${red.version}`);
+  if (red.version) meta.push(`${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}`);
+  if (e.tipo === 'fortigate' && red.ha > 1) meta.push(`en alta disponibilidad (${red.ha} equipos)`);
   if (red.modelo) meta.push(red.modelo);
   if (red.identidad && red.identidad !== e.nombre) meta.push(`identidad “${red.identidad}”`);
   $('#rtMeta').textContent = meta.join(', ') + '.';
@@ -184,10 +197,12 @@ function resumenRouter(e) {
   $('#rtLosas').innerHTML = [
     losa('CPU', vivo ? pc(e.cpu) : '—', red.arquitectura ? esc(red.arquitectura) : '', vivo ? e.cpu : null, vivo && e.cpu >= ALTO),
     losa('Memoria', vivo ? pc(e.ramPct) : '—', e.ramTotal ? `${mem(e.ramUsada)} de ${mem(e.ramTotal)}` : '', vivo ? e.ramPct : null, vivo && e.ramPct >= ALTO),
-    losa('Internet', wan ? (wan.activa ? '<span style="color:#7ee07e">Arriba</span>' : 'Caído') : '—', wan ? esc(wan.interfaz) : 'Sin ruta por defecto', null, wan && !wan.activa),
+    (red.wans && red.wans.length > 1)
+      ? losa('Enlaces WAN', `${red.wans.filter(w => w.activa).length}<i>de ${red.wans.length} arriba</i>`, esc(red.wans.map(w => w.interfaz + (w.activa ? '' : ' (caído)')).join(', ')), null, red.wans.some(w => !w.activa))
+      : losa('Internet', wan ? (wan.activa ? '<span style="color:#7ee07e">Arriba</span>' : 'Caído') : '—', wan ? esc(wan.interfaz) : 'Sin ruta por defecto', null, wan && !wan.activa),
     losa('Temperatura', red.temperatura != null ? `${red.temperatura}<i>°C</i>` : '—', red.voltaje != null ? `${nf.format(red.voltaje)} V` : ''),
     losa('Encendido', e.arranque ? esc(duracion(e.arranque)) : '—', e.arranque ? 'desde ' + esc(cuando(e.arranque)) : ''),
-    losa('Conexiones', miles(red.conexiones), 'en el firewall'),
+    losa(e.tipo === 'fortigate' ? 'Sesiones' : 'Conexiones', miles(red.conexiones), e.tipo === 'fortigate' ? 'activas ahora' : 'en el firewall'),
     losa('DHCP', red.dhcp == null ? '—' : miles(red.dhcp), 'equipos con IP'),
     losa('VPN', red.vpnTotal ? `${red.vpn}<i>de ${red.vpnTotal}</i>` : '0', red.vpnTotal ? 'túneles activos' : 'sin túneles')
   ].join('');
@@ -198,7 +213,7 @@ function resumenRouter(e) {
   $('#rtLat').innerHTML = !vivo || !lat.length ? '' : lat.map(x => {
     const serie = rt.vivo && rt.vivo.latencia ? (rt.vivo.latencia[x.ip] || []) : [];
     const n = nivelMs(x.ms, x.perdida);
-    return `<div class="losa lat ${n}"><h4>${esc(x.nombre)}${x.nombre !== x.ip ? ` <span class="tenue">${esc(x.ip)}</span>` : ''}</h4>
+    return `<div class="losa lat ${n}"><h4>${esc(x.nombre)}${x.nombre !== x.ip && !String(x.ip).includes('|') ? ` <span class="tenue">${esc(x.ip)}</span>` : ''}</h4>
       <div class="v">${x.error ? '—' : x.ms == null ? 'Sin respuesta' : `${nf.format(x.ms < 10 ? x.ms : Math.round(x.ms))}<i>ms</i>`}</div>
       <small>${x.error ? esc(x.error) : x.perdida ? `${x.perdida} % de paquetes perdidos` : 'Sin pérdidas'}</small>${miniLat(serie)}</div>`;
   }).join('');
@@ -246,8 +261,8 @@ function resumenRouter(e) {
     const cs = h.eventos.filter(x => x.tipo === 'caida'), ws = h.eventos.filter(x => x.tipo === 'wan-caida');
     const pct = h.disponibilidad >= 99.995 ? '100' : nf.format(Math.floor(h.disponibilidad * 100) / 100);
     disp.innerHTML = `<span><b>${pct} %</b> del tiempo respondiendo ${R.en}.</span>` +
-      (cs.length ? `<button type="button" class="enlace" data-ver-sucesos>${plural(cs.length, 'caída', 'caídas')} del router: ver cuándo y cuánto duraron</button>` : '<span class="tenue">Sin caídas del router.</span>') +
-      (ws.length ? ws.slice(-4).reverse().map(w => { const v = h.eventos.find(x => x.tipo === 'wan-vuelta' && x.t > w.t); return `<span class="caida"><span class="punto caido" aria-hidden="true"></span>WAN caído ${cuando(w.t)}, ${v ? durTxt(v.t - w.t) : 'sigue caído'}</span>`; }).join('') : '');
+      (cs.length ? `<button type="button" class="enlace" data-ver-sucesos>${plural(cs.length, 'caída', 'caídas')} del equipo: ver cuándo y cuánto duraron</button>` : '<span class="tenue">Sin caídas del equipo.</span>') +
+      (ws.length ? `<button type="button" class="enlace" data-ver-sucesos>${plural(ws.length, 'caída', 'caídas')} de enlace WAN</button>` + ws.slice(-3).reverse().map(w => { const v = h.eventos.find(x => x.tipo === 'wan-vuelta' && x.t > w.t); return `<span class="caida"><span class="punto caido" aria-hidden="true"></span>WAN caído ${cuando(w.t)}, ${v ? durTxt(v.t - w.t) : 'sigue caído'}</span>`; }).join('') : '');
   }
 }
 const TIPOS_IF = { ether: 'Ethernet', bridge: 'Bridge', vlan: 'VLAN', wg: 'WireGuard', wlan: 'Wi‑Fi', wifi: 'Wi‑Fi', lte: 'LTE', 'pppoe-out': 'PPPoE', 'l2tp-out': 'L2TP', 'ovpn-out': 'OpenVPN', bond: 'Bonding', 'gre-tunnel': 'GRE', eoip: 'EoIP', veth: 'Contenedor' };
@@ -347,7 +362,7 @@ function tablaInterfaces(e) {
 function pintarSeccion() {
   const el = $('#rtSeccion'); if (!el) return;
   const s = rt.seccion[rt.pestana];
-  if (!s) { el.innerHTML = gatoCargando('Preguntándole al router…'); return; }
+  if (!s) { el.innerHTML = gatoCargando(equipo(rt.id) && equipo(rt.id).tipo === 'fortigate' ? 'Preguntándole al FortiGate…' : 'Preguntándole al router…'); return; }
   if (s.error) { el.innerHTML = gatoError(esc(s.error)); return; }
   const activo = document.activeElement && document.activeElement.id === 'rtFiltro';
   const pos = activo ? document.activeElement.selectionStart : null;
@@ -429,11 +444,11 @@ function pintarSeccion() {
 const latCf = red => { const c = (red.latencia || [])[0]; return c && c.ms != null ? `, ${Math.round(c.ms)} ms a ${esc(c.nombre)}` : c && c.ip && !c.error ? ', sin respuesta a Internet' : ''; };
 function filaRouter(e) {
   const red = e.red || {}, vivo = e.estado === 'ok' || e.estado === 'sinMetricas', w = red.wan;
-  let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, RouterOS ${red.version}` : e.so);
+  let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, ${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}` : e.so);
   return `<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
     <span class="f-nombre"><span class="punto ${esc(e.estado)}" aria-hidden="true"></span><span><strong>${esc(e.nombre)}</strong><small>${esc(sub)}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : '<span></span><span></span>'}
-    <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
+    <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : (red.wans && red.wans.length > 1 && red.wans.some(x => !x.activa)) ? `<b>${esc(red.wans.filter(x => !x.activa).map(x => x.interfaz).join(', '))} caído</b><small>${red.wans.filter(x => x.activa).length} de ${red.wans.length} enlaces arriba</small>` : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
     <span class="f-extra f-ses" data-etq="Equipos y VPN">${vivo ? `<span class="valor">${red.dhcp == null ? '—' : red.dhcp}</span><small>con IP${red.vpnTotal ? `, VPN ${red.vpn}/${red.vpnTotal}` : ''}</small>` : ''}</span>
     <span class="f-up">${vivo ? esc(duracion(e.arranque)) : ''}</span>
     ${ICO.flecha}</button>`;
@@ -583,9 +598,10 @@ function tablaGenerica(def, filas, coincide) {
     if (!pares.length) return '';
     return `<div class="sub-cab"><h3>${esc(def.titulo || '')}</h3></div><dl class="kv-rt hoja">${pares.map(([k, d]) => { const [et, fmt] = Array.isArray(d) ? d : [d, 't']; return `<div><dt>${esc(et)}</dt><dd>${FMT[fmt](r[k], null, r)}</dd></div>`; }).join('')}</dl>`;
   }
-  const l = filas.filter(x => coincide(...Object.values(x)));
+  const l = filas.filter(x => coincide(...Object.values(x).map(v => v == null ? '' : String(v))));
   const celda = (c, x) => { const v = x[c.campo] != null && x[c.campo] !== '' ? x[c.campo] : (c.alt ? x[c.alt] : x[c.campo]); return FMT[c.fmt](v, c.f, x); };
   const cols = def.cols.filter(c => c.fmt === 'estado' || c.fmt === 'regla' || filas.some(x => (x[c.campo] != null && x[c.campo] !== '') || (c.alt && x[c.alt])));
+  for (const c of cols) if (!FMT[c.fmt]) c.fmt = 't';
   const tabla = filas2 => `<section class="hoja desliza" style="margin-bottom:8px"><table class="tabla-rt"><thead><tr>${cols.map(c => `<th class="${['num', 'bytes', 'bps'].includes(c.fmt) ? 'num' : ''}">${c.etiqueta}</th>`).join('')}</tr></thead><tbody>
     ${filas2.map(x => `<tr style="${SI(x.disabled) ? 'opacity:.55' : ''}">${cols.map(c => `<td class="${['num', 'bytes', 'bps'].includes(c.fmt) ? 'num' : ''}">${celda(c, x)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="tenue">Nada coincide.</td></tr>`}</tbody></table></section>`;
   let h = def.titulo ? `<div class="sub-cab"><h3>${esc(def.titulo)} <span>${filas.length}</span></h3></div>` : '';
@@ -597,10 +613,34 @@ function tablaGenerica(def, filas, coincide) {
   return h + tabla(l);
 }
 
+FMT.est = v => { const ok = ['up', 'licensed', 'leased', 'enable', 'accept', 'valid', 'primario'], mal = ['down', 'expired', 'disable', 'deny', 'invalid', 'dead']; const t = { up: 'Arriba', down: 'Caído', licensed: 'Vigente', expired: 'Vencida', leased: 'Asignada', enable: 'Activa', disable: 'Desactivada', accept: 'Permitir', deny: 'Denegar' }[v] || v; return v ? `<span class="etq ${ok.includes(v) ? 'ok' : mal.includes(v) ? 'mal' : ''}">${esc(t)}</span>` : '<span class="tenue">—</span>'; };
+FMT.fecha = v => { if (!v) return '<span class="tenue">—</span>'; const d = new Date(v); if (isNaN(d)) return esc(v); const dias = Math.round((d - Date.now()) / 864e5); return `${d.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}${dias >= 0 && dias <= 45 ? ` <span class="etq aviso">en ${dias} d</span>` : ''}`; };
+FMT.accion = (v, f, x) => x.estado === 'disable' ? '<span class="etq">Desactivada</span>' : FMT.est(v);
+FMT.lic = v => esc({ forticare: 'FortiCare (soporte)', antivirus: 'Antivirus', ips: 'IPS', web_filtering: 'Filtro web', antispam: 'Antispam', appctrl: 'Control de aplicaciones', industrial_db: 'Base industrial', botnet_ip: 'Botnet IP', botnet_domain: 'Botnet dominios', mobile_malware: 'Malware móvil', outbreak_prevention: 'Prevención de brotes', blacklisted_certificates: 'Certificados bloqueados', forticloud: 'FortiCloud', fortiguard: 'FortiGuard', sdwan_network_monitor: 'Monitor SD-WAN', security_rating: 'Calificación de seguridad', iot_detection: 'Detección IoT', fortisandbox_cloud: 'FortiSandbox Cloud' }[v] || String(v || '—').replace(/_/g, ' '));
+FMT.nivel = v => { const m = { emergency: ['mal', 'Emergencia'], alert: ['mal', 'Alerta'], critical: ['mal', 'Crítico'], error: ['mal', 'Error'], warning: ['aviso', 'Aviso'], notice: ['', 'Nota'], information: ['', 'Info'], debug: ['', 'Depuración'] }[v] || ['', v || '—']; return `<span class="etq ${m[0]}">${esc(m[1])}</span>`; };
+FMT.ifz = v => { if (!v) return '<span class="tenue">—</span>'; const t = String(v), i = t.indexOf(': '); return i < 0 ? esc(t) : `<span class="ifz">${esc(t.slice(i + 2))}<small>${esc(t.slice(0, i))}</small></span>`; };
+FMT.uso = v => { if (!v) return '<span class="tenue">Nunca</span>'; const d = new Date(v); if (isNaN(d)) return esc(v); const s = Math.max(0, Math.round((Date.now() - d) / 1000)); return `hace ${esc(hace(s))}`; };
+FMT.ms = v => v == null || v === '' ? '—' : `${nf.format(Math.round(Number(v) * 10) / 10)} ms`;
+FMT.pct = v => v == null || v === '' ? '—' : `${nf.format(Number(v))} %`;
+FMT.seg = v => v == null || v === '' ? '—' : esc(hace(Number(v)));
+Object.assign(TABLAS_RT, {
+  'fg-sdwan': [{ clave: 'miembros', titulo: 'Enlaces', cols: [C('interfaz', 'Enlace'), C('estado', 'Estado', 'est'), C('puertaEnlace', 'Puerta de enlace', 'mono'), C('sesiones', 'Sesiones', 'num'), C('bajada', 'Bajada', 'bps'), C('subida', 'Subida', 'bps'), C('zona', 'Zona')] },
+    { clave: 'sla', titulo: 'SLA (pruebas de calidad)', cols: [C('sla', 'Prueba'), C('interfaz', 'Enlace'), C('estado', 'Estado', 'est'), C('latencia', 'Latencia', 'ms'), C('jitter', 'Jitter', 'ms'), C('perdida', 'Pérdida', 'pct')] }],
+  'fg-ipsec': [{ clave: 'lista', cols: [C('tunel', 'Túnel'), C('remoto', 'Extremo remoto', 'mono'), C('fase2', 'Fase 2'), C('estado', 'Estado', 'est'), C('redes', 'Redes', 'mono'), C('entrada', 'Recibido', 'bytes'), C('salida', 'Enviado', 'bytes')] }],
+  'fg-sslvpn': [{ clave: 'lista', cols: [C('usuario', 'Usuario'), C('origen', 'Desde', 'mono'), C('ip', 'IP asignada', 'mono'), C('desde', 'Conectado desde'), C('duracion', 'Tiempo', 'seg')] }],
+  'fg-politicas': [{ clave: 'lista', cols: [C('id', '#', 'num'), C('nombre', 'Política'), C('origen', 'Origen', 'ifz'), C('destino', 'Destino', 'ifz'), C('servicio', 'Servicio'), C('accion', 'Acción', 'accion'), C('usos', 'Usos', 'num'), C('bytes', 'Tráfico', 'bytes'), C('ultimo', 'Último uso', 'uso')] }],
+  'fg-rutas': [{ clave: 'lista', cols: [C('destino', 'Destino', 'mono'), C('puertaEnlace', 'Puerta de enlace', 'mono'), C('interfaz', 'Interfaz'), C('tipo', 'Tipo'), C('distancia', 'Distancia', 'num'), C('metrica', 'Métrica', 'num')] }],
+  'fg-dhcp': [{ clave: 'lista', cols: [C('nombre', 'Equipo'), C('ip', 'IP', 'mono'), C('mac', 'MAC', 'mono'), C('interfaz', 'Interfaz'), C('estado', 'Estado', 'est'), C('vence', 'Vence', 'fecha')] }],
+  'fg-licencias': [{ clave: 'lista', nota: 'Las que vencen en menos de 45 días se marcan en amarillo.', cols: [C('servicio', 'Servicio', 'lic'), C('estado', 'Estado', 'est'), C('vence', 'Vence', 'fecha'), C('version', 'Versión de firmas')] }],
+  'fg-ha': [{ clave: 'lista', cols: [C('equipo', 'Equipo'), C('serie', 'Número de serie', 'mono'), C('rol', 'Rol', 'est'), C('prioridad', 'Prioridad', 'num'), C('cpu', 'CPU', 'pct'), C('memoria', 'Memoria', 'pct'), C('sesiones', 'Sesiones', 'num')] }],
+  'fg-usuarios': [{ clave: 'lista', cols: [C('usuario', 'Usuario'), C('ip', 'IP', 'mono'), C('grupo', 'Grupo'), C('metodo', 'Método'), C('duracion', 'Tiempo', 'seg'), C('trafico', 'Tráfico', 'bytes')] }],
+  'fg-eventos': [{ clave: 'lista', cols: [C('hora', 'Hora'), C('nivel', 'Nivel', 'nivel'), C('mensaje', 'Mensaje'), C('usuario', 'Usuario')] }]
+});
 function seccionGenerica(nombre, d, coincide) {
+  if (Array.isArray(d)) d = { lista: d };
   const defs = TABLAS_RT[nombre] || [];
   const partes = defs.filter(def => d[def.clave] && d[def.clave].length).map(def => tablaGenerica(def, d[def.clave], coincide)).filter(Boolean);
-  if (!partes.length) return `<div class="hoja vacio gato-vacio">${gatoSVG('programando')}<strong>Nada que mostrar</strong>Este router no tiene ${esc(TITULO_RT[nombre].toLowerCase())} configurado, o su versión de RouterOS no lo incluye.</div>`;
+  if (!partes.length) return `<div class="hoja vacio gato-vacio">${gatoSVG('programando')}<strong>Nada que mostrar</strong>${nombre.startsWith('fg-') ? `Este FortiGate no tiene ${esc(TITULO_RT[nombre].toLowerCase())} configurado, o el token no tiene permiso para verlo.` : `Este router no tiene ${esc(TITULO_RT[nombre].toLowerCase())} configurado, o su versión de RouterOS no lo incluye.`}</div>`;
   return partes.join('');
 }
 
@@ -694,4 +734,81 @@ function vistaSucesos(d, dias) {
           <td class="num">${x.duracion != null ? durTxt(x.duracion) : x.sigue ? durTxt(Date.now() - x.t) : '—'}</td>
           <td class="tenue" style="white-space:normal">${esc(x.detalle || '')}</td></tr>`; }).join('')}</tbody></table></section>`
       : `<div class="hoja vacio gato-vacio">${gatoSVG('reparando')}<strong>Sin sucesos en este periodo</strong>Ni caídas ni reinicios. Todo tranquilo.</div>`}`;
+}
+
+/* ---------------- Alta y edición de FortiGate ---------------- */
+async function dialogoForti(clienteId, id) {
+  let cfg = null; const e = id ? equipo(id) : null;
+  if (id) { try { cfg = (await api(`/api/routers/${id}/vivo`)).config; } catch (x) { if (!x.login) aviso(x.message, true); return; } }
+  const demo = cfg && cfg.demo;
+  let confirmar = false;
+  const dlg = libre(`<form novalidate><h3>${id ? 'Editar FortiGate' : 'Agregar un FortiGate'}</h3>
+    ${!id ? `<p>NodeCat se conecta a la API REST del FortiGate con un token y <b>solo lee</b>: no puede cambiar nada. Funciona con FortiOS 6.4 y 7.x.</p>
+    <details class="clave" style="margin-bottom:16px"><summary>Prepara el FortiGate (una sola vez)</summary>
+      <p>En la CLI del FortiGate, crea un perfil de solo lectura y un usuario de API que solo acepte la IP de NodeCat. Copia el token que muestra el último comando:</p>
+      <code class="codigo pasos-cmd">config system accprofile
+    edit "nodecat-lectura"
+        set secfabgrp read
+        set ftviewgrp read
+        set authgrp read
+        set sysgrp read
+        set netgrp read
+        set loggrp read
+        set fwgrp read
+        set vpngrp read
+        set utmgrp read
+        set wifi read
+    next
+end
+config system api-user
+    edit "nodecat"
+        set accprofile "nodecat-lectura"
+        set vdom "root"
+        config trusthost
+            edit 1
+                set ipv4-trusthost IP-DE-NODECAT 255.255.255.255
+            next
+        end
+    next
+end
+execute api-user generate-key nodecat</code>
+      <p>Si llegas por Internet, usa la IP pública de NodeCat en el trusthost y permite HTTPS de administración en la interfaz WAN solo desde esa IP.</p>
+    </details>` : ''}
+    ${demo ? '<div class="msg atencion">FortiGate del modo demo: solo se puede cambiar el nombre.</div>' : ''}
+    <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Firewall principal" required></label>
+    ${demo ? '' : `<div class="tres">
+      <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
+      <label class="campo">VDOM <span class="ayuda-campo">opcional</span><input name="vdom" spellcheck="false" value="${esc(cfg ? cfg.vdom : '')}" placeholder="root"></label>
+      <label class="campo">Puerto HTTPS<input name="puerto" type="number" min="1" max="65535" value="${cfg ? cfg.puerto : 443}"></label>
+    </div>
+    <label class="campo">Token de la API<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg && cfg.tokenGuardado ? 'Guardado. Déjalo vacío para conservarlo.' : 'Pega aquí el token'}"></label>
+    <label class="interruptor" style="margin-bottom:14px"><input type="checkbox" name="verificar" ${cfg && cfg.verificar ? 'checked' : ''}><span><b>Verificar el certificado</b><small>Actívalo solo si el FortiGate tiene un certificado válido (no el de fábrica).</small></span></label>
+    <label class="campo">Interfaz WAN <span class="ayuda-campo">Opcional. Vacía: los enlaces de SD-WAN, o wan1.</span><input name="wan" spellcheck="false" value="${esc(cfg ? cfg.wan : '')}" placeholder="wan1"></label>`}
+    <div class="msg" role="status" hidden></div>
+    <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar FortiGate'}</button></div></form>`, true);
+  const f = dlg.querySelector('form'), m = f.querySelector('.msg');
+  const msg = (t, tipo) => { if (!t || tipo !== 'bien') return gatoDice(m, t); m.className = 'msg bien'; m.textContent = t; m.hidden = false; };
+  const datos = () => demo ? { nombre: f.nombre.value } : { tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, id };
+  f.nombre.focus();
+  const bp = f.querySelector('[data-probar]');
+  if (bp) bp.onclick = ev => ocupado(ev.currentTarget, 'Probando…', async () => {
+    msg('');
+    try { const r = await enviar('/api/routers/probar', 'POST', datos()); msg(`Conectado con “${r.identidad}”: ${r.modelo}, FortiOS ${r.version.replace(/^v/, '')}.`, 'bien'); if (!f.nombre.value.trim()) f.nombre.value = r.identidad || ''; }
+    catch (x) { if (!x.login) msg(x.message); }
+  });
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    await ocupado(f.querySelector('[type=submit]'), id ? 'Guardando…' : 'Agregando…', async () => {
+      try {
+        if (id) { await enviar(`/api/routers/${id}`, 'PUT', datos()); dlg.close(); aviso('FortiGate guardado.'); montada = null; await cargar(true); }
+        else { const r = await enviar(`/api/clientes/${clienteId}/fortigates`, 'POST', datos()); dlg.close(); aviso('FortiGate agregado. Conectando…'); await cargar(true); location.hash = '#/e/' + r.id; }
+      } catch (x) { if (!x.login) msg(x.message); }
+    });
+  };
+  const bq = f.querySelector('[data-quitar]');
+  if (bq) bq.onclick = async () => {
+    if (!confirmar) { confirmar = true; bq.className = 'btn peligro'; bq.textContent = '¿Seguro? Se borra su historial'; return; }
+    try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso('FortiGate quitado de NodeCat.'); location.hash = '#/c/' + clienteId; await cargar(true); }
+    catch (x) { if (!x.login) msg(x.message); }
+  };
 }

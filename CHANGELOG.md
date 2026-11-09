@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.5.0 (noviembre de 2026)
+
+- FortiGate en solo lectura, por la API REST con un token: CPU, memoria, sesiones, temperatura y tráfico en vivo.
+- Menú propio del FortiGate: SD-WAN con la latencia, el jitter y la pérdida de cada SLA, túneles IPsec, SSL-VPN, políticas con sus usos, rutas, DHCP, licencias FortiGuard, alta disponibilidad, usuarios autenticados y registro de eventos.
+- Varios enlaces WAN por equipo: cada enlace SD-WAN tiene sus propios sucesos y avisos por Telegram.
+- La sección del cliente "Red" junta MikroTik y FortiGate.
+
 ## 0.4.0 (noviembre de 2026)
 
 - Nombre y marca definitivos: **NodeCat**, con la luz de estado sobre la "d".
