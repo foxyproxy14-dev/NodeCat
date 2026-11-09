@@ -215,7 +215,7 @@ ruta('POST', '/api/agente/informe', { publica: true, agente: true }, async ({ re
   const ip = ipDe(req);
   const f = malasClaves.get(ip);
   if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
-  const clave = req.headers['x-nodecat-agente'] || req.headers['x-atalaya-agente'] || req.headers['x-vigia-agente'];   // los agentes antiguos siguen funcionando
+  const clave = req.headers['x-nodecat-agente'] || req.headers['x-atalaya-agente'] || req.headers['x-vigia-agente'];   // los agentes de versiones anteriores siguen funcionando
   const cuerpo = await leerCuerpo(req, 2 * 1024 * 1024);
   try { const r = flota.recibir(clave, cuerpo, ip); avisos.evaluar(); return r; }
   catch (e) { if (e.status === 403) claveFallida(ip); throw e; }

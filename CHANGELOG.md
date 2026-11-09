@@ -2,8 +2,8 @@
 
 ## 0.4.0 (noviembre de 2026)
 
-- Atalaya pasa a llamarse **NodeCat**. La base de datos se renombra sola al actualizar y los agentes ya instalados siguen funcionando (Atalaya Agente); los nuevos se instalan como NodeCat Agente.
-- La primera vez, actualiza con `docker compose up -d --build --remove-orphans` (cambia el nombre del contenedor).
+- Nombre y marca definitivos: **NodeCat**, con la luz de estado sobre la "d".
+- Al actualizar desde una versión anterior, usa `docker compose up -d --build --remove-orphans`; los datos y los agentes instalados se conservan.
 
 ## 0.3.1 (noviembre de 2026)
 
@@ -22,7 +22,7 @@
 
 ## 0.2.1 (noviembre de 2026)
 
-- Nuevo logo y mascota: el gato de Atalaya. Repara el servidor, corre al cargar, programa en las listas vacías, se impacienta si algo tarda y se avergüenza con los errores.
+- Nuevo logo y mascota: el gato de NodeCat. Repara el servidor, corre al cargar, programa en las listas vacías, se impacienta si algo tarda y se avergüenza con los errores.
 - Icono nuevo para la pestaña del navegador y para el agente.
 - Los sucesos de enlace WAN caído y recuperado se muestran con su texto.
 
@@ -47,5 +47,5 @@ Primera versión: fase 1.
 - Avisos por Telegram con chats adicionales por cliente y resumen diario.
 - Cuentas de administrador y de solo lectura, limitables a algunos clientes.
 - Primera configuración con un código de un solo uso que aparece en el registro del contenedor.
-- Agente Atalaya 1.1.0: HTTPS con TLS 1.2, proxy opcional, informes atrasados que completan el historial.
+- Agente NodeCat 1.1.0: HTTPS con TLS 1.2, proxy opcional, informes atrasados que completan el historial.
 - Docker y docker-compose, con Cloudflare Tunnel opcional. Modo demo.

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const config = require('./config');
 
 fs.mkdirSync(config.DATA_DIR, { recursive: true });
-// Antes se llamaba Atalaya: se conserva la base de datos de esa versión
+// Instalaciones anteriores a la 0.4: se conserva su base de datos con el nombre nuevo
 for (const [viejo, nuevo] of [['atalaya.db', 'nodecat.db'], ['atalaya-demo.db', 'nodecat-demo.db']]) {
   const v = path.join(config.DATA_DIR, viejo), n = path.join(config.DATA_DIR, nuevo);
   if (fs.existsSync(v) && !fs.existsSync(n)) for (const ext of ['', '-wal', '-shm']) if (fs.existsSync(v + ext)) fs.renameSync(v + ext, n + ext);

@@ -47,9 +47,9 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
   </tr>
 </table>
 
-## Si venías de Atalaya
+## Actualizar
 
-NodeCat antes se llamaba Atalaya. Al actualizar, la base de datos se renombra sola y no se pierde nada; los agentes ya instalados siguen funcionando. Como el contenedor también cambia de nombre, la primera vez actualiza así:
+Los datos y los agentes instalados se conservan. Si vienes de una versión anterior a la 0.4, actualiza así la primera vez:
 
 ```bash
 git remote set-url origin https://github.com/foxyproxy14-dev/nodecat.git
