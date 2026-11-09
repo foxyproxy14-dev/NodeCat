@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.11.0 (noviembre de 2026)
+
+- Proxmox, pestaña Apps: cada app se puede editar desde el panel (nombre, enlace, categoría y logo), ocultar o agregar a mano. Los logos de apps se suben una vez y sirven para todos los servidores. Nada de esto toca Proxmox.
+- Proxmox, pestaña Red nueva: tráfico de 24 h, interfaces activas, estado de la red, latencia a la puerta de enlace, gráfico por interfaz, topología animada (tarjetas → host → puentes → VM y LXC) y fichas de cada interfaz física, puente y de invitado.
+- Proxmox, pestaña VM y LXC rediseñada en tarjetas: estado, tipo, etiquetas, IP, CPU, memoria, disco y E/S de disco y red, con buscador y filtro En ejecución / Detenido.
+- Proxmox, pestaña Almacenamiento rediseñada: uso total, local y remoto, discos físicos y temperatura, fichas por almacenamiento y estado SMART por disco (temperatura, ciclos, horas encendido, errores CRC).
+- En la página del cliente (y en la compartida), los hipervisores van separados de los servidores y VM, igual que las sedes.
+- Agente de Linux/Proxmox 1.1.0: se actualiza solo cuando el panel tiene una versión nueva, lee la red del host y SMART, y ya no toma como enlace de una app la página de community-scripts que viene en las notas.
+
 ## 0.10.0 (noviembre de 2026)
 
 - Verificación en dos pasos con aplicación de autenticación (código QR) y códigos de recuperación; el administrador puede quitarla a otra cuenta.

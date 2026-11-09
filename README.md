@@ -132,13 +132,16 @@ En la página del cliente, **Descargar agente** tiene cuatro opciones:
 - **Linux:** un comando que se pega por SSH como root (`curl -fsSL https://NODECAT/instalar/CLAVE.sh | bash`). Instala un servicio de systemd que solo necesita Python 3. Muestra CPU, memoria, discos, red, temperatura y sesiones SSH.
 - **Proxmox VE:** el mismo comando, en el host (no en las VM ni en los LXC). Usa la API local de Proxmox (`pvesh`), sin tokens, y muestra al estilo de ProxMenux:
   - **General:** CPU (usuario, sistema, núcleos, carga), memoria (usada, en caché, total), VM y LXC activos, temperatura, gráficos y red.
-  - **Apps:** qué corre en cada VM y contenedor, con su dirección. La app se reconoce por el nombre o las etiquetas del CT (AdGuard, Nginx Proxy Manager, Home Assistant, Jellyfin, MikroDash y muchas más) y la URL se toma de las notas del CT si la escribes allí.
-  - **VM y LXC:** estado, CPU, memoria, disco, IP y tiempo encendidas.
-  - **Almacenamiento:** cada almacenamiento con su uso y los discos físicos con su salud SMART y desgaste.
+  - **Apps:** qué corre en cada VM y contenedor, con su dirección. La app se reconoce por el nombre o las etiquetas del CT (AdGuard, Nginx Proxy Manager, Home Assistant, Jellyfin, MikroDash y muchas más) y la URL se toma de las notas del CT si la escribes allí. Con el lápiz de cada tarjeta cambias el nombre, el enlace, la categoría y el logo, o la ocultas; con **Agregar app** sumas una a mano. Los logos de apps (SVG, PNG o WebP) se guardan en `datos/logos/apps/` y sirven para todos los servidores.
+  - **VM y LXC:** tarjetas con estado, tipo, etiquetas, IP, CPU, memoria, disco, E/S de disco y de red, con buscador y filtro.
+  - **Red:** tráfico de 24 h, interfaces, latencia a la puerta de enlace, gráfico por interfaz, topología animada y fichas de cada interfaz física, puente y de VM/LXC.
+  - **Almacenamiento:** uso total, local y remoto; cada almacenamiento con su uso; y cada disco físico con su estado SMART, temperatura, ciclos, horas encendido y errores CRC (con `smartctl`, que viene con Proxmox).
   - **Backups:** última copia de cada VM y LXC (avisa de las que no tienen o tienen más de 7 días), trabajos programados y resultado de las últimas tareas.
   - **Nodo:** procesador, versión, kernel, carga, swap, actualizaciones pendientes y estado del clúster.
 
-Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. Para quitarlo: `sudo nodecat-agente desinstalar`.
+Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. Desde la versión 1.1.0 el agente de Linux/Proxmox se actualiza solo cuando NodeCat tiene una versión nueva. Para quitarlo: `sudo nodecat-agente desinstalar`.
+
+Si el cliente tiene hipervisores y también servidores, la lista los muestra en dos grupos (**Hipervisores** y **Servidores y VM**), igual que las sedes.
 
 ## Agregar un router MikroTik
 

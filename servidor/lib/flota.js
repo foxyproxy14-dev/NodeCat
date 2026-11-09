@@ -88,6 +88,7 @@ function borrarEquipo(id) {
   // Si se vuelve a instalar (instalación nueva), aparece otra vez.
   if (e && esAgente(e.tipo) && !e.desinstalado) q('INSERT OR REPLACE INTO bajas (cliente_id, nombre, instalacion, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, e.instalacion || '', Date.now());
   q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
+  q('DELETE FROM apps_personal WHERE equipo_id = ?').run(id);
   q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id);
 }
 
@@ -128,6 +129,8 @@ const txt = (x, max = 200) => x == null ? '' : String(x).slice(0, max);
 
 // Equipos con agente (servidores): Windows (con o sin Hyper-V), Linux y Proxmox
 const AGENTES = ['windows', 'linux', 'proxmox'];
+// Versión del agente de Linux que se ofrece (los agentes instalados se actualizan solos a ella)
+const VERSION_LINUX = (() => { try { const m = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'agente', 'nodecat-agente.py'), 'utf8').match(/^VERSION = '([\w.-]+)'/m); return m ? m[1] : null; } catch { return null; } })();
 const esAgente = tipo => AGENTES.includes(tipo);
 const EN_AGENTES = "tipo IN ('windows', 'linux', 'proxmox')";
 
@@ -158,8 +161,19 @@ function limpiarPve(p) {
       carga: arr(n.carga, 3).map(x => num(x, 0, 1e4)), swapTotal: num(n.swapTotal, 0, BYTES), swapUsado: num(n.swapUsado, 0, BYTES), ksm: num(n.ksm, 0, BYTES), arranque: txt(n.arranque, 20),
       actualizaciones: num(n.actualizaciones, 0, 1e5),
       cluster: n.cluster ? { nombre: txt(n.cluster.nombre, 60), quorum: !!n.cluster.quorum, nodos: arr(n.cluster.nodos, 64).map(x => ({ nombre: txt(x.nombre, 63), online: !!x.online })) } : null,
-      discos: arr(n.discos, 64).map(d => ({ disco: txt(d.disco, 60), modelo: txt(d.modelo, 80), tamano: num(d.tamano, 0, BYTES), tipo: txt(d.tipo, 20), salud: txt(d.salud, 30), desgaste: d.desgaste === 'N/A' ? null : num(d.desgaste, 0, 100), uso: txt(d.uso, 40), serie: txt(d.serie, 60) })),
-      almacenes: arr(n.almacenes, 64).map(a => ({ nombre: txt(a.nombre, 60), tipo: txt(a.tipo, 30), contenido: txt(a.contenido, 120), activo: !!a.activo, compartido: !!a.compartido, usado: num(a.usado, 0, BYTES), total: num(a.total, 0, BYTES) }))
+      discos: arr(n.discos, 64).map(d => ({ disco: txt(d.disco, 60), modelo: txt(d.modelo, 80), tamano: num(d.tamano, 0, BYTES), tipo: txt(d.tipo, 20), salud: txt(d.salud, 30), desgaste: d.desgaste === 'N/A' ? null : num(d.desgaste, 0, 100), uso: txt(d.uso, 40), serie: txt(d.serie, 60),
+        temperatura: d.temperatura == null ? null : num(d.temperatura, -50, 200), ciclos: d.ciclos == null ? null : num(d.ciclos, 0, 1e9), horas: d.horas == null ? null : num(d.horas, 0, 1e7), crc: d.crc == null ? null : num(d.crc, 0, 1e12), smartOk: d.smartOk == null ? null : !!d.smartOk })),
+      almacenes: arr(n.almacenes, 64).map(a => ({ nombre: txt(a.nombre, 60), tipo: txt(a.tipo, 30), contenido: txt(a.contenido, 120), activo: !!a.activo, compartido: !!a.compartido, usado: num(a.usado, 0, BYTES), total: num(a.total, 0, BYTES), disponible: a.disponible == null ? null : num(a.disponible, 0, BYTES) }))
+    };
+  }
+  if (p.red && typeof p.red === 'object' && !p.red.error) {
+    const r = p.red;
+    o.red = {
+      interfaces: arr(r.interfaces, 80).map(i => ({ nombre: txt(i.nombre, 30), tipo: txt(i.tipo, 12), estado: txt(i.estado, 12), velocidad: num(i.velocidad, 0, 1e7), duplex: i.duplex ? txt(i.duplex, 10) : null,
+        mtu: num(i.mtu, 0, 70000), mac: txt(i.mac, 20), ips: arr(i.ips, 6).map(x => txt(x, 50)), puente: i.puente ? txt(i.puente, 30) : null, puertos: arr(i.puertos, 40).map(x => txt(x, 30)),
+        vmid: i.vmid ? txt(i.vmid, 12) : null, rxTotal: num(i.rxTotal, 0, BYTES), txTotal: num(i.txTotal, 0, BYTES), descartados: num(i.descartados, 0, BYTES), errores: num(i.errores, 0, BYTES) })),
+      puertaEnlace: r.puertaEnlace ? txt(r.puertaEnlace, 45) : null, dns: arr(r.dns, 3).map(x => txt(x, 45)), dominio: r.dominio ? txt(r.dominio, 80) : null, host: txt(r.host, 63),
+      latencia: r.latencia ? { destino: txt(r.latencia.destino, 45), ms: num(r.latencia.ms, 0, 1e5), max: num(r.latencia.max, 0, 1e5), perdida: num(r.latencia.perdida, 0, 100) } : null
     };
   }
   return o;
@@ -185,7 +199,8 @@ function limpiarInforme(c) {
     vms: (Array.isArray(c.vms) ? c.vms : []).slice(0, 1000).map(x => ({
       id: txt(x.id, 60), nombre: txt(x.nombre, 120), tipo: txt(x.tipo, 12), estado: txt(x.estado, 20), nodo: txt(x.nodo, 63),
       cpu: num(x.cpu, 0, 100), cpus: num(x.cpus, 0, 4096), ram: num(x.ram, 0, BYTES), ramMax: num(x.ramMax, 0, BYTES), disco: num(x.disco, 0, BYTES), discoMax: num(x.discoMax, 0, BYTES),
-      uptime: num(x.uptime, 0, 1e10), netin: num(x.netin, 0, BYTES), netout: num(x.netout, 0, BYTES)
+      uptime: num(x.uptime, 0, 1e10), netin: num(x.netin, 0, BYTES), netout: num(x.netout, 0, BYTES),
+      diskread: num(x.diskread, 0, BYTES), diskwrite: num(x.diskwrite, 0, BYTES), etiquetas: (Array.isArray(x.etiquetas) ? x.etiquetas : []).slice(0, 8).map(t => txt(t, 30))
     })).filter(v => v.nombre || v.id),
     errorVms: c.errorVms ? txt(c.errorVms, 400) : null,
     pve: limpiarPve(c.pve)
@@ -266,10 +281,15 @@ function recibir(clave, c, ip) {
     q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(id, ahora, d.cpu, d.ramPct, disco);
     v.hora.push({ t: ahora, cpu: d.cpu, ram: d.ramPct });
     v.ultimaMuestra = ahora;
+    // Tráfico de red del servidor: una fila por minuto e interfaz (sirve para los gráficos y los totales de 24 h)
+    if (d.red.length) {
+      const ins = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      for (const i of d.red.slice(0, 12)) if (i.rx != null) ins.run(id, ahora, i.nombre, i.rx, i.tx, i.rx, i.tx);
+    }
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
   if (v.caido) volvio(v, ahora);
-  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(claveNueva ? { clave: claveNueva } : {}) };
+  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(claveNueva ? { clave: claveNueva } : {}), ...(plataforma !== 'windows' && VERSION_LINUX ? { agenteLinux: VERSION_LINUX } : {}) };
 }
 
 /** La sonda: identifica al agente por su clave y su nombre de equipo. */

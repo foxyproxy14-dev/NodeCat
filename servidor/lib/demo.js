@@ -46,7 +46,20 @@ const GB = 1024 ** 3;
 function hipervisor(e, ahora, j) {
   if (e.perfil === 'proxmox') {
     const vms = VMS_PVE.map(([id, n, t, est, cpus, ram, disco]) => ({ id, nombre: n, tipo: t, estado: est, nodo: 'pve01', cpus, cpu: est === 'running' ? Math.round((2 + rnd() * 6 + j * 8) * 10) / 10 : 0,
-      ram: est === 'running' ? Math.round(ram * GB * (0.35 + rnd() * 0.3)) : 0, ramMax: ram * GB, disco: t === 'lxc' ? Math.round(disco * GB * 0.41) : null, discoMax: disco * GB, uptime: est === 'running' ? Math.round((ahora - (ahora - 6 * 864e5)) / 1000) : 0 }));
+      ram: est === 'running' ? Math.round(ram * GB * (0.35 + rnd() * 0.3)) : 0, ramMax: ram * GB, disco: t === 'lxc' ? Math.round(disco * GB * 0.41) : null, discoMax: disco * GB, uptime: est === 'running' ? Math.round(6 * 86400 + Number(id) * 3713) : 0,
+      netin: est === 'running' ? Math.round(disco * 0.9 * GB * (1 + j)) : 0, netout: est === 'running' ? Math.round(disco * 0.3 * GB * (1 + j)) : 0,
+      diskread: est === 'running' ? Math.round(disco * 1.4 * GB) : 0, diskwrite: est === 'running' ? Math.round(disco * 0.7 * GB) : 0,
+      etiquetas: t === 'lxc' ? ['community-script', id === '102' || id === '103' ? 'monitoreo' : 'red'] : id === '120' ? ['produccion'] : [] }));
+    const IP_VM = id => '10.20.20.' + (50 + Number(id) % 50);
+    const invitados = VMS_PVE.filter(v => v[3] === 'running').map(([id, n, t]) => ({ nombre: (t === 'lxc' ? 'veth' : 'tap') + id + (t === 'lxc' ? 'i0' : 'i0'), tipo: 'invitado', estado: 'up', velocidad: 10000, duplex: 'full', mtu: 1500, mac: 'bc:24:11:' + id.padStart(2, '0').slice(-2) + ':4e:' + id.slice(-2), ips: [], puente: 'vmbr0', puertos: [], vmid: id, rxTotal: Math.round(Number(id) * 0.31 * GB), txTotal: Math.round(Number(id) * 0.12 * GB), descartados: 0, errores: 0 }));
+    const redHost = { host: 'pve01', dominio: 'mk-zero.local', puertaEnlace: '10.20.20.1', dns: ['10.20.20.10', '1.1.1.1'],
+      latencia: { destino: '10.20.20.1', ms: Math.round((0.4 + rnd() * 0.5) * 100) / 100, max: 1.8, perdida: 0 },
+      interfaces: [
+        { nombre: 'enp3s0', tipo: 'fisica', estado: 'up', velocidad: 1000, duplex: 'full', mtu: 1500, mac: '1c:69:7a:0b:42:e1', ips: [], puente: 'vmbr0', puertos: [], rxTotal: 412 * GB, txTotal: 168 * GB, descartados: 12, errores: 0 },
+        { nombre: 'enp4s0', tipo: 'fisica', estado: 'down', velocidad: null, duplex: null, mtu: 1500, mac: '1c:69:7a:0b:42:e2', ips: [], puente: null, puertos: [], rxTotal: 0, txTotal: 0, descartados: 0, errores: 0 },
+        { nombre: 'vmbr0', tipo: 'puente', estado: 'up', velocidad: 1000, duplex: null, mtu: 1500, mac: '1c:69:7a:0b:42:e1', ips: ['10.20.20.5/24'], puente: null, puertos: ['enp3s0', ...invitados.map(i => i.nombre)], rxTotal: 398 * GB, txTotal: 161 * GB, descartados: 0, errores: 0 },
+        ...invitados
+      ] };
     const apps = VMS_PVE.map(([id, n, t, est, , , , app, cat, url]) => ({ id, nombre: n, tipo: t, estado: est, ips: url ? [url.replace(/^https?:\/\//, '').split(':')[0]] : est === 'running' ? ['10.20.20.' + (50 + Number(id) % 50)] : [], so: t === 'lxc' ? 'debian' : id === '130' ? 'win11' : 'l26', arranqueAuto: est === 'running', app, categoria: cat, url, etiquetas: t === 'lxc' ? ['community-script'] : [], notas: '' }));
     const dia = 864e5, archivos = [];
     for (const [id, , , , , , disco] of VMS_PVE) { if (id === '130') continue; for (let k = 0; k < (id === '120' ? 7 : 3); k++) archivos.push({ vmid: id, fecha: ahora - (k + (id === '110' ? 9 : 0)) * dia - 3 * 3600e3, tamano: Math.round(disco * GB * 0.18), almacen: 'backups', formato: 'tar.zst', notas: '', protegida: k === 0 && id === '120', verificada: 'ok' }); }
@@ -54,12 +67,12 @@ function hipervisor(e, ahora, j) {
     return { plataforma: 'proxmox', hipervisor: 'proxmox', so: 'Proxmox VE 8.2.7', nucleos: 12, carga: Math.round((0.4 + j * 1.6 + rnd() * 0.3) * 100) / 100, temperatura: Math.round(42 + j * 6 + rnd() * 2),
       cpuUsuario: Math.round((5 + j * 8) * 10) / 10, cpuSistema: Math.round((1 + j * 2) * 10) / 10, ramCache: 1.6,
       red: [{ nombre: 'vmbr0', rx: Math.round(2e6 + rnd() * 8e6), tx: Math.round(1e6 + rnd() * 4e6) }, { nombre: 'enp3s0', rx: Math.round(2e6 + rnd() * 8e6), tx: Math.round(1e6 + rnd() * 4e6) }],
-      vms, pve: { apps,
+      vms, pve: { apps, red: redHost,
         copias: { archivos, almacenes: ['backups'], trabajos: [{ id: 'backup-diario', horario: '02:00', almacen: 'backups', activo: true, que: '100,101,102,103,110,120', modo: 'snapshot', comentario: 'Diario a las 2 a. m.', proxima: ahora + 7 * 3600e3 }],
           tareas: [['120', 'OK'], ['103', 'OK'], ['102', 'OK'], ['101', 'OK'], ['100', 'OK'], ['110', 'ERROR: unable to create temporary directory']].map(([v, est], i) => ({ vmid: v, inicio: ahora - 16 * 3600e3 + i * 240000, fin: ahora - 16 * 3600e3 + i * 240000 + 180000, estado: est, usuario: 'root@pam' })) },
         nodo: { cpuModelo: 'Intel(R) Core(TM) i5-10500T CPU @ 2.30GHz', sockets: 1, hilos: 12, kernel: 'Linux 6.8.12-4-pve', pve: 'pve-manager/8.2.7', carga: [0.62, 0.71, 0.66], swapTotal: 8 * GB, swapUsado: 0.2 * GB, ksm: 0, arranque: 'efi', actualizaciones: 14, cluster: null,
-          discos: [{ disco: '/dev/nvme0n1', modelo: 'Samsung SSD 980 1TB', tamano: 1000 * 1e9, tipo: 'nvme', salud: 'PASSED', desgaste: 96, uso: 'LVM', serie: 'S64DNX0R' }, { disco: '/dev/sda', modelo: 'WDC WD40EFRX', tamano: 4000 * 1e9, tipo: 'hdd', salud: 'PASSED', desgaste: null, uso: 'ext4', serie: 'WD-WCC7K' }],
-          almacenes: [{ nombre: 'local', tipo: 'dir', contenido: 'iso,vztmpl,backup', activo: true, compartido: false, usado: 29 * GB, total: 94 * GB }, { nombre: 'local-lvm', tipo: 'lvmthin', contenido: 'images,rootdir', activo: true, compartido: false, usado: 383 * GB, total: 832 * GB }, { nombre: 'backups', tipo: 'nfs', contenido: 'backup', activo: true, compartido: true, usado: 2088 * GB, total: 3600 * GB }] } } };
+          discos: [{ disco: '/dev/nvme0n1', modelo: 'Samsung SSD 980 1TB', tamano: 1000 * 1e9, tipo: 'nvme', salud: 'PASSED', desgaste: 96, uso: 'LVM', serie: 'S64DNX0R', temperatura: 38, ciclos: 111, horas: 1630, crc: 0, smartOk: true }, { disco: '/dev/sda', modelo: 'WDC WD40EFRX', tamano: 4000 * 1e9, tipo: 'hdd', salud: 'PASSED', desgaste: null, uso: 'ext4', serie: 'WD-WCC7K', temperatura: 34, ciclos: 58, horas: 21450, crc: 0, smartOk: true }],
+          almacenes: [{ nombre: 'local', tipo: 'dir', contenido: 'iso,vztmpl,backup', activo: true, compartido: false, usado: 29 * GB, total: 94 * GB, disponible: 65 * GB }, { nombre: 'local-lvm', tipo: 'lvmthin', contenido: 'images,rootdir', activo: true, compartido: false, usado: 383 * GB, total: 832 * GB, disponible: 449 * GB }, { nombre: 'backups', tipo: 'nfs', contenido: 'backup', activo: true, compartido: true, usado: 2088 * GB, total: 3600 * GB, disponible: 1512 * GB }] } } };
   }
   if (e.perfil === 'hyperv') {
     return { hipervisor: 'hyperv', vms: VMS_HV.map(([n, est, cpus, ram, disco], i) => ({ id: 'a1b2c3d4-000' + i, nombre: n, tipo: 'hyperv', estado: est, cpus, cpu: est === 'running' ? Math.round(3 + rnd() * 10 + j * 15) : 0,
@@ -129,6 +142,14 @@ function sembrar() {
         // Métricas: 5 min hasta hace 7 días, 1 min después
         const ins = q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, ?, ?)');
         const maxDisco = Math.max(...p.discos.map(d => d[3])) + (e.alto === 'disco' ? 22 : 0);
+        // Tráfico de red de los Proxmox (24 h, por minuto) para la pestaña Red
+        if (e.perfil === 'proxmox') {
+          const insT = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
+          for (let t = ahora - 864e5; t < ahora - 60000; t += 60000) {
+            const j = jornada(t) * 0.8 + 0.2;
+            for (const n of ['vmbr0', 'enp3s0']) { const r = Math.round(6e6 * j * entre(0.5, 1.5)), x = Math.round(2.5e6 * j * entre(0.5, 1.5)); insT.run(id, t, n, r, x, r, x); }
+          }
+        }
         for (let t = creado; t < ahora - (e.caido ? 47 * 60000 : 60000); ) {
           const reciente = t > ahora - 7 * 864e5;
           const j = jornada(t);

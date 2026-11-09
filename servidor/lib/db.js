@@ -85,6 +85,7 @@ if (!columnas('equipos').includes('desinstalado')) db.exec('ALTER TABLE equipos 
 db.exec(`
   CREATE TABLE IF NOT EXISTS traslados (cliente_origen INTEGER, nombre TEXT, equipo_id INTEGER, desde INTEGER, PRIMARY KEY (cliente_origen, nombre));
   CREATE TABLE IF NOT EXISTS bajas (cliente_id INTEGER, nombre TEXT, instalacion TEXT, desde INTEGER, PRIMARY KEY (cliente_id, nombre));
+  CREATE TABLE IF NOT EXISTS apps_personal (equipo_id INTEGER, clave TEXT, nombre TEXT, url TEXT, categoria TEXT, oculta INTEGER DEFAULT 0, logo TEXT, creada INTEGER, PRIMARY KEY (equipo_id, clave));
 `);
 
 const cache = new Map();

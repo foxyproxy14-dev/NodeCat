@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const config = require('./lib/config');
 const { log, iguales } = require('./lib/util');
-const { ajustes } = require('./lib/db');
+const { ajustes, q: dbq } = require('./lib/db');
+const crypto = require('node:crypto');
 const auth = require('./lib/auth');
 const flota = require('./lib/flota');
 const avisos = require('./lib/avisos');
@@ -139,7 +140,7 @@ function equipoVisible(sesion, id) {
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
 ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.sucesosEquipo(e.id, Math.min(400, Number(url.searchParams.get('dias')) || 90)); });
-ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return flota.detallesPve(e.id); });
+ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return { ...flota.detallesPve(e.id), personal: appsPersonal(e.id), logosApps: logosApps() }; });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
 // Routers MikroTik
@@ -294,18 +295,85 @@ function logosDisponibles() {
   try { l = fs.readdirSync(LOGOS).map(f => f.match(/^([a-z-]+)\.(svg|png|webp)$/)).filter(m => m && NOMBRES_LOGO.includes(m[1])).map(m => m[1] + '.' + m[2]); } catch { }
   logosCache = { t: Date.now(), l }; return l;
 }
-ruta('GET', '/api/logos', { publica: true }, () => ({ logos: logosDisponibles(), nombres: NOMBRES_LOGO }));
-// Subir o quitar un logo desde el panel (solo administradores)
-ruta('PUT', '/api/logos/:nombre', { ...soloAdmin, cuerpoMax: 800 * 1024 }, ({ p, cuerpo, sesion }) => {
-  const nombre = String(p.nombre);
-  if (!NOMBRES_LOGO.includes(nombre)) throw error(400, 'Ese sistema no existe.');
-  const b = Buffer.from(String(cuerpo.datos || ''), 'base64');
+function imagenSubida(datos) {
+  const b = Buffer.from(String(datos || ''), 'base64');
   if (!b.length || b.length > 512 * 1024) throw error(400, 'El archivo debe pesar menos de 512 KB.');
   const ini = b.subarray(0, 512).toString('utf8');
   const ext = b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? 'png'
     : b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' ? 'webp'
     : /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(ini) ? 'svg' : null;
   if (!ext) throw error(400, 'Sube una imagen SVG, PNG o WebP.');
+  return { b, ext };
+}
+const CABECERA_IMAGEN = f => ({ 'Content-Type': f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'image/webp', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=3600' });
+
+// Logos de apps (biblioteca común: se suben una vez y sirven para todos los servidores). Nombre = app en minúsculas sin espacios.
+const LOGOS_APPS = path.join(LOGOS, 'apps');
+const slugApp = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+let logosAppsCache = { t: 0, l: [] };
+function logosApps() {
+  if (Date.now() - logosAppsCache.t < 60000) return logosAppsCache.l;
+  let l = [];
+  try { l = fs.readdirSync(LOGOS_APPS).filter(f => /^[a-z0-9-]+\.(svg|png|webp)$/.test(f)); } catch { }
+  logosAppsCache = { t: Date.now(), l }; return l;
+}
+ruta('GET', '/api/logos-apps', {}, () => ({ logos: logosApps() }));
+ruta('PUT', '/api/logos-apps/:nombre', { ...soloAdmin, cuerpoMax: 800 * 1024 }, ({ p, cuerpo, sesion }) => {
+  const nombre = slugApp(p.nombre); if (!nombre) throw error(400, 'Falta el nombre de la app.');
+  const { b, ext } = imagenSubida(cuerpo.datos);
+  fs.mkdirSync(LOGOS_APPS, { recursive: true });
+  for (const e of ['svg', 'png', 'webp']) { try { fs.unlinkSync(path.join(LOGOS_APPS, `${nombre}.${e}`)); } catch { } }
+  fs.writeFileSync(path.join(LOGOS_APPS, `${nombre}.${ext}`), b);
+  logosAppsCache.t = 0; log(`${sesion.usuario} subió el logo de la app ${nombre}.`);
+  return { logo: `${nombre}.${ext}`, logos: logosApps() };
+});
+ruta('DELETE', '/api/logos-apps/:nombre', soloAdmin, ({ p }) => {
+  const nombre = slugApp(p.nombre);
+  for (const e of ['svg', 'png', 'webp']) { try { fs.unlinkSync(path.join(LOGOS_APPS, `${nombre}.${e}`)); } catch { } }
+  logosAppsCache.t = 0; return { logos: logosApps() };
+});
+ruta('GET', '/logos/apps/:archivo', {}, ({ p, res }) => {
+  const f = String(p.archivo);
+  if (!logosApps().includes(f)) throw error(404, 'No existe ese logo.');
+  const b = fs.readFileSync(path.join(LOGOS_APPS, f));
+  res.writeHead(200, { ...CABECERA_IMAGEN(f), 'Content-Length': b.length }); res.end(b);
+});
+
+// Apps de un servidor Proxmox editadas a mano (nombre, enlace, categoría, ocultar) o agregadas manualmente
+const appsPersonal = id => dbq('SELECT clave, nombre, url, categoria, oculta, logo FROM apps_personal WHERE equipo_id = ?').all(id);
+function servidorPve(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'proxmox') throw error(400, 'Ese equipo no es un Proxmox.'); return e; }
+function limpiarApp(c) {
+  const t = (x, n) => x == null ? null : String(x).trim().slice(0, n) || null;
+  const url = t(c.url, 300);
+  if (url && !/^https?:\/\/[^\s"'<>]+$/i.test(url)) throw error(400, 'El enlace debe empezar con http:// o https://');
+  return { nombre: t(c.nombre, 80), url, categoria: t(c.categoria, 40), oculta: c.oculta ? 1 : 0, logo: c.logo ? slugApp(c.logo) || null : null };
+}
+ruta('PUT', '/api/equipos/:id/apps/:clave', soloAdmin, ({ sesion, p, cuerpo }) => {
+  const e = servidorPve(sesion, p.id); const clave = String(p.clave).slice(0, 40);
+  if (!/^[\w-]+$/.test(clave)) throw error(400, 'App no válida.');
+  const a = limpiarApp(cuerpo);
+  dbq(`INSERT INTO apps_personal (equipo_id, clave, nombre, url, categoria, oculta, logo, creada) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (equipo_id, clave) DO UPDATE SET nombre = excluded.nombre, url = excluded.url, categoria = excluded.categoria, oculta = excluded.oculta, logo = excluded.logo`)
+    .run(e.id, clave, a.nombre, a.url, a.categoria, a.oculta, a.logo, Date.now());
+  return { ok: true };
+});
+ruta('POST', '/api/equipos/:id/apps', soloAdmin, ({ sesion, p, cuerpo }) => {
+  const e = servidorPve(sesion, p.id); const a = limpiarApp(cuerpo);
+  if (!a.nombre) throw error(400, 'Escribe el nombre de la app.');
+  const clave = 'm' + crypto.randomBytes(5).toString('hex');
+  dbq('INSERT INTO apps_personal (equipo_id, clave, nombre, url, categoria, oculta, logo, creada) VALUES (?, ?, ?, ?, ?, 0, ?, ?)').run(e.id, clave, a.nombre, a.url, a.categoria, a.logo, Date.now());
+  return { clave };
+});
+ruta('DELETE', '/api/equipos/:id/apps/:clave', soloAdmin, ({ sesion, p }) => {
+  const e = servidorPve(sesion, p.id); dbq('DELETE FROM apps_personal WHERE equipo_id = ? AND clave = ?').run(e.id, String(p.clave)); return { ok: true };
+});
+
+ruta('GET', '/api/logos', { publica: true }, () => ({ logos: logosDisponibles(), nombres: NOMBRES_LOGO }));
+// Subir o quitar un logo desde el panel (solo administradores)
+ruta('PUT', '/api/logos/:nombre', { ...soloAdmin, cuerpoMax: 800 * 1024 }, ({ p, cuerpo, sesion }) => {
+  const nombre = String(p.nombre);
+  if (!NOMBRES_LOGO.includes(nombre)) throw error(400, 'Ese sistema no existe.');
+  const { b, ext } = imagenSubida(cuerpo.datos);
   fs.mkdirSync(LOGOS, { recursive: true });
   for (const e of ['svg', 'png', 'webp']) { try { fs.unlinkSync(path.join(LOGOS, `${nombre}.${e}`)); } catch { } }
   fs.writeFileSync(path.join(LOGOS, `${nombre}.${ext}`), b);
@@ -326,7 +394,7 @@ ruta('GET', '/logos/:archivo', { publica: true }, ({ p, res }) => {
   if (!logosDisponibles().includes(f)) throw error(404, 'No existe ese logo.');
   const b = fs.readFileSync(path.join(LOGOS, f));
   // Un SVG puede llevar código: se sirve aislado (sin scripts) para que solo sirva como imagen
-  res.writeHead(200, { 'Content-Type': f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'image/webp', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=3600', 'Content-Length': b.length });
+  res.writeHead(200, { ...CABECERA_IMAGEN(f), 'Content-Length': b.length });
   res.end(b);
 });
 ruta('GET', '/salud', { publica: true }, () => ({ ok: true, version: config.VERSION }));

@@ -5,7 +5,7 @@
 # Envía un informe por HTTPS cada 30 segundos. Sin dependencias: solo Python 3 de la distribución.
 import json, os, re, socket, subprocess, sys, threading, time, urllib.request, urllib.error, uuid, shutil
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 CONFIG = '/etc/nodecat-agente.json'
 CARPETA = '/opt/nodecat-agente'
 SERVICIO = 'nodecat-agente'
@@ -233,10 +233,15 @@ def app_de(nombre, cfg, ips):
     clave = re.sub(r'[^a-z0-9-]', '', nombre.lower())
     conocida = next((a for a in APPS if a[0] in clave or a[0] in [t.lower() for t in etiquetas]), None)
     url = None
-    m = URL_RE.search(notas)
-    if m:
-        url = m.group(0).rstrip('.,;')
-    elif conocida and conocida[2] and ips:
+    for m in URL_RE.finditer(notas):
+        u = m.group(0).rstrip('.,;')
+        host = re.sub(r'^https?://', '', u).split('/')[0].split(':')[0].lower()
+        # Las notas de los scripts de la comunidad traen enlaces a su web, GitHub o donaciones: no son la dirección de la app
+        if any(d in host for d in ('community-scripts', 'github', 'helper-scripts', 'tteck', 'ko-fi', 'buymeacoffee', 'patreon', 'discord', 'proxmox.com', 'youtube')):
+            continue
+        url = u   # una dirección propia (IP o dominio del cliente)
+        break
+    if not url and conocida and conocida[2] and ips:
         url = f'{conocida[3]}://{ips[0]}' + ('' if conocida[2] in (80, 443) and ((conocida[3] == 'http') == (conocida[2] == 80)) else f':{conocida[2]}') + conocida[4]
     return {'app': conocida[1] if conocida else None, 'categoria': conocida[5] if conocida else None, 'url': url, 'etiquetas': etiquetas[:8],
             'notas': re.sub(r'<[^>]+>', '', notas)[:300] if notas else ''}
@@ -309,6 +314,39 @@ def leer_copias(nodo):
     return {'archivos': archivos[:400], 'trabajos': trabajos[:40], 'tareas': tareas, 'almacenes': almacenes}
 
 
+def leer_smart(disco):
+    """Datos SMART de solo lectura (temperatura, ciclos, horas encendido, errores CRC). Requiere smartctl."""
+    if not disco or not re.match(r'^/dev/[\w/-]+$', disco) or not shutil.which('smartctl'):
+        return {}
+    try:
+        r = subprocess.run(['smartctl', '-A', '-H', '-j', disco], capture_output=True, text=True, timeout=20)
+        j = json.loads(r.stdout or '{}')
+    except Exception:
+        return {}
+    o = {}
+    t = (j.get('temperature') or {}).get('current')
+    if t is not None:
+        o['temperatura'] = t
+    if (j.get('power_cycle_count')) is not None:
+        o['ciclos'] = j.get('power_cycle_count')
+    h = (j.get('power_on_time') or {}).get('hours')
+    if h is not None:
+        o['horas'] = h
+    nv = j.get('nvme_smart_health_information_log') or {}
+    if nv:
+        o.setdefault('temperatura', nv.get('temperature'))
+        o.setdefault('ciclos', nv.get('power_cycles'))
+        o.setdefault('horas', nv.get('power_on_hours'))
+        o['crc'] = nv.get('media_errors')
+    for a in (j.get('ata_smart_attributes') or {}).get('table') or []:
+        if a.get('id') == 199:
+            o['crc'] = (a.get('raw') or {}).get('value')
+    st = j.get('smart_status')
+    if st is not None:
+        o['smartOk'] = bool(st.get('passed'))
+    return o
+
+
 def leer_nodo(nodo):
     st = pvesh(f'/nodes/{nodo}/status') or {}
     ci = st.get('cpuinfo') or {}
@@ -328,14 +366,73 @@ def leer_nodo(nodo):
     try:
         n['discos'] = [{'disco': d.get('devpath'), 'modelo': d.get('model'), 'tamano': d.get('size'), 'tipo': d.get('type'), 'salud': d.get('health'),
                         'desgaste': d.get('wearout'), 'uso': d.get('used'), 'serie': d.get('serial')} for d in pvesh(f'/nodes/{nodo}/disks/list', tiempo=30) or []]
+        for d in n['discos']:
+            d.update(leer_smart(d['disco']))
     except Exception:
         n['discos'] = []
     try:
         n['almacenes'] = [{'nombre': x.get('storage'), 'tipo': x.get('type'), 'contenido': x.get('content'), 'activo': bool(x.get('active')), 'compartido': bool(x.get('shared')),
-                           'usado': x.get('used'), 'total': x.get('total')} for x in pvesh(f'/nodes/{nodo}/storage') or []]
+                           'usado': x.get('used'), 'total': x.get('total'), 'disponible': x.get('avail')} for x in pvesh(f'/nodes/{nodo}/storage') or []]
     except Exception:
         n['almacenes'] = []
     return n
+
+
+def leer_red_host():
+    base = '/sys/class/net'
+    ips = {}
+    try:
+        for i in json.loads(cmd(['ip', '-j', 'addr'], 5)):
+            ips[i['ifname']] = [a['local'] + '/' + str(a.get('prefixlen', '')) for a in i.get('addr_info', []) if a.get('family') == 'inet']
+    except Exception:
+        pass
+    l = []
+    for n in sorted(os.listdir(base)):
+        if n == 'lo':
+            continue
+        r = f'{base}/{n}'
+        tipo = 'puente' if os.path.isdir(f'{r}/bridge') else 'fisica' if os.path.exists(f'{r}/device') else \
+            'invitado' if re.match(r'^(veth|tap)\d+i\d+$', n) else 'firewall' if n.startswith(('fwbr', 'fwpr', 'fwln')) else 'virtual'
+        if tipo == 'firewall':
+            continue
+        try:
+            vel = int(leer(f'{r}/speed').strip() or -1)
+        except ValueError:
+            vel = -1
+        m = re.match(r'^(veth|tap)(\d+)i\d+$', n)
+        maestro = os.path.basename(os.path.realpath(f'{r}/master')) if os.path.exists(f'{r}/master') else None
+        if maestro and maestro.startswith('fwbr'):   # firewall de Proxmox en medio: se busca el puente real
+            fw = f'{base}/{maestro.replace("fwbr", "fwpr", 1)}'
+            for p in (os.listdir(f'{base}/{maestro}/brif') if os.path.isdir(f'{base}/{maestro}/brif') else []):
+                if p.startswith('fwpr') and os.path.exists(f'{base}/{p}/master'):
+                    maestro = os.path.basename(os.path.realpath(f'{base}/{p}/master'))
+        est = lambda k: int(leer(f'{r}/statistics/{k}').strip() or 0)
+        l.append({'nombre': n, 'tipo': tipo, 'estado': leer(f'{r}/operstate').strip(), 'velocidad': vel if vel > 0 else None,
+                  'duplex': leer(f'{r}/duplex').strip() or None, 'mtu': int(leer(f'{r}/mtu').strip() or 0) or None, 'mac': leer(f'{r}/address').strip(),
+                  'ips': ips.get(n, []), 'puente': maestro, 'puertos': sorted(os.listdir(f'{r}/brif')) if tipo == 'puente' and os.path.isdir(f'{r}/brif') else [],
+                  'vmid': m.group(2) if m else None, 'rxTotal': est('rx_bytes'), 'txTotal': est('tx_bytes'),
+                  'descartados': est('rx_dropped') + est('tx_dropped'), 'errores': est('rx_errors') + est('tx_errors')})
+    gw, dns, dominio, lat = None, [], None, None
+    try:
+        rt = json.loads(cmd(['ip', '-j', 'route', 'show', 'default'], 5))
+        gw = rt[0].get('gateway') if rt else None
+    except Exception:
+        pass
+    for linea in leer('/etc/resolv.conf').splitlines():
+        p = linea.split()
+        if len(p) >= 2 and p[0] == 'nameserver':
+            dns.append(p[1])
+        elif len(p) >= 2 and p[0] in ('search', 'domain'):
+            dominio = p[1]
+    if gw:
+        try:
+            r = subprocess.run(['ping', '-c', '4', '-i', '0.3', '-W', '1', gw], capture_output=True, text=True, timeout=10)
+            perd = re.search(r'([\d.]+)% packet loss', r.stdout)
+            rtt = re.search(r'= [\d.]+/([\d.]+)/([\d.]+)', r.stdout)
+            lat = {'destino': gw, 'ms': float(rtt.group(1)) if rtt else None, 'max': float(rtt.group(2)) if rtt else None, 'perdida': float(perd.group(1)) if perd else None}
+        except Exception:
+            pass
+    return {'interfaces': l[:80], 'puertaEnlace': gw, 'dns': dns[:3], 'dominio': dominio, 'latencia': lat, 'host': socket.gethostname()}
 
 
 def proxmox(nodo):
@@ -354,7 +451,8 @@ def proxmox(nodo):
                 vms.append({'id': str(r.get('vmid', '')), 'nombre': r.get('name') or f"{r.get('type')}-{r.get('vmid')}", 'tipo': r.get('type'),
                             'estado': r.get('status'), 'nodo': nodo, 'cpu': round((r.get('cpu') or 0) * 100, 1), 'cpus': r.get('maxcpu') or 0,
                             'ram': r.get('mem'), 'ramMax': r.get('maxmem'), 'disco': r.get('disk') or None, 'discoMax': r.get('maxdisk'),
-                            'uptime': r.get('uptime'), 'netin': r.get('netin'), 'netout': r.get('netout')})
+                            'uptime': r.get('uptime'), 'netin': r.get('netin'), 'netout': r.get('netout'),
+                            'diskread': r.get('diskread'), 'diskwrite': r.get('diskwrite'), 'etiquetas': [t for t in re.split(r'[;,\s]+', r.get('tags') or '') if t][:8]})
             elif r.get('type') == 'storage' and r.get('maxdisk'):
                 total, usado = r['maxdisk'], r.get('disk') or 0
                 almacen.append({'unidad': r.get('storage'), 'etiqueta': r.get('plugintype') or 'storage', 'total': round(total / 1024 ** 3, 1),
@@ -365,7 +463,8 @@ def proxmox(nodo):
         # Lo lento, en segundo plano: apps cada 2 min, nodo cada 5, copias cada 5
         pve = {'apps': lento.obtener('apps', 120, lambda: leer_apps(nodo, vms)),
                'copias': lento.obtener('copias', 300, lambda: leer_copias(nodo)),
-               'nodo': lento.obtener('nodo', 300, lambda: leer_nodo(nodo))}
+               'nodo': lento.obtener('nodo', 300, lambda: leer_nodo(nodo)),
+               'red': lento.obtener('red', 60, leer_red_host)}
         datos['pve'] = {k: v for k, v in pve.items() if v is not None}
     except Exception as e:
         datos['errorVms'] = str(e)
@@ -408,6 +507,29 @@ def enviar(c, informe):
             return e.code, {}
 
 
+actualizando = [False]
+def actualizar(c, version):
+    """NodeCat tiene una versión nueva del agente: se descarga, se comprueba y el servicio se reinicia con ella."""
+    try:
+        req = urllib.request.Request(c['servidor'] + '/agente/nodecat-agente.py', headers={'User-Agent': 'NodeCat-Agente-Linux/' + VERSION})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            nuevo = r.read()
+        if b'NodeCat' not in nuevo[:400] or len(nuevo) < 2000:
+            raise RuntimeError('el archivo descargado no parece el agente')
+        compile(nuevo, 'nodecat-agente.py', 'exec')
+        destino = os.path.realpath(__file__)
+        tmp = destino + '.nuevo'
+        with open(tmp, 'wb') as f:
+            f.write(nuevo)
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, destino)
+        log(f'Agente actualizado a la versión {version}. Reiniciando.')
+        os._exit(0)   # systemd lo vuelve a arrancar con la versión nueva
+    except Exception as e:
+        log(f'No se pudo actualizar el agente: {e}')
+        actualizando[0] = False
+
+
 def bucle():
     c = cargar()
     log(f'Agente {VERSION} iniciado. Envía a {c["servidor"]}.')
@@ -436,6 +558,9 @@ def bucle():
                 if not conectado:
                     log('Conectado de nuevo con NodeCat.')
                 conectado = True
+                if r.get('agenteLinux') and r['agenteLinux'] != VERSION and not actualizando[0]:
+                    actualizando[0] = True
+                    threading.Thread(target=actualizar, args=(c, r['agenteLinux']), daemon=True).start()
                 if 5 <= int(r.get('intervalo', 30)) <= 600:
                     c['intervalo'] = int(r['intervalo'])
                 nueva = r.get('clave')

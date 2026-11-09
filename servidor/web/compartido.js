@@ -66,11 +66,20 @@ function filaRed(e) {
     <span class="f-up">${vivo ? esc(duracion(e.arranque)) : ''}</span>${v}</div>`;
 }
 // Si el cliente usa sedes, las filas van agrupadas por sede (igual que en el panel)
-function porSede(lista, fila, cuenta) {
+function porSede(lista, fila, cuenta, separar) {
   const sedes = [...new Set(lista.map(e => e.sede).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-  if (!sedes.length) return lista.map(fila).join('');
+  const cuerpo = l => separar ? separar(l, fila, !!sedes.length) : l.map(fila).join('');
+  if (!sedes.length) return cuerpo(lista);
   return [...sedes, null].map(sd => [sd, lista.filter(e => (e.sede || null) === sd)]).filter(([, l]) => l.length)
-    .map(([sd, l]) => `<div class="fila-grupo"><b>${sd ? esc(sd) : 'Sin sede'}</b><span>${cuenta(l.length)}</span></div>${l.map(fila).join('')}`).join('');
+    .map(([sd, l]) => `<div class="fila-grupo"><b>${sd ? esc(sd) : 'Sin sede'}</b><span>${cuenta(l.length)}</span></div>${cuerpo(l)}`).join('');
+}
+// Hipervisores separados de los servidores y VM (solo si hay de los dos)
+const esHipervisor = e => e.tipo === 'proxmox' || !!e.hipervisor;
+function porRol(l, fila, dentro) {
+  const hv = l.filter(esHipervisor), resto = l.filter(e => !esHipervisor(e));
+  if (!hv.length || !resto.length) return l.map(fila).join('');
+  const cab = (t, tx) => `<div class="fila-grupo rol${dentro ? ' dentro' : ''}"><b>${t}</b><span>${tx}</span></div>`;
+  return cab('Hipervisores', plural(hv.length, 'hipervisor', 'hipervisores')) + hv.map(fila).join('') + cab('Servidores y VM', plural(resto.length, 'servidor', 'servidores')) + resto.map(fila).join('');
 }
 const SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['aviso', 'Se reinició'], 'wan-caida': ['caido', 'Se cayó un enlace a Internet'], 'wan-vuelta': ['ok', 'Volvió el enlace a Internet'] };
 
@@ -92,7 +101,7 @@ function pintar() {
       <div class="dos-col"><div>
         ${c.servidores.length ? `<div class="cab-seccion"><h2>Servidores <span>${c.servidores.length}</span></h2></div>
           <div class="tablero"><div class="tablero-cab" aria-hidden="true"><span>Servidor</span><span>CPU, última hora</span><span>Memoria</span><span>Disco más lleno</span><span>Disponibilidad</span><span class="c-up">Encendido</span><span></span></div>
-          ${porSede(c.servidores, filaServidor, n => plural(n, 'servidor', 'servidores'))}</div>` : ''}
+          ${porSede(c.servidores, filaServidor, n => plural(n, 'servidor', 'servidores'), porRol)}</div>` : ''}
         ${c.red.length ? `<div class="cab-seccion" style="margin-top:${c.servidores.length ? 36 : 0}px"><h2>Red <span>${c.red.length}</span></h2></div>
           <div class="tablero"><div class="tablero-cab rt" aria-hidden="true"><span>Equipo de red</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Disponibilidad</span><span class="c-up">Encendido</span><span></span></div>
           ${porSede(c.red, filaRed, n => plural(n, 'equipo de red', 'equipos de red'))}</div>` : ''}

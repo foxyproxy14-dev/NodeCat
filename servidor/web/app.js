@@ -568,11 +568,21 @@ function pintarSucesos() {
 const sedeFiltro = new Map();   // cliente → sede elegida ('' = todas)
 const SIN_SEDE = '\u0000';
 const sedesDe = l => [...new Set(l.map(e => e.sede).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-function porSede(lista, fila, cab, cuenta) {
+function porSede(lista, fila, cab, cuenta, separar) {
   const sedes = sedesDe(lista);
-  if (!sedes.length) return lista.map(fila).join('');
+  const cuerpo = l => separar ? separar(l, fila, !!sedes.length) : l.map(fila).join('');
+  if (!sedes.length) return cuerpo(lista);
   const grupos = [...sedes, SIN_SEDE].map(sd => [sd, lista.filter(e => (e.sede || SIN_SEDE) === sd)]).filter(([, l]) => l.length);
-  return grupos.map(([sd, l]) => `<div class="fila-grupo"><b>${sd === SIN_SEDE ? 'Sin sede' : esc(sd)}</b><span>${cuenta(l.length)}</span></div>${l.map(fila).join('')}`).join('');
+  return grupos.map(([sd, l]) => `<div class="fila-grupo"><b>${sd === SIN_SEDE ? 'Sin sede' : esc(sd)}</b><span>${cuenta(l.length)}</span></div>${cuerpo(l)}`).join('');
+}
+// Hipervisores (Proxmox, Hyper-V) separados de los servidores y VM, igual que las sedes. Solo si hay de los dos.
+const esHipervisor = e => e.tipo === 'proxmox' || !!e.hipervisor;
+function porRol(l, fila, dentro) {
+  const hv = l.filter(esHipervisor), resto = l.filter(e => !esHipervisor(e));
+  if (!hv.length || !resto.length) return l.map(fila).join('');
+  const cab = (t, n, tx) => `<div class="fila-grupo rol${dentro ? ' dentro' : ''}"><b>${t}</b><span>${tx(n)}</span></div>`;
+  return cab('Hipervisores', hv.length, n => plural(n, 'hipervisor', 'hipervisores')) + hv.map(fila).join('')
+    + cab('Servidores y VM', resto.length, n => plural(n, 'servidor', 'servidores')) + resto.map(fila).join('');
 }
 function vistaCliente(id) {
   const c = cliente(id), todosCli = c.equipos;
@@ -614,7 +624,7 @@ function vistaCliente(id) {
   const lista = [...eq].sort((a, b) => ({ caido: 0, aviso: 1, pendiente: 2, ok: 3 })[nivelDe(a)] - ({ caido: 0, aviso: 1, pendiente: 2, ok: 3 })[nivelDe(b)] || a.nombre.localeCompare(b.nombre));
   t.innerHTML = `<div class="tablero">
     <div class="tablero-cab" aria-hidden="true"><span>Servidor</span><span>CPU, última hora</span><span>Memoria</span><span>Disco más lleno</span><span>Sesiones</span><span class="c-up">Encendido</span><span></span></div>
-    ${porSede(lista, filaEquipo, false, n => plural(n, 'servidor', 'servidores'))}</div>`;
+    ${porSede(lista, filaEquipo, false, n => plural(n, 'servidor', 'servidores'), porRol)}</div>`;
   if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
 }
 
@@ -845,7 +855,7 @@ function pestanasHv(s, vivo, activo) {
   const nav = $('#srvPestanas'), cont = $('#srvPve'), gen = $('#srvGeneral');
   if (!activo) { nav.hidden = true; cont.hidden = true; gen.hidden = false; return; }
   const pve = s.tipo === 'proxmox';
-  const lista = pve ? [['general', 'General'], ['apps', 'Apps'], ['vms', 'VM y LXC'], ['almacen', 'Almacenamiento'], ['copias', 'Backups'], ['nodo', 'Nodo']] : [['general', 'General'], ['vms', 'Máquinas virtuales']];
+  const lista = pve ? [['general', 'General'], ['apps', 'Apps'], ['vms', 'VM y LXC'], ['red', 'Red'], ['almacen', 'Almacenamiento'], ['copias', 'Backups'], ['nodo', 'Nodo']] : [['general', 'General'], ['vms', 'Máquinas virtuales']];
   let p = pestanaHv.get(s.id) || 'general'; if (!lista.some(([k]) => k === p)) p = 'general';
   nav.innerHTML = lista.map(([k, t]) => `<button type="button" data-pest="${k}" aria-pressed="${p === k}" class="${p === k ? 'activa' : ''}">${t}</button>`).join('');
   nav.hidden = false;
@@ -860,51 +870,25 @@ function pestanasHv(s, vivo, activo) {
       .catch(() => pveCache.set(s.id, { t: Date.now(), datos: {} }));
   }
   const datos = (pveCache.get(s.id) || {}).datos;
-  const html = p === 'vms' ? (tablaVms(s, vivo, datos) || '<div class="vacio">No hay máquinas virtuales.</div>')
+  const html = p === 'vms' ? seccionVms(s, vivo, datos)
     : !datos ? gatoCargando('Preguntándole a Proxmox…')
-    : p === 'apps' ? seccionApps(s, datos) : p === 'almacen' ? seccionAlmacen(s, datos) : p === 'copias' ? seccionCopias(s, datos) : seccionNodo(s, datos);
+    : p === 'apps' ? seccionApps(s, datos) : p === 'red' ? seccionRed(s, datos) : p === 'almacen' ? seccionAlmacen(s, datos) : p === 'copias' ? seccionCopias(s, datos) : seccionNodo(s, datos);
   if (cont.dataset.v !== html) {
-    const q = cont.querySelector('#buscarApp'), qv = q ? q.value : '', foco = document.activeElement === q;
+    // Se conserva lo escrito en los buscadores y el filtro de categoría al repintar
+    const q = cont.querySelector('input[type=search]'), qv = q ? q.value : '', qid = q && q.id, foco = document.activeElement === q;
+    const cat = cont.querySelector('#catApp'), cv = cat ? cat.value : '';
     cont.innerHTML = html; cont.dataset.v = html;
-    const q2 = cont.querySelector('#buscarApp');
-    if (q2) { q2.value = qv; filtrarApps(); q2.oninput = filtrarApps; if (foco) q2.focus(); const c = cont.querySelector('#catApp'); if (c) c.onchange = filtrarApps; }
+    const q2 = qid && cont.querySelector('#' + qid); if (q2) { q2.value = qv; if (foco) q2.focus(); }
+    const c2 = cont.querySelector('#catApp'); if (c2) { c2.value = cv; c2.onchange = filtrarApps; }
+    if (cont.querySelector('#buscarApp')) { cont.querySelector('#buscarApp').oninput = filtrarApps; filtrarApps(); }
+    alPintarPve(cont, s, p, datos || {});
   }
 }
 const pendiente = (x, que) => x == null ? gatoCargando(`Leyendo ${que}…`) : x.error ? `<div class="msg atencion">No se pudo leer ${que}: ${esc(x.error)}</div>` : null;
 
-function seccionApps(s, d) {
-  const l = d.apps; const p = pendiente(l, 'las apps'); if (p) return p;
-  const orden = [...l].sort((a, b) => (a.app ? 0 : 1) - (b.app ? 0 : 1) || (a.estado === 'running' ? 0 : 1) - (b.estado === 'running' ? 0 : 1) || Number(a.id) - Number(b.id));
-  const cats = [...new Set(l.map(a => a.categoria).filter(Boolean))].sort();
-  const ini = t => esc(String(t || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
-  return `<div class="apps-barra"><label class="buscar">${ICO.lupa}<span class="sr">Buscar app o CT</span><input type="search" id="buscarApp" placeholder="Buscar app, CT o IP"></label>
-      <select class="selector" id="catApp"><option value="">Todas las categorías</option>${cats.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
-    <p class="tenue" style="margin:0 0 16px">Lo que corre en cada VM y contenedor, con su dirección. La app se reconoce por el nombre o las etiquetas del CT, y la dirección se toma de las notas del CT si allí pones su URL. Los enlaces funcionan desde la red del cliente o por VPN.</p>
-    <div class="apps-rejilla">${orden.map(a => `<article class="app-tarjeta ${a.estado === 'running' ? '' : 'apagada'}" data-buscar="${esc([a.app, a.nombre, a.id, ...(a.ips || []), ...(a.etiquetas || [])].join(' ').toLowerCase())}" data-cat="${esc(a.categoria || '')}">
-        <div class="app-cab"><span class="app-icono" aria-hidden="true">${ini(a.app || a.nombre)}</span><div><strong>${esc(a.app || a.nombre)}</strong><small><span class="punto ${a.estado === 'running' ? 'ok' : 'caido'}" aria-hidden="true"></span>${a.estado === 'running' ? 'Encendida' : 'Apagada'}${a.arranqueAuto ? ', arranca sola' : ''}</small></div></div>
-        ${a.url ? `<a class="app-url" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.url.replace(/\/$/, ''))}</a>` : a.ips && a.ips.length ? `<span class="app-url sin">${esc(a.ips.join(', '))}</span>` : '<span class="app-url sin tenue">Sin IP conocida</span>'}
-        <div class="app-pie"><span><b>${esc(a.id)}</b> ${esc(a.nombre)}</span>${a.categoria ? `<span class="chip-hv vm">${esc(a.categoria)}</span>` : `<span class="tenue">${a.tipo === 'lxc' ? 'LXC' : 'VM'}</span>`}</div>
-        ${a.notas && !a.url ? `<p class="app-notas">${esc(a.notas.slice(0, 120))}</p>` : ''}
-      </article>`).join('')}</div>`;
-}
 function filtrarApps() {
   const q = ($('#buscarApp') || {}).value || '', c = ($('#catApp') || {}).value || '';
   document.querySelectorAll('.app-tarjeta').forEach(t => { t.hidden = !(t.dataset.buscar.includes(q.trim().toLowerCase()) && (!c || t.dataset.cat === c)); });
-}
-
-function seccionAlmacen(s, d) {
-  const n = d.nodo; const p = pendiente(n, 'el almacenamiento'); if (p) return p;
-  const al = n.almacenes || [], ds = n.discos || [];
-  return `<div class="cab-seccion"><h2>Almacenamientos <span>${al.length}</span></h2></div>
-    <section class="hoja desliza" style="margin-bottom:32px"><table class="tabla vms"><thead><tr><th>Nombre</th><th>Tipo</th><th>Contenido</th><th>Uso</th><th>Estado</th></tr></thead><tbody>
-    ${al.map(a => { const pct = a.total ? Math.round(a.usado / a.total * 100) : null; return `<tr class="${a.activo ? '' : 'apagada'}"><td><b>${esc(a.nombre)}</b>${a.compartido ? ' <span class="tenue">compartido</span>' : ''}</td><td>${esc(a.tipo)}</td><td class="tenue">${esc((a.contenido || '').replace(/,/g, ', '))}</td>
-      <td class="num">${a.total ? `${gbs(a.usado)} <span class="tenue">de ${gbs(a.total)}</span> <b>${pct} %</b><span class="carril mini n-${nivel(pct)}"><span style="width:${pct}%"></span></span>` : '—'}</td><td>${a.activo ? '<span class="punto ok"></span>Activo' : '<span class="punto caido"></span>Inactivo'}</td></tr>`; }).join('')}
-    </tbody></table></section>
-    <div class="cab-seccion"><h2>Discos físicos <span>${ds.length}</span></h2></div>
-    ${ds.length ? `<section class="hoja desliza"><table class="tabla vms"><thead><tr><th>Disco</th><th>Modelo</th><th>Tipo</th><th>Tamaño</th><th>Salud (SMART)</th><th>Desgaste</th><th>Uso</th></tr></thead><tbody>
-    ${ds.map(x => { const bien = /pass|ok/i.test(x.salud || ''); return `<tr><td><b>${esc(x.disco)}</b></td><td>${esc(x.modelo || '—')}<br><small class="tenue">${esc(x.serie || '')}</small></td><td>${esc((x.tipo || '').toUpperCase())}</td><td class="num">${gbs(x.tamano)}</td>
-      <td>${x.salud ? `<span class="punto ${bien ? 'ok' : 'caido'}"></span>${esc(x.salud)}` : '<span class="tenue">—</span>'}</td><td class="num">${x.desgaste != null ? `${100 - x.desgaste} % usado` : '—'}</td><td class="tenue">${esc(x.uso || '—')}</td></tr>`; }).join('')}
-    </tbody></table></section>` : '<div class="vacio">Proxmox no informó discos físicos.</div>'}`;
 }
 
 function seccionCopias(s, d) {
