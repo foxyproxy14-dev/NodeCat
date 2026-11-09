@@ -14,3 +14,5 @@ Thumbs.db
 
 # Ajustes propios de cada instalación (no se pisan al actualizar)
 docker-compose.override.yml
+__pycache__/
+*.pyc
