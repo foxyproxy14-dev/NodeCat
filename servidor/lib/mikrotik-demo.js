@@ -52,9 +52,11 @@ function estado(id, perfil) {
   e = { p, arranque: Date.now() - (5 + rnd() * 60) * 864e5, t: Date.now(), rafaga: 0,
     contadores: Object.fromEntries(p.interfaces.map(i => [i[0], { rx: rnd() * 1e12, tx: rnd() * 3e11 }])),
     leases: Array.from({ length: p.leases }, (_, i) => ({ ip: `192.168.${perfil === 'hex' ? 1 : 88}.${20 + i}`, mac: mac(), nombre: i < NOMBRES.length ? NOMBRES[i] : (rnd() < 0.5 ? '' : 'android-' + hex2().toLowerCase() + hex2().toLowerCase()), activo: rnd() < 0.82, visto: Math.floor(rnd() * 3000) })),
-    wifi: Array.from({ length: p.wifi }, () => ({ mac: mac(), señal: -45 - Math.floor(rnd() * 35), desde: Date.now() - rnd() * 6 * 3600e3, banda: rnd() < 0.6 })),
+    wifi: [],
     registro: Array.from({ length: 60 }, (_, i) => { const [tm, msg] = TEMAS[Math.floor(rnd() * TEMAS.length)]; return { t: Date.now() - (60 - i) * 97000, tm, msg }; })
   };
+  // Los equipos Wi-Fi son algunos de los del DHCP (así tienen nombre e IP)
+  e.wifi = e.leases.filter(l => l.activo).slice(0, p.wifi).map(l => ({ mac: l.mac, señal: -45 - Math.floor(rnd() * 35), desde: Date.now() - rnd() * 6 * 3600e3, banda: rnd() < 0.6 }));
   estados.set(id, e);
   return e;
 }
@@ -103,7 +105,7 @@ function conexion(id) {
           return e.leases.map(l => ({ address: l.ip, 'active-address': l.activo ? l.ip : '', 'mac-address': l.mac, 'active-mac-address': l.activo ? l.mac : '', 'host-name': l.nombre, status: l.activo ? 'bound' : 'waiting', server: 'dhcp-lan', comment: l.nombre === 'HP-LaserJet' ? 'Impresora fija' : '', 'last-seen': dur(l.visto + rnd() * 30), dynamic: String(l.nombre !== 'HP-LaserJet'), disabled: 'false' }));
         case '/interface/wifi/registration-table/print':
           if (!p.ap || p.version.startsWith('6') || p.modelo === 'hAP ac²') throw Object.assign(new Error('no such command prefix'), { tipo: 'trap' });
-          return e.wifi.map(w => ({ interface: w.banda ? 'wifi1' : 'wifi2', 'mac-address': w.mac, signal: String(w.señal + Math.round(rnd() * 4 - 2)), uptime: dur((ahora - w.desde) / 1000), 'tx-rate': w.banda ? '866.7Mbps-80MHz/2S' : '144.4Mbps-20MHz/2S', 'rx-rate': w.banda ? '780Mbps' : '130Mbps', ssid: 'Almacen' }));
+          return e.wifi.map(w => ({ interface: w.banda ? 'wifi1' : 'wifi2', 'mac-address': w.mac, signal: String(w.señal + Math.round(rnd() * 4 - 2)), uptime: dur((ahora - w.desde) / 1000), 'tx-rate': w.banda ? '866700000' : '144400000', 'rx-rate': w.banda ? '780000000' : '130000000', ssid: w.banda ? 'Almacen' : 'Almacen-Invitados' }));
         case '/interface/wireless/registration-table/print':
           if (!p.ap) throw Object.assign(new Error('no such command prefix'), { tipo: 'trap' });
           return e.wifi.map(w => ({ interface: w.banda ? 'wlan2' : 'wlan1', 'mac-address': w.mac, 'signal-strength': `${w.señal}dBm@6Mbps`, uptime: dur((ahora - w.desde) / 1000), 'tx-rate': '130Mbps-20MHz/2S', 'rx-rate': '117Mbps' }));
@@ -112,6 +114,8 @@ function conexion(id) {
           return p.wg.map((n, i) => ({ name: n, comment: n, interface: p.interfaces.find(x => x[1] === 'wg')[0], 'current-endpoint-address': `186.${90 + i}.${14 * i + 3}.${40 + i}`, 'current-endpoint-port': '13231', 'last-handshake': i === p.wg.length - 1 && p.wg.length > 1 ? '9m12s' : dur(20 + rnd() * 90), rx: String(Math.round(rnd() * 9e9)), tx: String(Math.round(rnd() * 4e9)), 'allowed-address': `10.10.${i + 1}.0/24`, disabled: 'false' }));
         case '/ppp/active/print': return p.ppp.map((n, i) => ({ name: n, service: p.version.startsWith('6') ? 'l2tp' : 'ovpn', 'caller-id': `190.${200 + i}.33.${12 + i}`, address: `10.99.0.${10 + i}`, uptime: dur(3600 * (1 + i) + rnd() * 900) }));
         case '/ip/ipsec/active-peers/print': return [];
+        case '/interface/wireless/print': return [{ name: 'wlan1', ssid: 'Tienda' }, { name: 'wlan2', ssid: 'Tienda-5G' }];
+        case '/interface/wifi/print': return [{ name: 'wifi1', 'configuration.ssid': 'Almacen' }, { name: 'wifi2', 'configuration.ssid': 'Almacen-Invitados' }];
         case '/caps-man/registration-table/print': throw Object.assign(new Error('no such command prefix'), { tipo: 'trap' });
         case '/ip/firewall/filter/print': {
           const k = jornada(ahora) * (ahora - e.arranque) / 1000;

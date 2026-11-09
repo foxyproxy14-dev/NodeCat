@@ -229,11 +229,27 @@ const SECCIONES = {
     return l.map(x => ({ ip: x['active-address'] || x.address, mac: x['active-mac-address'] || x['mac-address'], nombre: x['host-name'] || '', estado: x.status || '', servidor: x.server || '', comentario: x.comment || '', visto: segundos(x['last-seen']), dinamica: si(x.dynamic), deshabilitada: si(x.disabled) }));
   },
   async wifi(con) {
-    let l = await opcional(con.imprimir('/interface/wifi/registration-table/print'));
-    if (!l) l = await opcional(con.imprimir('/interface/wireless/registration-table/print'));
-    if (!l) l = await opcional(con.imprimir('/caps-man/registration-table/print'));
+    let l = await opcional(con.imprimir('/interface/wifi/registration-table/print')), tipo = 'wifi';
+    if (!l) { l = await opcional(con.imprimir('/interface/wireless/registration-table/print')); tipo = 'wireless'; }
+    if (!l) { l = await opcional(con.imprimir('/caps-man/registration-table/print')); tipo = 'capsman'; }
     if (!l) return { noDisponible: true, lista: [] };
-    return { lista: l.map(x => ({ interfaz: x.interface || '', mac: x['mac-address'] || '', señal: num(String(x.signal || x['signal-strength'] || '').split('@')[0]), tiempo: segundos(x.uptime), tx: x['tx-rate'] || '', rx: x['rx-rate'] || '', ssid: x.ssid || '' })) };
+    // SSID de cada interfaz, por si la tabla no lo trae (RouterOS 6 y algunas versiones de 7)
+    const ssid = new Map();
+    if (l.some(x => !x.ssid)) {
+      const ifs = tipo === 'wifi' ? await opcional(con.imprimir('/interface/wifi/print', { proplist: ['name', 'configuration.ssid', 'ssid'] }))
+        : tipo === 'wireless' ? await opcional(con.imprimir('/interface/wireless/print', { proplist: ['name', 'ssid'] })) : null;
+      for (const i of ifs || []) ssid.set(i.name, i['configuration.ssid'] || i.ssid || '');
+    }
+    // Nombre e IP de cada equipo, según el DHCP
+    const leases = await opcional(con.imprimir('/ip/dhcp-server/lease/print', { proplist: ['active-mac-address', 'mac-address', 'host-name', 'comment', 'active-address', 'address'] }));
+    const porMac = new Map((leases || []).map(x => [String(x['active-mac-address'] || x['mac-address'] || '').toUpperCase(), x]));
+    const velocidad = v => { if (!v) return null; const m = String(v).match(/^([\d.]+)\s*(G|M|k)?bps/i); if (m) return Number(m[1]) * ({ G: 1e9, M: 1e6, k: 1e3 }[m[2]] || 1); const n = Number(v); return isFinite(n) ? n : null; };
+    return { lista: l.map(x => {
+      const mac = String(x['mac-address'] || '').toUpperCase(), d = porMac.get(mac) || {};
+      return { interfaz: x.interface || '', mac, nombre: d.comment || d['host-name'] || '', ip: d['active-address'] || d.address || '',
+        ssid: x.ssid || ssid.get(x.interface) || '', señal: num(String(x.signal || x['signal-strength'] || '').split('@')[0]),
+        tiempo: segundos(x.uptime), tx: velocidad(x['tx-rate']), rx: velocidad(x['rx-rate']) };
+    }) };
   },
   async vpn(con) {
     const wg = await opcional(con.imprimir('/interface/wireguard/peers/print'));

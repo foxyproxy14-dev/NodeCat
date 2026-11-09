@@ -20,11 +20,11 @@ const mem = gb => gb == null ? '—' : gb < 1 ? `${Math.round(gb * 1024)} MB` : 
 const miles = v => v == null ? '—' : Number(v).toLocaleString('es');
 const hace = s => s == null ? '—' : s < 60 ? `${s} s` : durTxt(s * 1000);
 
-const rt = { id: null, pestana: 'resumen', vivo: null, sel: null, temporizador: null, seccion: {}, cargandoSec: false, filtro: '', rango: '24h', histT: {} };
+const rt = { id: null, red: null, pestana: 'resumen', vivo: null, sel: null, temporizador: null, seccion: {}, cargandoSec: false, filtro: '', rango: '24h', histT: {} };
 const PESTANAS_RT = [['resumen', 'Resumen'], ['interfaces', 'Interfaces'], ['dhcp', 'DHCP'], ['wifi', 'Wi‑Fi'], ['vpn', 'VPN'], ['firewall', 'Firewall'], ['registro', 'Registro']];
 
 function montarRouter(e, c) {
-  rt.id = e.id; rt.vivo = null; rt.seccion = {}; rt.filtro = '';
+  rt.id = e.id; rt.vivo = null; rt.seccion = {}; rt.filtro = ''; rt.red = null;
   if (!PESTANAS_RT.some(([k]) => k === rt.pestana)) rt.pestana = 'resumen';
   $('#vista').innerHTML = `
     <nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<a href="#/c/${c.id}">${esc(c.nombre)}</a>${ICO.miga}<span>${esc(e.nombre)}</span></nav>
@@ -300,13 +300,23 @@ function pintarSeccion() {
   } else if (rt.pestana === 'wifi') {
     if (d.noDisponible) h = '<div class="hoja vacio gato-vacio">' + gatoSVG('programando') + '<strong>Este router no tiene Wi‑Fi</strong>O no se puede leer su tabla de clientes inalámbricos.</div>';
     else {
-      const l = d.lista.filter(x => coincide(x.mac, x.interfaz, x.ssid));
-      h = `<div class="sub-cab"><h3>Clientes Wi‑Fi <span>${d.lista.length} conectados</span></h3>${buscador('Buscar MAC o interfaz')}</div>
-        <section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>Equipo (MAC)</th><th>Interfaz</th><th>Señal</th><th>Conectado</th><th>Velocidad</th></tr></thead><tbody>
-        ${l.sort((a, b) => (b.señal || -99) - (a.señal || -99)).map(x => { const q = x.señal == null ? null : Math.max(0, Math.min(100, Math.round((x.señal + 90) / 50 * 100)));
-          return `<tr><td><span class="usr">${esc(x.mac)}</span></td><td>${esc(x.interfaz)}${x.ssid ? `<span class="dom">${esc(x.ssid)}</span>` : ''}</td>
+      const l = d.lista.filter(x => coincide(x.mac, x.interfaz, x.ssid, x.nombre, x.ip));
+      const redes = [...new Set(d.lista.map(x => x.ssid || ''))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));
+      const fila = x => { const q = x.señal == null ? null : Math.max(0, Math.min(100, Math.round((x.señal + 90) / 50 * 100)));
+        return `<tr><td><span class="usr">${x.nombre ? esc(x.nombre) : '<span class="tenue">Sin nombre</span>'}</span><span class="dom">${esc(x.mac)}</span></td>
+          <td>${x.ip ? esc(x.ip) : '<span class="tenue">—</span>'}</td><td>${esc(x.interfaz)}</td>
           <td>${x.señal == null ? '—' : `<span class="senal">${x.señal} dBm<span class="carril ${q < 35 ? 'n-alerta' : q < 55 ? 'n-aviso' : ''}"><span style="width:${q}%"></span></span></span>`}</td>
-          <td>${hace(x.tiempo)}</td><td class="tenue">${esc(String(x.tx).split('-')[0])}</td></tr>`; }).join('') || '<tr><td colspan="5" class="tenue">Nadie conectado.</td></tr>'}</tbody></table></section>`;
+          <td>${hace(x.tiempo)}</td><td class="tenue">${x.tx ? bps(x.tx) : '—'}</td></tr>`; };
+      h = `<div class="sub-cab"><h3>Clientes Wi‑Fi <span>${d.lista.length} conectados en ${plural(redes.length, 'red', 'redes')}</span></h3>${buscador('Buscar equipo, IP o MAC')}</div>
+        <div class="segmentos" role="group" aria-label="Red Wi-Fi" id="rtRedes" style="margin-bottom:14px">
+          <button type="button" data-red="" aria-pressed="${!rt.red}">Todas</button>${redes.map(r => `<button type="button" data-red="${esc(r || '-')}" aria-pressed="${rt.red === (r || '-')}">${r ? esc(r) : 'Sin nombre'} <span class="cuenta">${d.lista.filter(x => (x.ssid || '') === r).length}</span></button>`).join('')}
+        </div>
+        ${redes.filter(r => !rt.red || rt.red === (r || '-')).map(r => {
+          const g = l.filter(x => (x.ssid || '') === r).sort((a, b) => (b.señal || -99) - (a.señal || -99));
+          if (!g.length) return '';
+          return `<div class="sub-cab"><h3>${r ? esc(r) : 'Red sin nombre'} <span>${plural(g.length, 'equipo', 'equipos')}</span></h3></div>
+            <section class="hoja desliza" style="margin-bottom:8px"><table class="tabla-rt"><thead><tr><th>Equipo</th><th>IP</th><th>Interfaz</th><th>Señal</th><th>Conectado</th><th>Velocidad</th></tr></thead><tbody>${g.map(fila).join('')}</tbody></table></section>`;
+        }).join('') || '<div class="hoja vacio">Nada coincide.</div>'}`;
     }
   } else if (rt.pestana === 'vpn') {
     const wg = d.wireguard || [], ppp = d.ppp || [], ips = d.ipsec || [];
@@ -337,6 +347,7 @@ function pintarSeccion() {
       ${l.map(x => { const err = /error|critical|warning/.test(x.temas); return `<tr class="${err ? 'error' : ''}"><td>${esc(x.hora)}</td><td style="width:170px">${String(x.temas).split(',').map(t => `<span class="etq ${/error|critical/.test(t) ? 'mal' : /warning/.test(t) ? 'aviso' : ''}">${esc(t)}</span>`).join(' ')}</td><td>${esc(x.mensaje)}</td></tr>`; }).join('') || '<tr><td class="tenue">Nada coincide.</td></tr>'}</tbody></table></section>`;
   }
   el.innerHTML = h;
+  const rr = $('#rtRedes'); if (rr) rr.onclick = ev => { const b = ev.target.closest('[data-red]'); if (b) { rt.red = b.dataset.red || null; pintarSeccion(); } };
   const inp = $('#rtFiltro');
   if (inp) {
     inp.oninput = ev => { rt.filtro = ev.target.value; pintarSeccion(); };
