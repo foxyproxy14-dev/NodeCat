@@ -852,3 +852,4 @@ body.iniciando .inicio-carga { display: grid; }
 .bot-chats .chip small { color: var(--tinta-3); margin-left: 4px; }
 .bot-chats .mal { color: var(--alerta); font-size: 13px; }
 .bot-editar { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.btn.grande { height: 44px; padding: 0 20px; font-size: 15px; }

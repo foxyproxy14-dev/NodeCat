@@ -356,7 +356,7 @@ function montar(r) {
         <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos">${gatoCargando('Cargando…', 'chica')}</section></aside>
       </div>`;
     if (esAdmin()) {
-      $('#btnAgente').addEventListener('click', () => gestionClientes(c.id));
+      $('#btnAgente').addEventListener('click', () => agregarServidores(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
       $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
       $('#btnForti').addEventListener('click', () => dialogoForti(c.id));
@@ -885,6 +885,23 @@ function libre(html, ancho) {
 const ocupado = async (b, texto, fn) => { const t = b.textContent; b.disabled = true; b.textContent = texto; try { await fn(); } finally { b.disabled = false; b.textContent = t; } };
 
 /* ---------------- Clientes y agentes ---------------- */
+// Desde la página de un cliente: solo el instalador de ESE cliente, para no instalar el de otro por error
+async function agregarServidores(id) {
+  let datos;
+  try { datos = await api('/api/clientes'); } catch (x) { if (!x.login) aviso(x.message, true); return; }
+  const c = datos.clientes.find(x => x.id === id); if (!c) return;
+  const t = encodeURIComponent(CSRF);
+  const dlg = libre(`<div><h3>Agregar servidores a ${esc(c.nombre)}</h3>
+    <p>El instalador ya va configurado para <b>${esc(c.nombre)}</b> y envía los datos a <b>${esc(datos.url)}</b>${/^https:/.test(datos.url) ? ' por HTTPS' : ''}: no hace falta VPN ni abrir puertos.</p>
+    <ol class="pasos"><li>Descarga el instalador.</li>
+      <li>Cópialo a cada servidor de ${esc(c.nombre)} y ábrelo con doble clic. Si Windows avisa de que es una aplicación desconocida, pulsa <b>Más información</b> y <b>Ejecutar de todas formas</b>.</li>
+      <li>En unos segundos el servidor aparecerá aquí. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
+    <p><a class="btn prim grande" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
+    <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>
+    <div class="pie"><button class="btn" type="button" data-todos style="margin-right:auto">Clave y otros clientes</button><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`);
+  dlg.querySelector('[data-todos]').onclick = () => { dlg.close(); gestionClientes(id); };
+}
+
 async function gestionClientes(abrirId, crear) {
   let datos;
   const recargar = async () => { datos = await api('/api/clientes'); };
