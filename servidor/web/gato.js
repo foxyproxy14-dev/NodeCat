@@ -36,38 +36,41 @@ const GATO_POSES = {
     <rect class="g-pata2" x="68" y="43" width="12" height="8" rx="4" fill="${GATO_C.pelo}"/>
     <path class="g-chispa" d="M93 50 l1.6 -4.4 l1.6 4.4 l4.4 1.6 l-4.4 1.6 l-1.6 4.4 l-1.6 -4.4 l-4.4 -1.6 z" fill="#FAB219"/>`,
 
-  // Con la tapa abierta, metido en la torre arreglándola (como el gato de la foto)
+  // Con la tapa de la torre abierta, sentado de perfil y destornillador en mano
   arreglando: () => `
-    <g class="g-cola"><path d="M30 86 Q10 88 12 68 Q13 58 22 56" fill="none" stroke="${GATO_C.pelo}" stroke-width="7" stroke-linecap="round"/></g>
-    <rect class="g-caja" x="52" y="10" width="54" height="84" rx="5"/>
-    <rect x="57" y="15" width="44" height="74" rx="3" fill="#0d1113"/>
-    <rect x="61" y="19" width="36" height="42" rx="2" fill="#24493a"/>
-    <rect x="66" y="24" width="12" height="10" rx="1.5" fill="#3b6b56"/><rect x="82" y="24" width="10" height="4" rx="1" fill="#c9a34a"/><rect x="82" y="31" width="10" height="4" rx="1" fill="#c9a34a"/>
-    <path d="M64 42 H92 M64 47 H86 M64 52 H90" stroke="#3b6b56" stroke-width="2" stroke-linecap="round"/>
-    <g class="g-ventilador"><circle cx="79" cy="75" r="10" fill="#1d2327"/>
-      <path d="M79 75 L79 66 Q84 67 82 73 Z M79 75 L88 75 Q87 80 81 78 Z M79 75 L79 84 Q74 83 76 77 Z M79 75 L70 75 Q71 70 77 72 Z" fill="#4b565e"/>
-      <circle cx="79" cy="75" r="2.2" fill="#6b7780"/></g>
-    <circle class="g-led" cx="100" cy="90" r="0"/>
-    <g class="g-cuerpo-a">
-      <ellipse cx="40" cy="74" rx="21" ry="18" fill="${GATO_C.pelo}"/>
-      <path d="M34 58 q3 15 0 31 M44 57 q3 16 0 33" fill="none" stroke="${GATO_C.sombra}" stroke-width="2.6" stroke-linecap="round"/>
-      <rect x="30" y="86" width="12" height="8" rx="4" fill="${GATO_C.sombra}"/><rect x="44" y="86" width="12" height="8" rx="4" fill="${GATO_C.sombra}"/>
-      <path d="M50 64 L64 48" stroke="${GATO_C.pelo}" stroke-width="13" stroke-linecap="round"/>
+    <rect class="g-caja" x="60" y="12" width="48" height="82" rx="5"/>
+    <rect x="65" y="17" width="38" height="72" rx="3" fill="#0d1113"/>
+    <rect x="69" y="21" width="30" height="38" rx="2" fill="#24493a"/>
+    <rect x="73" y="25" width="10" height="9" rx="1.5" fill="#3b6b56"/><rect x="86" y="25" width="9" height="3.5" rx="1" fill="#c9a34a"/><rect x="86" y="31" width="9" height="3.5" rx="1" fill="#c9a34a"/>
+    <path d="M73 41 H95 M73 46 H90 M73 51 H93" stroke="#3b6b56" stroke-width="2" stroke-linecap="round"/>
+    <g class="g-ventilador"><circle cx="84" cy="74" r="10" fill="#1d2327"/>
+      <path d="M84 74 L84 65 Q89 66 87 72 Z M84 74 L93 74 Q92 79 86 77 Z M84 74 L84 83 Q79 82 81 76 Z M84 74 L75 74 Q76 69 82 71 Z" fill="#4b565e"/>
+      <circle cx="84" cy="74" r="2.2" fill="#6b7780"/></g>
+    <g class="g-cola"><path d="M30 90 Q8 92 10 72 Q11 63 19 61" fill="none" stroke="${GATO_C.pelo}" stroke-width="7" stroke-linecap="round"/></g>
+    <ellipse cx="40" cy="71" rx="16" ry="21" fill="${GATO_C.pelo}"/>
+    <path d="M33 56 q-3 6 0 12 M31 66 q-3 6 0 12" fill="none" stroke="${GATO_C.sombra}" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="36" cy="83" r="11" fill="${GATO_C.pelo}"/>
+    <ellipse cx="47" cy="92.5" rx="7" ry="3.6" fill="${GATO_C.sombra}"/>
+    <path d="M45 66 L62 69" stroke="${GATO_C.sombra}" stroke-width="6" stroke-linecap="round"/>
+    <g class="g-cabeza-perfil">
+      <path d="M39 33 L40 20 L47 29 Z M48 28 L55 18 L57 32 Z" fill="${GATO_C.pelo}" stroke="${GATO_C.pelo}" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M41.5 29 L42 23.5 L45 27.5 Z M50.5 27.5 L54 22 L54.6 29.5 Z" fill="${GATO_C.oreja}"/>
+      <circle cx="49" cy="40" r="13" fill="${GATO_C.pelo}"/>
+      <ellipse cx="57.5" cy="44" rx="5.5" ry="4.4" fill="${GATO_C.pelo}"/>
+      <path d="M51.6 37.6 q2.6 -1.8 5.2 0" fill="none" stroke="${GATO_C.tinta}" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M61.4 41.6 L63.2 42.6 L61.6 43.9 Z" fill="${GATO_C.nariz}"/>
+      <path d="M59.6 47.6 q1.2 2.6 2.6 0.4 Z" fill="${GATO_C.rubor}"/>
+      <path d="M57 44.5 h7 M57 46 l6 1.8" stroke="${GATO_C.sombra}" stroke-width="1" stroke-linecap="round" opacity=".7"/>
     </g>
-    <g class="g-cabeza-dentro">
-      <path d="M58 40 L60 27 L67 36 Z M70 35 L76 25 L77 39 Z" fill="${GATO_C.pelo}" stroke="${GATO_C.pelo}" stroke-width="3" stroke-linejoin="round"/>
-      <ellipse cx="68" cy="44" rx="12" ry="10" fill="${GATO_C.pelo}"/>
-      <path d="M63 39 q3 -1 6 0" fill="none" stroke="${GATO_C.sombra}" stroke-width="2" stroke-linecap="round"/>
+    <g class="g-brazo">
+      <path d="M46 58 L65 55" stroke="${GATO_C.pelo}" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M66 54.8 L72.5 53.6" stroke="#5cbfc7" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M72.5 53.6 L81 52" stroke="#aeb7bd" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="65.5" cy="55" r="3.6" fill="${GATO_C.pelo}"/>
     </g>
-    <g class="g-llave">
-      <path d="M54 66 L72 58" stroke="${GATO_C.pelo}" stroke-width="7" stroke-linecap="round"/>
-      <path d="M72 58 L84 52" stroke="#aeb7bd" stroke-width="3" stroke-linecap="round"/>
-      <path d="M83 48.5 a4.2 4.2 0 1 0 3.6 7.2 l-2.4 -1.6 l0.4 -2.6 z" fill="#aeb7bd"/>
-    </g>
-    <path class="g-chispa" d="M88 44 l1.4 -3.8 l1.4 3.8 l3.8 1.4 l-3.8 1.4 l-1.4 3.8 l-1.4 -3.8 l-3.8 -1.4 z" fill="#FAB219"/>
-    <path class="g-chispa g-chispa2" d="M92 56 l1 -2.6 l1 2.6 l2.6 1 l-2.6 1 l-1 2.6 l-1 -2.6 l-2.6 -1 z" fill="#FAB219"/>
-    <circle class="g-tornillo" cx="86" cy="60" r="1.6" fill="#aeb7bd"/>`,
-
+    <path class="g-chispa" d="M81 48 l1.4 -3.8 l1.4 3.8 l3.8 1.4 l-3.8 1.4 l-1.4 3.8 l-1.4 -3.8 l-3.8 -1.4 z" fill="#FAB219"/>
+    <path class="g-chispa g-chispa2" d="M86 55 l1 -2.6 l1 2.6 l2.6 1 l-2.6 1 l-1 2.6 l-1 -2.6 l-2.6 -1 z" fill="#FAB219"/>
+    <circle class="g-tornillo" cx="81" cy="54" r="1.6" fill="#aeb7bd"/>`,
   corriendo: () => `
     <g class="g-polvo"><circle cx="22" cy="80" r="3.5"/><circle cx="14" cy="77" r="2.5"/><circle cx="28" cy="83" r="2"/></g>
     <g class="g-cuerpo">
