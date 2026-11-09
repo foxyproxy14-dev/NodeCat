@@ -562,8 +562,8 @@ function vistaCliente(id) {
   $('#tituloTablero').innerHTML = `Servidores <span>${eq.length}</span>`;
   const t = $('#tablero');
   if (!eq.length) {
-    t.innerHTML = gatoVacio('Sin servidores', esAdmin() ? 'Descarga el agente, cópialo a cada servidor y ejecuta “Instalar agente.bat”. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el agente</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
-    const b = $('#btnAg2'); if (b) b.onclick = () => gestionClientes(c.id);
+    t.innerHTML = gatoVacio('Sin servidores', esAdmin() ? 'Descarga el instalador, cópialo a cada servidor y ábrelo con doble clic. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el instalador</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
+    const b = $('#btnAg2'); if (b) b.onclick = () => agregarServidores(c.id);
     if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
     return;
   }
@@ -898,8 +898,25 @@ async function agregarServidores(id) {
       <li>En unos segundos el servidor aparecerá aquí. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
     <p><a class="btn prim grande" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
     <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>
-    <div class="pie"><button class="btn" type="button" data-todos style="margin-right:auto">Clave y otros clientes</button><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`);
-  dlg.querySelector('[data-todos]').onclick = () => { dlg.close(); gestionClientes(id); };
+    <details class="clave"><summary>Clave del agente</summary>
+      <p>Va incluida en el instalador. Si generas una nueva, los agentes ya instalados de ${esc(c.nombre)} dejarán de enviar datos hasta que los reinstales con el instalador nuevo.</p>
+      <code class="codigo" data-clave-txt>${esc(c.clave)}</code>
+      <button class="btn" type="button" data-nueva-clave>Generar una clave nueva</button>
+    </details>
+    <div class="msg error" role="alert" hidden></div>
+    <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`);
+  const bn = dlg.querySelector('[data-nueva-clave]');
+  let seguro = false;
+  bn.onclick = async () => {
+    if (!seguro) { seguro = true; bn.className = 'btn peligro'; bn.textContent = '¿Seguro? Generar una clave nueva'; return; }
+    try {
+      await enviar(`/api/clientes/${c.id}/clave`, 'POST');
+      const d = await api('/api/clientes'); const n = d.clientes.find(x => x.id === id);
+      dlg.querySelector('[data-clave-txt]').textContent = n ? n.clave : '';
+      seguro = false; bn.className = 'btn'; bn.textContent = 'Generar una clave nueva';
+      aviso('Clave nueva generada. Descarga el instalador otra vez para los servidores de este cliente.');
+    } catch (x) { if (!x.login) gatoDice(dlg.querySelector('.msg'), x.message); }
+  };
 }
 
 async function gestionClientes(abrirId, crear) {
@@ -1047,7 +1064,7 @@ $('#btnCuenta').addEventListener('click', e => {
   if (!SESION) return;
   if (!$('#menu').hidden) { cerrarMenu(); return; }
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }];
-  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => gestionClientes() }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
+  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
