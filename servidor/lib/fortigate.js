@@ -1,4 +1,5 @@
 'use strict';
+const firmware = require('./firmware');
 // FortiGate: consulta periódica por la API REST (solo lectura), tráfico en vivo, SD-WAN y secciones bajo demanda.
 const { q } = require('./db');
 const flota = require('./flota');
@@ -98,6 +99,8 @@ async function sondear(r) {
   const ifs = await a.get('monitor/system/interface', { include_vlan: 'true', include_aggregate: 'true' });
   const sdwan = await opcional(a.get('monitor/virtual-wan/members'));
   const salud = await opcional(a.get('monitor/virtual-wan/health-check'));
+  // Versiones de FortiOS disponibles según FortiGuard (solo se lee; cada 6 h)
+  if (!L.fwT || ahora - L.fwT > 6 * 3600e3) { L.fwT = ahora; L.firmware = await opcional(a.get('monitor/system/firmware')); }
   if (!L.t || ahora - L.t > 60000) {
     const st = await a.get('monitor/system/status');
     const sensores = await opcional(a.get('monitor/system/sensor-info'));
@@ -175,7 +178,8 @@ async function sondear(r) {
     so: `FortiOS ${String(L.version || '').replace(/^v/, '')}${L.modelo ? ', ' + L.modelo : ''}`, arranque: L.arranque,
     discos: disco != null ? [{ unidad: 'Disco', etiqueta: '', total: null, libre: null, pct: disco }] : [], sesiones: [],
     red: { identidad: L.identidad, modelo: L.modelo, version: String(L.version || '').replace(/^v/, ''), serie: L.serie, arquitectura: '', temperatura: L.temperatura, voltaje: null,
-      conexiones: actual(R.session), dhcp: L.dhcp, vpn: L.vpn, vpnTotal: L.vpnTotal, ha: L.ha, latencia, wan, wans, interfaces }
+      conexiones: actual(R.session), dhcp: L.dhcp, vpn: L.vpn, vpnTotal: L.vpnTotal, ha: L.ha, latencia, wan, wans, interfaces,
+      actualizacion: firmware.fortios(L.version, L.firmware) }
   };
   flota.actualizarRouter(r.id, d, r.c.demo ? '' : r.c.host, String(L.version || '').replace(/^v/, ''));
 }

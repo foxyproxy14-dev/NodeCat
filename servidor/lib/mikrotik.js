@@ -1,4 +1,5 @@
 'use strict';
+const firmware = require('./firmware');
 // Routers MikroTik: consulta periódica por la API (solo lectura), tráfico en vivo, historial y secciones bajo demanda.
 const { q } = require('./db');
 const flota = require('./flota');
@@ -129,6 +130,11 @@ async function sondear(r) {
       dhcp: leases ? leases.filter(x => x.status === 'bound').length : null, vpn: (wg ? wg.filter(p => !si(p.disabled) && segundos(p['last-handshake']) != null && segundos(p['last-handshake']) < 180).length : 0) + (ppp ? ppp.length : 0),
       vpnTotal: (wg ? wg.filter(p => !si(p.disabled)).length : 0) + (ppp ? ppp.length : 0) });
   }
+  // Canal de actualizaciones del router (solo se lee; cada 6 h)
+  if (!L.fwT || ahora - L.fwT > 6 * 3600e3) {
+    const [up] = (await opcional(con.imprimir('/system/package/update/print', { proplist: ['channel', 'latest-version'] }))) || [];
+    L.fwT = ahora; L.canal = up && up.channel || null; L.ultimaRouter = up && up['latest-version'] || null;
+  }
 
   // Tráfico: diferencia de contadores desde la consulta anterior
   const interfaces = [];
@@ -186,6 +192,7 @@ async function sondear(r) {
       temperatura: L.salud ? L.salud.temperatura : null, voltaje: L.salud ? L.salud.voltaje : null,
       conexiones: L.conexiones, dhcp: L.dhcp, vpn: L.vpn, vpnTotal: L.vpnTotal, latencia,
       wan: w ? { interfaz: w.nombre, activa: w.activa && !w.deshabilitada, rx: w.rx, tx: w.tx } : null,
+      actualizacion: firmware.routeros(version, L.canal || (/\(([\w-]+)\)/.exec(res.version || '') || [])[1], L.ultimaRouter),
       interfaces
     }
   };

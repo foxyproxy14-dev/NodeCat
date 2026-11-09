@@ -139,6 +139,10 @@ function vistaRouter(id) {
   else if (e.estado === 'caido') av = gatoError(`<b>No responde.</b> La última respuesta fue ${cuando(e.ultimo)}. Los datos de abajo son los últimos que llegaron.`);
   else if (e.estado === 'pendiente') av = '<div class="msg atencion">Conectando con el router…</div>';
   if (vivo && red.wan && !red.wan.activa) av += `<div class="msg error"><b>El enlace WAN (${esc(red.wan.interfaz)}) está caído.</b> El router sigue respondiendo, quizá por una conexión de respaldo.</div>`;
+  const fw = red.actualizacion;
+  if (fw && fw.nueva) av += `<div class="msg fw-nueva"><span class="fw-ico" aria-hidden="true">⬆</span><div><b>${esc(fw.producto)} ${esc(fw.nueva)} disponible.</b> Este equipo tiene ${esc(fw.actual)}${fw.canal ? ` (canal ${esc(fw.canal)})` : fw.rama ? ` (rama ${esc(fw.rama)})` : ''}.${fw.masNueva ? ` También existe la ${esc(fw.masNueva)}, de una rama más nueva.` : ''}
+    NodeCat solo avisa: actualízalo tú desde ${e.tipo === 'fortigate' ? 'el FortiGate (Sistema → Firmware)' : 'Winbox o la web del router (System → Packages → Check For Updates)'} cuando puedas, idealmente con un respaldo hecho.
+    <a href="${esc(fw.notas)}" target="_blank" rel="noopener noreferrer">Ver las notas de la versión</a></div></div>`;
   const ra = $('#rtAvisos'); if (ra.dataset.v !== av) { ra.innerHTML = av; ra.dataset.v = av; }
   const cm = `${red.interfaces ? red.interfaces.length : 0}|${red.dhcp}|${red.vpnTotal}`;
   if (rt.cuentasMenu !== cm) { rt.cuentasMenu = cm; pintarMenuRt(); }
@@ -448,7 +452,7 @@ function filaRouter(e) {
   let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, ${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}` : e.so);
   const via = e.sonda && equipo(e.sonda) ? `<span class="via" title="Leído a través del agente de este servidor (sonda)">vía ${esc(equipo(e.sonda).alias || equipo(e.sonda).nombre)}</span>` : '';
   return `<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
-    <span class="f-nombre">${insigniaSO(e)}<span><strong>${esc(e.nombre)}${via}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre">${insigniaSO(e)}<span><strong>${esc(e.nombre)}${via}</strong><small>${esc(sub)}${red.actualizacion && red.actualizacion.nueva ? `<span class="fw-chip" title="${esc(red.actualizacion.producto)} ${esc(red.actualizacion.nueva)} disponible">⬆ ${esc(red.actualizacion.nueva)}</span>` : ''}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : '<span></span><span></span>'}
     <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : (red.wans && red.wans.length > 1 && red.wans.some(x => !x.activa)) ? `<b>${esc(red.wans.filter(x => !x.activa).map(x => x.interfaz).join(', '))} caído</b><small>${red.wans.filter(x => x.activa).length} de ${red.wans.length} enlaces arriba</small>` : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
     <span class="f-extra f-ses" data-etq="Equipos y VPN">${vivo ? `<span class="valor">${red.dhcp == null ? '—' : red.dhcp}</span><small>con IP${red.vpnTotal ? `, VPN ${red.vpn}/${red.vpnTotal}` : ''}</small>` : ''}</span>

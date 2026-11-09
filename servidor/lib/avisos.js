@@ -14,7 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
-  wan: true,
+  wan: true, firmware: true,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -49,7 +49,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false,
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
@@ -293,7 +293,7 @@ function guardarEstado() {
   for (const [k, e] of estados) if (e.activa) q('INSERT INTO alertas (clave, desde, aviso, texto) VALUES (?, ?, ?, ?)').run(`${ESTADO}:${k}`, e.desde, e.aviso, e.texto);
 }
 
-function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, ahora, primera, clienteId) {
+function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, ahora, primera, clienteId, sinRecordar) {
   let st = estados.get(clave);
   if (!habilitada) { estados.delete(clave); return; }
   if (enCondicion == null) return;          // sin datos: no se cambia nada
@@ -302,7 +302,7 @@ function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, 
     if (!st.activa && ahora - st.desde >= minutos * 60000) {
       st.activa = true; st.aviso = ahora; st.texto = alerta();
       if (!primera) encolar(st.texto, clienteId);
-    } else if (st.activa && A.recordarHoras > 0 && ahora - st.aviso >= A.recordarHoras * 3600e3) {
+    } else if (st.activa && !sinRecordar && A.recordarHoras > 0 && ahora - st.aviso >= A.recordarHoras * 3600e3) {
       st.aviso = ahora;
       encolar(`⏰ <b>Sigue sin resolverse</b> desde hace ${duracion(ahora - st.desde)}\n${alerta()}`, clienteId);
     }
@@ -342,6 +342,19 @@ function evaluar(forzar) {
       regla(`${s}|wan|${wan.interfaz}`, A.wan, !wan.activa, wan.activa, 0,
         () => `🔴 <b>${hs}: se cayó el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEl equipo sigue respondiendo (quizá por otro enlace).`,
         t => `🟢 <b>${hs}: volvió el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
+    }
+    // Versión nueva de RouterOS / FortiOS: un aviso por versión (sin recordatorios); cuando se actualiza, se confirma
+    const fw = vivo && !flota.esAgente(e.tipo) && e.red ? e.red.actualizacion : undefined;
+    if (fw !== undefined) {
+      for (const k of [...estados.keys()]) if (k.startsWith(s + '|firmware|') && (!fw || k !== `${s}|firmware|${fw.nueva}`) && e.red && e.red.version) {
+        const st = estados.get(k), ya = require('./firmware').comparar(e.red.version, k.split('|')[2]) >= 0;
+        if (!fw && !ya) continue;   // sin datos de versiones (p. ej. sin Internet): se deja como está
+        if (st.activa && ya) encolar(`✅ <b>${hs} actualizado</b>${hc}\nAhora tiene ${H(e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS')} ${H(e.red.version)}.`, e.cliente);
+        estados.delete(k);
+      }
+      if (fw) regla(`${s}|firmware|${fw.nueva}`, A.firmware !== false, true, false, 0,
+        () => `⬆️ <b>${hs}: ${H(fw.producto)} ${H(fw.nueva)} disponible</b>${hc}\nTiene ${H(fw.actual)}${fw.canal ? ` (canal ${H(fw.canal)})` : fw.rama ? ` (rama ${H(fw.rama)})` : ''}.${fw.masNueva ? ` También existe la ${H(fw.masNueva)}.` : ''}\nNotas de la versión: ${fw.notas}`,
+        () => '', ahora, primera, e.cliente, true);
     }
     if (vivo && flota.esAgente(e.tipo)) for (const d of e.discos) {
       if (d.pct == null) continue;

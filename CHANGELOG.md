@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.12.0 (noviembre de 2026)
+
+- Aviso de versiones nuevas de RouterOS y FortiOS. MikroTik: NodeCat consulta cada 6 h el mismo servidor que usan los routers (upgrade.mikrotik.com) según la rama y el canal de cada uno. FortiGate: lo que el equipo sabe por FortiGuard (`monitor/system/firmware`), con la última de su misma rama y la más nueva de todas.
+- Se muestra como chip azul informativo (no pone al cliente en amarillo), en la fila del equipo, en un aviso en su página con el enlace a las notas, con el gato en el escritorio y por Telegram (un mensaje por versión, sin recordatorios; y otro cuando el equipo ya está actualizado). Se puede apagar en las notificaciones.
+- NodeCat no actualiza nada: solo avisa.
+
 ## 0.11.1 (noviembre de 2026)
 
 - NodeCat se puede instalar en el teléfono como app (acceso directo en la pantalla de inicio, a pantalla completa, con su icono). En iPhone aparece una hoja con los pasos de Safari; en Android, el botón Instalar. Se puede posponer o no volver a mostrar, y queda en el menú de la cuenta como "Instalar en este teléfono".

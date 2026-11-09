@@ -147,6 +147,13 @@ Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. De
 
 Si el cliente tiene hipervisores y también servidores, la lista los muestra en dos grupos (**Hipervisores** y **Servidores y VM**), igual que las sedes.
 
+## Versiones nuevas de RouterOS y FortiOS
+
+NodeCat avisa cuando hay una versión nueva para un equipo de red (chip azul, aviso en su página, gato en el escritorio y Telegram). Solo avisa: la actualización la haces tú.
+
+- **MikroTik:** NodeCat pregunta cada 6 h a `upgrade.mikrotik.com` la última versión de la rama (6 o 7) y del canal del router (stable, long-term…). El servidor de NodeCat necesita salida a Internet por HTTPS.
+- **FortiGate:** se lee lo que el FortiGate sabe por FortiGuard. Necesita que el equipo esté registrado y que el perfil del token tenga lectura de *System*.
+
 ## Agregar un router MikroTik
 
 En la página del cliente: **Agregar router MikroTik**. NodeCat se conecta a la API del router y solo lee; no puede cambiar nada.

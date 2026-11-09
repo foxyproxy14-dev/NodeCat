@@ -206,7 +206,7 @@ let caraGato = null;
 let previos = null;
 function vigilarCambios(e) {
   const ahora = new Map();
-  for (const c of e.clientes) for (const x of c.equipos) ahora.set(x.id, { estado: x.estado, wan: x.red && x.red.wan ? x.red.wan.activa : null, x, c });
+  for (const c of e.clientes) for (const x of c.equipos) ahora.set(x.id, { estado: x.estado, wan: x.red && x.red.wan ? x.red.wan.activa : null, fw: x.red && x.red.actualizacion ? x.red.actualizacion.nueva : null, x, c });
   if (previos) {
     for (const [id, n] of ahora) {
       const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = esServidor(n.x) ? 'El servidor' : n.x.tipo === 'fortigate' ? 'El FortiGate' : 'El router';
@@ -215,6 +215,7 @@ function vigilarCambios(e) {
       else if (p.estado !== 'caido' && n.estado === 'caido') avisoGato('avergonzado', `${nom} no responde`, `${tipo} de ${n.c.nombre} dejó de responder${n.x.errorConexion ? ': ' + n.x.errorConexion : '.'}`, id, true);
       else if (p.estado === 'caido' && n.estado !== 'caido') avisoGato('programando', `${nom} volvió`, `${tipo} de ${n.c.nombre} está otra vez en línea.`, id);
       if (p.wan === true && n.wan === false && n.estado !== 'caido') avisoGato('molesto', `Se cayó el WAN de ${nom}`, `La interfaz ${n.x.red.wan.interfaz} de ${n.c.nombre} está sin enlace.`, id, true);
+      if (n.fw && p.fw !== n.fw) { const a = n.x.red.actualizacion; avisoGato('programando', `${a.producto} ${a.nueva} para ${nom}`, `Hay una versión nueva para ${nom} (${n.c.nombre}). Tiene ${a.actual}.`, id); }
       if (p.wan === false && n.wan === true) avisoGato('programando', `Volvió el WAN de ${nom}`, `${n.c.nombre} tiene Internet otra vez por ${n.x.red.wan.interfaz}.`, id);
     }
   }
@@ -258,15 +259,20 @@ function problemasDe(e) {
   if (e.estado === 'sinMetricas') l.push({ e, n: 'aviso', t: `${n}: no se pueden leer CPU ni memoria` });
   if (e.estado === 'pendiente' && e.errorConexion) l.push({ e, n: 'aviso', t: `${n}: no se puede conectar` });
   if (e.errorSesiones) l.push({ e, n: 'aviso', t: `${n}: no se pueden leer las sesiones` });
+  const fw = e.red && e.red.actualizacion;
+  if (fw && fw.nueva) l.push({ e, n: 'info', t: `${n}: ${fw.producto} ${fw.nueva} disponible` });
   return l;
 }
-const ordenProblemas = l => l.sort((a, b) => (a.n === 'alerta' ? 0 : 1) - (b.n === 'alerta' ? 0 : 1));
+const ORDEN_N = { alerta: 0, aviso: 1, info: 2 };
+const ordenProblemas = l => l.sort((a, b) => ORDEN_N[a.n] - ORDEN_N[b.n]);
+// Las versiones nuevas son informativas: no ponen al equipo ni al cliente en amarillo
+const reales = l => l.filter(x => x.n !== 'info');
 const problemas = (lista = equipos()) => ordenProblemas(lista.flatMap(problemasDe));
-const nivelDe = e => { const p = problemasDe(e); return p.some(x => x.n === 'alerta') ? (e.estado === 'caido' ? 'caido' : 'aviso') : p.length ? 'aviso' : e.estado === 'pendiente' ? 'pendiente' : 'ok'; };
-const nivelCliente = c => { const p = problemas(c.equipos); return p.some(x => x.n === 'alerta') ? 'alerta' : p.length ? 'aviso' : 'ok'; };
+const nivelDe = e => { const p = reales(problemasDe(e)); return p.some(x => x.n === 'alerta') ? (e.estado === 'caido' ? 'caido' : 'aviso') : p.length ? 'aviso' : e.estado === 'pendiente' ? 'pendiente' : 'ok'; };
+const nivelCliente = c => { const p = reales(problemas(c.equipos)); return p.some(x => x.n === 'alerta') ? 'alerta' : p.length ? 'aviso' : 'ok'; };
 
 function luz(latir) {
-  const p = problemas();
+  const p = reales(problemas());
   const clase = !estado || !equipos().length ? '' : p.some(x => x.n === 'alerta') ? 'estado-alerta' : p.length ? 'estado-aviso' : 'estado-ok';
   document.body.classList.remove('estado-ok', 'estado-aviso', 'estado-alerta');
   if (clase) document.body.classList.add(clase);
@@ -467,7 +473,7 @@ let orden = { campo: 'usuario', asc: true };
 
 function chipsProblemas(p, conCliente) {
   $('#problemas').innerHTML = p.slice(0, 12).map(x =>
-    `<li><button type="button" data-eq="${x.e.id}"><span class="marcador ${x.n}" aria-hidden="true"></span><span class="sr">${x.n === 'alerta' ? 'Alerta:' : 'Aviso:'}</span>${esc(x.t)}${conCliente ? ` <span class="tenue">${esc(x.e.clienteNombre)}</span>` : ''}</button></li>`).join('') +
+    `<li><button type="button" data-eq="${x.e.id}"><span class="marcador ${x.n}" aria-hidden="true"></span><span class="sr">${x.n === 'alerta' ? 'Alerta:' : x.n === 'info' ? 'Información:' : 'Aviso:'}</span>${esc(x.t)}${conCliente ? ` <span class="tenue">${esc(x.e.clienteNombre)}</span>` : ''}</button></li>`).join('') +
     (p.length > 12 ? `<li><span class="tenue" style="line-height:36px">y ${p.length - 12} más</span></li>` : '');
 }
 
@@ -524,7 +530,7 @@ function vistaResumen() {
 
 function filaCliente(c) {
   const eq = c.equipos, vivos = eq.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas');
-  const nv = nivelCliente(c), p = problemas(eq);
+  const nv = nivelCliente(c), p = reales(problemas(eq));
   const max = (l, f) => l.reduce((m, x) => { const v = f(x); return v != null && (!m || v > m.v) ? { v, x } : m; }, null);
   const cpu = max(vivos, e => e.cpu), ram = max(vivos, e => e.ramPct);
   const disco = max(vivos.flatMap(e => e.discos.map(d => ({ ...d, e }))), d => d.pct);
@@ -1654,6 +1660,7 @@ async function notificaciones() {
       <div class="regla"><label>${marca('cpu', n.cpu)} CPU por encima del</label> ${num('cpuUmbral', n.cpuUmbral, 50, 100, 'Umbral de CPU')} % durante ${num('cpuMin', n.cpuMin, 0, 240, 'Minutos de CPU alta')} min</div>
       <div class="regla"><label>${marca('ram', n.ram)} Memoria por encima del</label> ${num('ramUmbral', n.ramUmbral, 50, 100, 'Umbral de memoria')} % durante ${num('ramMin', n.ramMin, 0, 240, 'Minutos de memoria alta')} min</div>
       <div class="regla"><label>${marca('disco', n.disco)} Disco por encima del</label> ${num('discoUmbral', n.discoUmbral, 50, 100, 'Umbral de disco')} %</div>
+      <div class="regla"><label>${marca('firmware', n.firmware !== false)} Hay una versión nueva de RouterOS o FortiOS para un equipo de red</label></div>
       <div class="regla"><label>${marca('resumen', n.resumen)} Resumen diario por cliente a las</label> <input type="time" name="resumenHora" value="${esc(n.resumenHora)}" aria-label="Hora del resumen"><button class="btn" type="button" data-resumen>Enviar ahora</button></div>
       <div class="regla">Recordar los avisos que sigan sin resolverse
         <select class="selector" name="recordarHoras" style="height:32px">${[[0, 'No recordar'], [1, 'Cada hora'], [4, 'Cada 4 horas'], [12, 'Cada 12 horas'], [24, 'Cada día']].map(([v, t]) => `<option value="${v}" ${n.recordarHoras === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -1742,7 +1749,7 @@ async function notificaciones() {
   f.onsubmit = async ev => {
     ev.preventDefault();
     const d = { token: f.token.value, chats: f.chats.value, resumenHora: f.resumenHora.value, recordarHoras: +f.recordarHoras.value, porCliente: {} };
-    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'resumen']) d[k] = f[k].checked;
+    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'resumen']) d[k] = f[k].checked;
     for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral']) d[k] = +f[k].value;
     for (const c of estado.clientes) { const x = f['pc-' + c.id]; if (x && x.value.trim()) d.porCliente[c.id] = x.value; }
     try { await enviar('/api/notificaciones', 'PUT', d); dlg.close(); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }

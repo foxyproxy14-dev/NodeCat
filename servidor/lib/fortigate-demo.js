@@ -26,6 +26,7 @@ function api(id) {
     async get(ruta) {
       const ahora = Date.now(), j = jornada(ahora);
       switch (ruta) {
+        case 'monitor/system/firmware': return { results: { current: { version: p.version }, available: perfil === 'fg100f' ? [{ version: 'v7.2.11', major: 7, minor: 2, patch: 11 }, { version: 'v7.4.8', major: 7, minor: 4, patch: 8 }, { version: 'v7.6.3', major: 7, minor: 6, patch: 3 }] : [] } };
         case 'monitor/system/status': return { version: p.version, serial: p.serie, results: { hostname: perfil === 'fg100f' ? 'FW-Clinica-01' : 'FW-Barquisimeto', model_name: p.modelo[0], model_number: p.modelo[1] } };
         case 'monitor/system/resource/usage': return { results: { cpu: [{ current: Math.round(4 + j * 22 + rnd() * 6) }], mem: [{ current: Math.round(48 + j * 8 + rnd() * 3) }], disk: [{ current: 23 }], session: [{ current: Math.round(800 + 9000 * j * (0.8 + rnd() * 0.4)) }] } };
         case 'monitor/system/interface': {
