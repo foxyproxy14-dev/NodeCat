@@ -252,6 +252,8 @@ ruta('POST', '/api/agente/sonda', { publica: true, agente: true }, async ({ req,
 ruta('GET', '/api/clientes/:id/enlaces', soloAdmin, ({ p }) => ({ enlaces: compartir.lista(Number(p.id)) }));
 ruta('POST', '/api/clientes/:id/enlaces', soloAdmin, ({ p, cuerpo, sesion }) => compartir.crear(Number(p.id), cuerpo, sesion.usuario));
 ruta('DELETE', '/api/clientes/:id/enlaces/:enlace', soloAdmin, ({ p, sesion }) => { compartir.revocar(Number(p.id), p.enlace, sesion.usuario); return { ok: true }; });
+ruta('GET', '/api/enlaces', soloAdmin, () => ({ enlaces: compartir.todos() }));
+ruta('POST', '/api/enlaces/vencidos', soloAdmin, ({ sesion }) => ({ borrados: compartir.borrarVencidos(sesion.usuario) }));
 ruta('GET', '/api/compartido/:token', { publica: true }, ({ p, req, res }) => {
   const d = compartir.vista(decodeURIComponent(p.token), ipDe(req));
   res.writeHead(200, { ...SEGURIDAD, 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });

@@ -943,7 +943,7 @@ async function compartirCliente(id) {
       ${grupo ? `<label class="interruptor" style="margin-bottom:12px"><input type="checkbox" name="grupo"><span><b>Incluir todas las sedes de ${esc(grupo)}</b><small>Verá juntas todas las sedes del grupo, también las que agregues después.</small></span></label>` : ''}
       <p><button class="btn prim" type="button" data-crear>Crear enlace</button></p>
       ${enlaces.length ? `<h4 class="separado">Enlaces de ${esc(c.nombre)}</h4><ul class="avisos-lista enlaces">${enlaces.map(e => `<li><span><b>${esc(e.nota || 'Sin nombre')}</b>${e.grupo ? ` <span class="tenue">(todo ${esc(grupo || 'el grupo')})</span>` : ''}
-          <small>${e.vencido ? '<span class="mal">Vencido</span>' : e.vence ? `Vence ${cuando(e.vence)}` : 'Sin vencimiento'}, ${e.vistas ? `abierto ${plural(e.vistas, 'vez', 'veces')}, la última ${cuando(e.visto)}` : 'todavía no se abrió'}. Creado por ${esc(e.creador)} ${cuando(e.creado)}.</small></span>
+          <small>${e.vencido ? '<span class="mal">Vencido</span>' : e.vence ? `Vence ${cuando(e.vence)}` : 'Sin vencimiento'}, ${e.vistas ? `abierto ${plural(e.vistas, 'vez', 'veces')}, la última ${cuando(e.visto)}` : 'todavía no se abrió'}. Creado por ${esc(e.creador)} ${cuando(e.creado)}</small></span>
           <button class="btn ${anulando === e.id ? 'peligro' : ''}" type="button" data-anular="${esc(e.id)}">${anulando === e.id ? '¿Seguro? Deja de funcionar' : 'Anular'}</button></li>`).join('')}</ul>` : ''}
       <div class="msg error" role="alert" hidden></div>
       <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`;
@@ -961,6 +961,45 @@ async function compartirCliente(id) {
     dlg.querySelectorAll('[data-anular]').forEach(b => b.onclick = async () => {
       if (anulando !== b.dataset.anular) { anulando = b.dataset.anular; pintar(); return; }
       try { await enviar(`/api/clientes/${id}/enlaces/${b.dataset.anular}`, 'DELETE'); anulando = null; nuevo = null; await cargarL(); pintar(); aviso('Enlace anulado. Ya no funciona.'); }
+      catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+  };
+  pintar();
+}
+
+// Todos los enlaces de solo lectura, de todos los clientes, para revisarlos y anularlos
+async function enlacesCompartidos() {
+  let l = [], anulando = null, filtro = 'activos';
+  const cargarL = async () => { l = arr((await api('/api/enlaces')).enlaces); };
+  try { await cargarL(); } catch (x) { if (!x.login) aviso(x.message, true); return; }
+  const dlg = libre('<div></div>', true);
+  const pintar = () => {
+    const vencidos = l.filter(e => e.vencido).length;
+    const ver = l.filter(e => filtro === 'todos' || (filtro === 'vencidos' ? e.vencido : !e.vencido));
+    const porCli = new Map(); for (const e of ver) { if (!porCli.has(e.clienteNombre)) porCli.set(e.clienteNombre, []); porCli.get(e.clienteNombre).push(e); }
+    dlg.querySelector('.dlg').innerHTML = `<div><h3>Enlaces compartidos</h3>
+      <p>Enlaces de solo lectura que diste a tus clientes. Si anulas uno, deja de funcionar al instante. Para crear uno nuevo, entra al cliente y pulsa <b>Compartir</b>.</p>
+      <div class="en-linea" style="align-items:center;margin-bottom:12px">
+        <div class="filtro-enlaces" role="group" aria-label="Filtrar enlaces">${[['activos', `Activos (${l.length - vencidos})`], ['vencidos', `Vencidos (${vencidos})`], ['todos', `Todos (${l.length})`]].map(([k, t]) => `<button type="button" class="btn ${filtro === k ? 'prim' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+        ${vencidos ? '<button class="btn" type="button" data-limpiar style="margin-left:auto">Borrar los vencidos</button>' : ''}
+      </div>
+      ${ver.length ? [...porCli].map(([cn, es]) => `<h4 class="separado">${esc(cn)}</h4><ul class="avisos-lista enlaces">${es.map(e => `<li><span><b>${esc(e.nota || 'Sin nombre')}</b>${e.grupo ? ' <span class="tenue">(todo su grupo)</span>' : ''}
+          <small>${e.vencido ? '<span class="mal">Vencido</span>' : e.vence ? `Vence ${cuando(e.vence)}` : 'Sin vencimiento'}, ${e.vistas ? `abierto ${plural(e.vistas, 'vez', 'veces')}, la última ${cuando(e.visto)}` : 'todavía no se abrió'}. Creado por ${esc(e.creador)} ${cuando(e.creado)}</small></span>
+          <button class="btn ${anulando === e.id ? 'peligro' : ''}" type="button" data-anular="${esc(e.id)}" data-cli="${e.cliente}">${anulando === e.id ? '¿Seguro? Deja de funcionar' : e.vencido ? 'Borrar' : 'Anular'}</button></li>`).join('')}</ul>`).join('')
+        : `<div class="vacio">${l.length ? 'No hay enlaces en esta lista.' : 'Todavía no has compartido ningún enlace.'}</div>`}
+      <div class="msg error" role="alert" hidden></div>
+      <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`;
+    const m = dlg.querySelector('.msg.error');
+    dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
+    dlg.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filtro = b.dataset.f; anulando = null; pintar(); });
+    const bl = dlg.querySelector('[data-limpiar]');
+    if (bl) bl.onclick = ev => ocupado(ev.currentTarget, 'Borrando…', async () => {
+      try { const r = await enviar('/api/enlaces/vencidos', 'POST'); await cargarL(); pintar(); aviso(`${plural(r.borrados, 'enlace vencido borrado', 'enlaces vencidos borrados')}.`); }
+      catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+    dlg.querySelectorAll('[data-anular]').forEach(b => b.onclick = async () => {
+      if (anulando !== b.dataset.anular) { anulando = b.dataset.anular; pintar(); return; }
+      try { await enviar(`/api/clientes/${b.dataset.cli}/enlaces/${b.dataset.anular}`, 'DELETE'); anulando = null; await cargarL(); pintar(); aviso('Enlace anulado. Ya no funciona.'); }
       catch (x) { if (!x.login) gatoDice(m, x.message); }
     });
   };
@@ -1112,7 +1151,7 @@ $('#btnCuenta').addEventListener('click', e => {
   if (!SESION) return;
   if (!$('#menu').hidden) { cerrarMenu(); return; }
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }];
-  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
+  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';

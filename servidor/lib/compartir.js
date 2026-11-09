@@ -33,6 +33,17 @@ function lista(clienteId) {
     .map(e => ({ id: e.token.slice(0, 12), grupo: !!e.grupo, nota: e.nota, creado: e.creado, vence: e.vence, vencido: !!(e.vence && e.vence < Date.now()), creador: e.creador, visto: e.visto, vistas: e.vistas }));
 }
 
+function todos() {
+  const nombres = new Map(flota.clientes().map(c => [c.id, c.nombre]));
+  return q('SELECT token, cliente_id, grupo, nota, creado, vence, creador, visto, vistas FROM enlaces ORDER BY creado DESC').all()
+    .map(e => ({ id: e.token.slice(0, 12), cliente: e.cliente_id, clienteNombre: nombres.get(e.cliente_id) || '(cliente borrado)', grupo: !!e.grupo, nota: e.nota, creado: e.creado, vence: e.vence, vencido: !!(e.vence && e.vence < Date.now()), creador: e.creador, visto: e.visto, vistas: e.vistas }));
+}
+function borrarVencidos(quien) {
+  const n = q('DELETE FROM enlaces WHERE vence IS NOT NULL AND vence < ?').run(Date.now()).changes;
+  if (n) log(`${quien} borró ${n} enlaces vencidos.`);
+  return n;
+}
+
 function revocar(clienteId, id, quien) {
   const e = q('SELECT token FROM enlaces WHERE cliente_id = ? AND substr(token, 1, 12) = ?').get(clienteId, String(id));
   if (!e) return;
@@ -105,4 +116,4 @@ function vista(token, ip) {
   };
 }
 
-module.exports = { crear, lista, revocar, vista };
+module.exports = { crear, lista, todos, borrarVencidos, revocar, vista };

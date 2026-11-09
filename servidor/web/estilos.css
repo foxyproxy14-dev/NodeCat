@@ -864,3 +864,4 @@ body.iniciando .inicio-carga { display: grid; }
 .enlaces li small { display: block; color: var(--tinta-3); }
 .hora-actual { font-weight: 600; color: var(--tinta); margin-right: 12px; font-variant-numeric: tabular-nums; }
 .compartido .herr { margin-left: auto; }
+.filtro-enlaces { display: flex; gap: 6px; flex-wrap: wrap; }
