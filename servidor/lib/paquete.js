@@ -1,0 +1,55 @@
+'use strict';
+// Paquete del agente para un cliente: ZIP con el ejecutable y su configuración ya puesta.
+const fs = require('node:fs');
+const path = require('node:path');
+const zip = require('./zip');
+
+const EXE = path.join(__dirname, '..', 'agente', 'AtalayaAgente.exe');
+const disponible = () => fs.existsSync(EXE);
+const crlf = s => s.replace(/\r?\n/g, '\r\n');
+const bom = s => Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(crlf(s), 'utf8')]);
+
+function crear(cliente, url) {
+  if (!disponible()) throw new Error('Esta instalación de Atalaya no incluye el agente (falta agente/AtalayaAgente.exe).');
+  const carpeta = 'Atalaya-Agente-' + cliente.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') + '/';
+  const leeme = `AGENTE DE ATALAYA — ${cliente.nombre}
+
+Se instala en cada servidor Windows de este cliente. Lee allí mismo las sesiones de
+Escritorio remoto, la CPU, la memoria y los discos, y se los envía a Atalaya por HTTPS.
+No hace falta VPN, abrir puertos en el cliente ni usar contraseñas: el servidor solo
+necesita salida a Internet hacia la dirección de Atalaya.
+
+INSTALAR
+  1. Copia esta carpeta al servidor.
+  2. Haz doble clic en "Instalar agente.bat" y acepta los permisos de administrador.
+  3. En unos segundos el servidor aparecerá en Atalaya, dentro de ${cliente.nombre}.
+
+INSTALAR EN MUCHOS SERVIDORES A LA VEZ (GPO o script)
+  AtalayaAgente.exe instalar /silencioso
+  (agente.json debe estar junto a AtalayaAgente.exe)
+
+CONFIGURACIÓN (agente.json)
+  servidor: dirección de Atalaya. Ahora: ${url}
+  clave:    clave de los agentes de ${cliente.nombre}. Si se genera una nueva en Atalaya,
+            hay que actualizarla aquí (o descargar el paquete otra vez).
+
+REQUISITOS
+  Windows Server 2012 R2 o superior (o Windows 10/11) con .NET Framework 4.5 o superior.
+  Funciona con la cuenta del sistema.
+
+COMPROBAR
+  "C:\\Program Files\\Atalaya Agente\\AtalayaAgente.exe" probar
+
+DESINSTALAR
+  "Desinstalar agente.bat", o:  "C:\\Program Files\\Atalaya Agente\\AtalayaAgente.exe" desinstalar
+`;
+  return zip.crear([
+    { nombre: carpeta + 'AtalayaAgente.exe', datos: fs.readFileSync(EXE) },
+    { nombre: carpeta + 'agente.json', datos: JSON.stringify({ servidor: url, clave: cliente.clave }, null, 2) },
+    { nombre: carpeta + 'Instalar agente.bat', datos: crlf('@echo off\nrem Instala el agente de Atalaya en este servidor (pide permisos de administrador).\n"%~dp0AtalayaAgente.exe" instalar\n') },
+    { nombre: carpeta + 'Desinstalar agente.bat', datos: crlf('@echo off\n"%~dp0AtalayaAgente.exe" desinstalar\n') },
+    { nombre: carpeta + 'LEEME.txt', datos: bom(leeme) }
+  ]);
+}
+
+module.exports = { crear, disponible };

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Atalaya</title>
+<link rel="icon" id="favicon" href="data:,">
+<link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="estilos.css">
+<script src="tema.js"></script>
+</head>
+<body class="iniciando">
+
+<!-- ================= Inicio de sesión y primera configuración ================= -->
+<section class="acceso" id="acceso" hidden>
+  <div class="acceso-marca">
+    <div>
+      <span class="marca" aria-label="Atalaya">ata<span class="l">l<span class="luz"></span></span>aya</span>
+      <p>Todos tus clientes, todos sus servidores, desde un mismo lugar.</p>
+    </div>
+    <small>Servidores Windows, sesiones de Escritorio remoto, CPU, memoria y discos.</small>
+  </div>
+  <div class="acceso-form">
+    <form id="formAcceso" novalidate>
+      <h2>Inicia sesión</h2>
+      <p class="ayuda">Con la cuenta de Atalaya que te dio el administrador.</p>
+      <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+      <label class="campo">Contraseña<input name="clave" type="password" autocomplete="current-password" required></label>
+      <div class="msg error" id="accesoError" role="alert" hidden></div>
+      <button class="btn prim ancho" type="submit">Entrar</button>
+      <p class="pie">Después de 5 intentos fallidos, hay que esperar 5 minutos.</p>
+    </form>
+    <form id="formConfigurar" novalidate hidden>
+      <h2>Bienvenido a Atalaya</h2>
+      <p class="ayuda">Crea la cuenta de administrador. El código de 6 cifras aparece en el registro del servidor: <code>docker compose logs atalaya</code></p>
+      <label class="campo codigo-inicial">Código de configuración<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+      <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" value="admin" required></label>
+      <label class="campo">Contraseña<input name="clave" type="password" autocomplete="new-password" required><span class="ayuda-campo">Mínimo 10 caracteres.</span></label>
+      <label class="campo">Repite la contraseña<input name="repite" type="password" autocomplete="new-password" required></label>
+      <div class="msg error" role="alert" hidden></div>
+      <button class="btn prim ancho" type="submit">Crear la cuenta y entrar</button>
+    </form>
+  </div>
+</section>
+
+<!-- ================= Panel ================= -->
+<header class="barra">
+  <div class="barra-in">
+    <a class="marca" href="#/" aria-label="Atalaya, ir al resumen">ata<span class="l">l<span class="luz" id="luz"></span></span>aya</a>
+    <nav class="nav" id="nav" aria-label="Vistas"></nav>
+    <div class="herr">
+      <span class="reloj" id="reloj" aria-live="polite"></span>
+      <button class="btn solo-icono" type="button" id="btnTema" aria-label="Cambiar entre tema claro y oscuro" title="Tema claro u oscuro">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>
+      </button>
+      <button class="btn" type="button" id="btnCuenta" aria-haspopup="menu">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.6" r="2.9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.6 14c.8-2.5 2.9-3.9 5.4-3.9s4.6 1.4 5.4 3.9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span id="cuentaNombre"></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="aviso-global" id="aviso" role="alert" hidden></div>
+  <div id="vista"></div>
+</main>
+
+<div class="menu" id="menu" role="menu" hidden></div>
+<dialog id="dialogo"></dialog>
+<div class="avisos" id="avisos" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
