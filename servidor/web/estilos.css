@@ -950,3 +950,5 @@ body.iniciando .inicio-carga { display: grid; }
 .so-ws, .so-wi { background: #0067b8; } .so-hv { background: #5c2d91; } .so-lx { background: #3a3f44; color: #ffd84d; }
 .so-mt { background: #2f3b44; } .so-fg { background: #c8281f; }
 .f-nombre { gap: 12px; }
+.so-insignia.con-logo { background: var(--hoja-2); border: 1px solid var(--linea); }
+.so-insignia.con-logo img { width: 72%; height: 72%; object-fit: contain; }

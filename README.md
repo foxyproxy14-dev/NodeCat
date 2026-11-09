@@ -214,6 +214,10 @@ El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, la
 
 Si un cliente tiene varias sedes, no hace falta crear un grupo ni subclientes: en **Editar** de cada servidor, MikroTik o FortiGate escribe su **Sede** (la primera vez se crea sola; después se elige de la lista). La página del cliente separa entonces sus equipos por sede y muestra botones para ver una sola sede. Un cliente sin sedes se ve como siempre. Todas las sedes usan el mismo instalador del cliente.
 
+## Logos de los sistemas
+
+Cada equipo muestra una insignia con las iniciales de su sistema. Si prefieres logos, pon tus archivos en la carpeta `datos/logos` de la instalación (junto a la base de datos) con estos nombres, en SVG, PNG o WebP: `proxmox`, `windows-server`, `windows`, `hyperv`, `ubuntu`, `debian`, `rocky`, `almalinux`, `redhat`, `centos`, `fedora`, `opensuse`, `arch`, `alpine`, `truenas`, `linux`, `mikrotik`, `fortigate` (por ejemplo `datos/logos/proxmox.svg`). NodeCat los usa en un minuto; los que falten siguen con iniciales. Los SVG se sirven aislados, sin poder ejecutar código.
+
 ## Verificación en dos pasos
 
 Menú con tu nombre > **Verificación en dos pasos** > **Activar**. Escanea el código QR con cualquier aplicación de autenticación (Google Authenticator, Microsoft Authenticator, Authy, 2FAS, Bitwarden…) y escribe el código de 6 cifras. NodeCat te da 8 **códigos de recuperación** de un solo uso por si pierdes el teléfono: guárdalos. Desde ese momento, al entrar te pide la contraseña y el código. Si alguien de tu equipo pierde el teléfono, un administrador puede quitarle la verificación en **Cuentas de acceso** para que la vuelva a activar.

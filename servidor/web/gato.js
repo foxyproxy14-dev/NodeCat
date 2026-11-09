@@ -172,7 +172,14 @@ function sistemaDe(e) {
   for (const [re, k, t, n] of SISTEMAS) if (re.test(so)) return [k, t, n];
   return e.tipo === 'linux' ? ['lx', 'LX', so || 'Linux'] : e.tipo === 'windows' ? ['wi', 'WIN', so || 'Windows'] : ['', '?', so || ''];
 }
+// Si el usuario puso un logo en datos/logos, se usa en lugar de las iniciales
+const ARCHIVO_LOGO = { px: 'proxmox', ub: 'ubuntu', db: 'debian', rk: 'rocky', al: 'almalinux', rh: 'redhat', ce: 'centos', fe: 'fedora', su: 'opensuse', ar: 'arch', ap: 'alpine', tn: 'truenas', ws: 'windows-server', wi: 'windows', hv: 'hyperv', lx: 'linux', mt: 'mikrotik', fg: 'fortigate' };
+let LOGOS_PROPIOS = {};
+fetch('/api/logos').then(r => r.json()).then(o => { for (const f of o.logos || []) LOGOS_PROPIOS[f.replace(/\.\w+$/, '')] = '/logos/' + f; }).catch(() => { });
 function insigniaSO(e, estado) {
   const [k, t, n] = sistemaDe(e);
-  return `<span class="so-insignia so-${k}" title="${String(n).replace(/"/g, '&quot;')}" aria-hidden="true">${t}<span class="punto ${estado || e.estado || ''}"></span></span>`;
+  const nombre = ARCHIVO_LOGO[k], logo = nombre && (LOGOS_PROPIOS[nombre] || (k === 'ws' && LOGOS_PROPIOS.windows) || (k === 'hv' && LOGOS_PROPIOS.windows));
+  const titulo = String(n).replace(/"/g, '&quot;');
+  return logo ? `<span class="so-insignia con-logo" title="${titulo}" aria-hidden="true"><img src="${logo}" alt=""><span class="punto ${estado || e.estado || ''}"></span></span>`
+    : `<span class="so-insignia so-${k}" title="${titulo}" aria-hidden="true">${t}<span class="punto ${estado || e.estado || ''}"></span></span>`;
 }

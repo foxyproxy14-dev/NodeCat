@@ -284,6 +284,25 @@ ruta('GET', '/api/compartido/:token', { publica: true }, ({ p, req, res }) => {
   res.writeHead(200, { ...SEGURIDAD, 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(d));
 });
+// Logos propios de los sistemas: archivos que el usuario pone en DATA_DIR/logos (proxmox.svg, ubuntu.png…)
+const LOGOS = path.join(config.DATA_DIR, 'logos');
+const NOMBRES_LOGO = ['proxmox', 'ubuntu', 'debian', 'rocky', 'almalinux', 'redhat', 'centos', 'fedora', 'opensuse', 'arch', 'alpine', 'truenas', 'windows-server', 'windows', 'hyperv', 'linux', 'mikrotik', 'fortigate'];
+let logosCache = { t: 0, l: [] };
+function logosDisponibles() {
+  if (Date.now() - logosCache.t < 60000) return logosCache.l;
+  let l = [];
+  try { l = fs.readdirSync(LOGOS).map(f => f.match(/^([a-z-]+)\.(svg|png|webp)$/)).filter(m => m && NOMBRES_LOGO.includes(m[1])).map(m => m[1] + '.' + m[2]); } catch { }
+  logosCache = { t: Date.now(), l }; return l;
+}
+ruta('GET', '/api/logos', { publica: true }, () => ({ logos: logosDisponibles() }));
+ruta('GET', '/logos/:archivo', { publica: true }, ({ p, res }) => {
+  const f = String(p.archivo);
+  if (!logosDisponibles().includes(f)) throw error(404, 'No existe ese logo.');
+  const b = fs.readFileSync(path.join(LOGOS, f));
+  // Un SVG puede llevar código: se sirve aislado (sin scripts) para que solo sirva como imagen
+  res.writeHead(200, { 'Content-Type': f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'image/webp', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=3600', 'Content-Length': b.length });
+  res.end(b);
+});
 ruta('GET', '/salud', { publica: true }, () => ({ ok: true, version: config.VERSION }));
 
 // ---------------------------------------------------------------- servidor
