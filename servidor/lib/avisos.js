@@ -329,7 +329,7 @@ function evaluar(forzar) {
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
-      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo !== 'windows' ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}.`}`,
+      () => `🔴 <b>${hs} no responde</b>${hc}\n${!flota.esAgente(e.tipo) ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
@@ -343,7 +343,7 @@ function evaluar(forzar) {
         () => `🔴 <b>${hs}: se cayó el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEl equipo sigue respondiendo (quizá por otro enlace).`,
         t => `🟢 <b>${hs}: volvió el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
     }
-    if (vivo && e.tipo === 'windows') for (const d of e.discos) {
+    if (vivo && flota.esAgente(e.tipo)) for (const d of e.discos) {
       if (d.pct == null) continue;
       regla(`${s}|disco|${d.unidad}`, A.disco, d.pct >= A.discoUmbral, d.pct < A.discoUmbral - 2, 0,
         () => `🟠 <b>${hs}: disco ${H(d.unidad)} al ${d.pct} %</b>${hc}\nQuedan ${gb(d.libre)} GB libres de ${gb(d.total)} GB.`,

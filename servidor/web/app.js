@@ -18,6 +18,8 @@ const hora = t => new Date(t).toLocaleTimeString('es', { hour: 'numeric', minute
 const nivel = v => v == null ? '' : v >= ALTO ? 'alerta' : v >= MEDIO ? 'aviso' : 'ok';
 const ROLES = { admin: 'Administrador', lector: 'Solo lectura' };
 const esAdmin = () => !!SESION && SESION.rol === 'admin';
+const TIPOS_AGENTE = ['windows', 'linux', 'proxmox'];
+const esServidor = e => TIPOS_AGENTE.includes(e.tipo);
 const ESTADOS = { ok: 'En línea', sinMetricas: 'En línea, sin métricas', caido: 'Sin respuesta', pendiente: 'Esperando el primer informe', desinstalado: 'Agente desinstalado' };
 
 const ICO = {
@@ -202,8 +204,8 @@ function vigilarCambios(e) {
   for (const c of e.clientes) for (const x of c.equipos) ahora.set(x.id, { estado: x.estado, wan: x.red && x.red.wan ? x.red.wan.activa : null, x, c });
   if (previos) {
     for (const [id, n] of ahora) {
-      const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = n.x.tipo === 'windows' ? 'El servidor' : n.x.tipo === 'fortigate' ? 'El FortiGate' : 'El router';
-      if (!p) { avisoGato('reparando', n.x.tipo === 'windows' ? '¡Servidor nuevo!' : n.x.tipo === 'fortigate' ? '¡FortiGate nuevo!' : '¡Router nuevo!', `${nom} se unió a ${n.c.nombre}. Ya lo estoy vigilando.`, id); continue; }
+      const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = esServidor(n.x) ? 'El servidor' : n.x.tipo === 'fortigate' ? 'El FortiGate' : 'El router';
+      if (!p) { avisoGato('reparando', esServidor(n.x) ? '¡Servidor nuevo!' : n.x.tipo === 'fortigate' ? '¡FortiGate nuevo!' : '¡Router nuevo!', `${nom} se unió a ${n.c.nombre}. Ya lo estoy vigilando.`, id); continue; }
       if (p.estado === 'pendiente' && (n.estado === 'ok' || n.estado === 'sinMetricas')) avisoGato('reparando', '¡Conectado!', `${nom} (${n.c.nombre}) ya está enviando datos.`, id);
       else if (p.estado !== 'caido' && n.estado === 'caido') avisoGato('avergonzado', `${nom} no responde`, `${tipo} de ${n.c.nombre} dejó de responder${n.x.errorConexion ? ': ' + n.x.errorConexion : '.'}`, id, true);
       else if (p.estado === 'caido' && n.estado !== 'caido') avisoGato('programando', `${nom} volvió`, `${tipo} de ${n.c.nombre} está otra vez en línea.`, id);
@@ -347,7 +349,7 @@ function montar(r) {
         <div>
           <div class="cab-seccion">
             <h2 id="tituloTablero">Servidores</h2>
-            ${esAdmin() ? `<button class="btn" type="button" id="btnAgente">Agregar servidores</button><button class="btn" type="button" id="btnCompartir">Compartir</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
+            ${esAdmin() ? `<button class="btn" type="button" id="btnAgente" data-abre-menu aria-haspopup="menu">Descargar agente ▾</button><button class="btn" type="button" id="btnCompartir">Compartir</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
           </div>
           <div id="tablero"></div>
           <div class="cab-seccion" style="margin-top:36px">
@@ -359,7 +361,7 @@ function montar(r) {
         <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos">${gatoCargando('Cargando…', 'chica')}</section></aside>
       </div>`;
     if (esAdmin()) {
-      $('#btnAgente').addEventListener('click', () => agregarServidores(c.id));
+      $('#btnAgente').addEventListener('click', ev => menuAgentes(ev.currentTarget, c.id));
       $('#btnCompartir').addEventListener('click', () => compartirCliente(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
       $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
@@ -412,12 +414,16 @@ function montar(r) {
       <section class="srv-cab">
         <div><h1><span class="punto" id="srvPunto" aria-hidden="true"></span><span id="srvNombre"></span></h1><p id="srvMeta"></p></div>
         <div class="acciones">
-          <a class="btn" href="/api/equipos/${e.id}/rdp" download="${esc(e.nombre)}.rdp">Conectar por Escritorio remoto</a>
+          ${e.tipo === 'windows' ? `<a class="btn" href="/api/equipos/${e.id}/rdp" download="${esc(e.nombre)}.rdp">Conectar por Escritorio remoto</a>` : ''}
           ${esAdmin() ? '<button class="btn" type="button" id="btnEditarEq">Editar</button>' : ''}
         </div>
       </section>
       <div id="srvAvisos"></div>
       <dl class="ficha" id="ficha"></dl>
+      <nav class="pestanas-hv" id="srvPestanas" aria-label="Secciones del hipervisor" hidden></nav>
+      <div id="srvPve" hidden></div>
+      <div id="srvGeneral">
+      <div id="srvLosas"></div>
       <div class="cab-seccion">
         <h2>Rendimiento</h2>
         <div class="segmentos" role="group" aria-label="Periodo de los gráficos" id="rangos">
@@ -430,8 +436,10 @@ function montar(r) {
         <section class="panel discos"><div class="panel-cab"><h3>Discos</h3></div><div id="srvDiscos" style="margin-top:12px"></div></section>
       </div>
       <p class="disponibilidad" id="disponibilidad"></p>
+      <div id="srvVms"></div>
       <div class="cab-seccion"><h2 id="srvSesTitulo">Sesiones</h2></div>
-      <section class="hoja desliza" id="tablaSes"></section>`;
+      <section class="hoja desliza" id="tablaSes"></section>
+      </div>`;
     $('#rangos').addEventListener('click', ev => { const b = ev.target.closest('[data-rango]'); if (!b) return; rango = b.dataset.rango; guardar('rango', rango); actualizar(r); });
     const be = $('#btnEditarEq'); if (be) be.addEventListener('click', () => editarEquipo(e.id));
     enlazarTabla();
@@ -475,7 +483,7 @@ function vistaResumen() {
   if (contento && !gatoT) $('#titular').insertAdjacentHTML('beforeend', gatoSVG('arreglando', 'El gato arreglando un servidor'));
   if (!contento && gatoT) gatoT.remove();
   let tt = $('#titular .texto'); if (!tt) { $('#titular').insertAdjacentHTML('afterbegin', '<div class="texto"></div>'); tt = $('#titular .texto'); }
-  tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${[[eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores'], [eq.filter(e => e.tipo === 'mikrotik').length, 'MikroTik', 'MikroTik'], [eq.filter(e => e.tipo === 'fortigate').length, 'FortiGate', 'FortiGate']].filter(x => x[0]).map(x => plural(...x)).join(', ')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
+  tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${[[eq.filter(e => esServidor(e) && e.tipo !== 'proxmox').length, 'servidor', 'servidores'], [eq.filter(e => e.tipo === 'proxmox').length, 'Proxmox', 'Proxmox'], [eq.filter(e => e.tipo === 'mikrotik').length, 'MikroTik', 'MikroTik'], [eq.filter(e => e.tipo === 'fortigate').length, 'FortiGate', 'FortiGate']].filter(x => x[0]).map(x => plural(...x)).join(', ')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
   chipsProblemas(p, true);
   $('#tituloTablero').innerHTML = `Clientes <span>${cs.length}</span>`;
 
@@ -516,7 +524,7 @@ function filaCliente(c) {
   const cpu = max(vivos, e => e.cpu), ram = max(vivos, e => e.ramPct);
   const disco = max(vivos.flatMap(e => e.discos.map(d => ({ ...d, e }))), d => d.pct);
   const act = vivos.reduce((n, e) => n + e.sesiones.filter(s => s.estado === 'activa').length, 0);
-  const nS = eq.filter(e => e.tipo === 'windows').length, nR = eq.length - nS;
+  const nS = eq.filter(esServidor).length, nR = eq.length - nS;
   const sub = !eq.length ? 'Sin equipos todavía' : p.length ? p[0].t + (p.length > 1 ? ` y ${p.length - 1} más` : '') : c.notas ? c.notas.split('\n')[0] : [nS && plural(nS, 'servidor', 'servidores'), nR && plural(nR, 'equipo de red', 'equipos de red')].filter(Boolean).join(' y ');
   const val = (m, etq, extra) => m ? `<span class="medidor" data-etq="${etq}"><span class="valor">${m.v}<i>%</i></span><span class="carril n-${nivel(m.v)}"><span style="width:${m.v}%"></span></span><small>${esc(extra(m))}</small></span>` : `<span class="medidor" data-etq="${etq}"><span class="valor vacio-valor">—</span></span>`;
   return `<button type="button" class="fila cli ${nv}" data-cli="${c.id}" aria-label="${esc(c.nombre)}. Abrir">
@@ -567,7 +575,7 @@ function vistaCliente(id) {
   let sel = sedeFiltro.get(id) || '';
   if (sel && sel !== SIN_SEDE && !sedes.includes(sel)) { sel = ''; sedeFiltro.delete(id); }
   const enSede = e => !sel || (e.sede || SIN_SEDE) === sel;
-  const todos = todosCli.filter(enSede), eq = todos.filter(e => e.tipo === 'windows'), routers = todos.filter(e => e.tipo !== 'windows'), p = problemas(todos);
+  const todos = todosCli.filter(enSede), eq = todos.filter(esServidor), routers = todos.filter(e => !esServidor(e)), p = problemas(todos);
   // Botones de sede (solo si el cliente tiene sedes)
   const bs = $('#sedesCli');
   if (sedes.length) {
@@ -594,7 +602,7 @@ function vistaCliente(id) {
   const t = $('#tablero');
   if (!eq.length) {
     t.innerHTML = sel ? '<div class="vacio">Esta sede no tiene servidores.</div>' : gatoVacio('Sin servidores', esAdmin() ? 'Descarga el instalador, cópialo a cada servidor y ábrelo con doble clic. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el instalador</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
-    const b = $('#btnAg2'); if (b) b.onclick = () => agregarServidores(c.id);
+    const b = $('#btnAg2'); if (b) { b.dataset.abreMenu = ''; b.onclick = ev => menuAgentes(ev.currentTarget, c.id); }
     if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
     return;
   }
@@ -633,6 +641,7 @@ function filaEquipo(s) {
   const dm = s.discos.reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
   const sinDatos = s.estado === 'caido' || s.estado === 'pendiente' || s.estado === 'desinstalado';
   let sub = s.alias ? `${s.nombre}, ${s.so || ''}`.replace(/, $/, '') : (s.so || ESTADOS[s.estado]);
+  if (s.vms && s.vms.length) sub = `${s.so ? s.so + ', ' : ''}${s.vms.filter(v => v.estado === 'running').length} de ${plural(s.vms.length, s.tipo === 'proxmox' ? 'VM/LXC' : 'VM', s.tipo === 'proxmox' ? 'VM/LXC' : 'VM')} encendidas`;
   if (s.estado === 'caido') sub = `Sin respuesta desde ${cuando(s.ultimo)}`;
   if (s.estado === 'pendiente') sub = ESTADOS.pendiente;
   if (s.estado === 'desinstalado') sub = 'Agente desinstalado. Quítalo de la lista o vuelve a instalarlo.';
@@ -778,11 +787,192 @@ function vistaEquipo(id) {
     <div class="carril n-${nivel(d.pct)}" role="img" aria-label="${esc(d.unidad)}: ${d.pct} % usado"><span style="width:${d.pct}%"></span></div>
     <small>${nf.format(d.libre)} GB libres de ${nf.format(d.total)} GB</small></div>`).join('') : '<p class="tenue">Sin datos de discos.</p>';
 
+  // Hipervisor: resumen al estilo de ProxMenux, máquinas virtuales, contenedores y red (Proxmox, Hyper-V, Linux)
+  $('#srvLosas').innerHTML = losasHost(s, vivo);
+  const conPestanas = s.tipo === 'proxmox' || !!s.hipervisor;
+  $('#srvVms').innerHTML = (conPestanas ? '' : tablaVms(s, vivo)) + panelRed(s, vivo);
+  pestanasHv(s, vivo, conPestanas);
   const ses = vivo ? s.sesiones : [];
   const act = ses.filter(x => x.estado === 'activa').length, dsc = ses.filter(x => x.estado === 'desconectada').length;
-  $('#srvSesTitulo').innerHTML = `Sesiones <span>${plural(act, 'activa', 'activas')}, ${plural(dsc, 'desconectada', 'desconectadas')}</span>`;
+  $('#srvSesTitulo').innerHTML = `${s.tipo === 'windows' ? 'Sesiones' : 'Sesiones SSH y de consola'} <span>${plural(act, 'activa', 'activas')}, ${plural(dsc, 'desconectada', 'desconectadas')}</span>`;
   tabla(ses.map(x => ({ ...x, servidor: nombreEq(s), equipoId: s.id })), false,
-    !vivo ? '<strong>Sin datos</strong>El servidor no responde.' : '<strong>Nadie conectado a este servidor</strong>Las sesiones de Escritorio remoto aparecerán aquí.');
+    !vivo ? '<strong>Sin datos</strong>El servidor no responde.' : `<strong>Nadie conectado a este servidor</strong>${s.tipo === 'windows' ? 'Las sesiones de Escritorio remoto aparecerán aquí.' : 'Las sesiones SSH y de consola aparecerán aquí.'}`);
+}
+
+function anillo(pct) {
+  const r = 26, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pct || 0));
+  return `<svg class="anillo n-${nivel(pct)}" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" class="pista"/><circle cx="32" cy="32" r="${r}" class="valor" stroke-dasharray="${(c * v / 100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 32 32)"/><text x="32" y="37" text-anchor="middle">${pct == null ? '—' : Math.round(pct) + '%'}</text></svg>`;
+}
+const linea = (t, v, pct) => `<div class="hv-linea"><span>${t}</span><b>${v}</b>${pct != null ? `<span class="carril mini n-${nivel(pct)}"><span style="width:${Math.min(100, Math.max(0, pct))}%"></span></span>` : ''}</div>`;
+function losasHost(s, vivo) {
+  const hv = s.tipo === 'proxmox' || (s.vms && s.vms.length);
+  if (!vivo || (s.tipo === 'windows' && !hv)) return '';
+  const vms = s.vms || [], on = vms.filter(v => v.estado === 'running');
+  const nVm = vms.filter(v => v.tipo !== 'lxc').length, nLxc = vms.filter(v => v.tipo === 'lxc').length;
+  const temp = s.temperatura;
+  const tNivel = temp == null ? '' : temp >= 85 ? 'alerta' : temp >= 70 ? 'aviso' : 'ok';
+  const losas = [
+    `<section class="hv-losa"><h3>Uso de CPU</h3><div class="hv-cuerpo">${anillo(s.cpu)}<div class="hv-lineas">
+      ${s.cpuUsuario != null ? linea('Usuario', `${nf.format(s.cpuUsuario)} %`, s.cpuUsuario) : ''}${s.cpuSistema != null ? linea('Sistema', `${nf.format(s.cpuSistema)} %`, s.cpuSistema) : ''}
+      ${s.nucleos ? linea('Núcleos', s.nucleos) : ''}${s.carga != null ? linea('Carga promedio', nf.format(s.carga)) : ''}</div></div></section>`,
+    `<section class="hv-losa"><h3>Memoria</h3><div class="hv-cuerpo">${anillo(s.ramPct)}<div class="hv-lineas">
+      ${s.ramUsada != null ? linea('Usada', `${nf.format(s.ramUsada)} GB`, s.ramPct) : ''}${s.ramCache != null ? linea('En caché', `${nf.format(s.ramCache)} GB`) : ''}
+      ${s.ramTotal != null ? linea('Total', `${nf.format(s.ramTotal)} GB`) : ''}</div></div></section>`
+  ];
+  if (hv) losas.push(`<section class="hv-losa"><h3>${s.tipo === 'proxmox' ? 'VM y LXC activos' : 'VM activas'}</h3>
+    <div class="hv-grande">${on.length}<i>/ ${vms.length}</i></div>
+    <div class="hv-chips">${nVm ? `<span class="chip-hv vm">${plural(nVm, 'VM', 'VM')}</span>` : ''}${nLxc ? `<span class="chip-hv lxc">${nLxc} LXC</span>` : ''}<span class="chip-hv ${on.length === vms.length ? 'ok' : 'aviso'}">${plural(on.length, 'en ejecución', 'en ejecución')}</span></div></section>`);
+  losas.push(`<section class="hv-losa"><h3>Temperatura</h3>${temp == null ? '<div class="hv-grande tenue">—</div><p class="tenue" style="margin:6px 0 0;font-size:13px">El equipo no informa la temperatura.</p>'
+    : `<div class="hv-grande">${temp}<i>°C</i></div><span class="chip-hv ${tNivel}">${tNivel === 'alerta' ? 'Muy alta' : tNivel === 'aviso' ? 'Alta' : 'Normal'}</span>`}</section>`);
+  return `<div class="hv-losas">${losas.join('')}</div>`;
+}
+function panelRed(s, vivo) {
+  const l = (s.interfaces || []).filter(i => i.activa !== false);
+  if (!vivo || !l.length) return '';
+  return `<div class="cab-seccion"><h2>Red <span>${plural(l.length, 'interfaz', 'interfaces')}</span></h2></div>
+    <section class="hoja" style="margin-bottom:36px"><ul class="hv-red">${l.map(i => `<li><b>${esc(i.nombre)}</b><span class="b">↓ ${bpsTxt(i.rx)}</span><span class="s">↑ ${bpsTxt(i.tx)}</span></li>`).join('')}</ul></section>`;
+}
+const bpsTxt = v => { if (v == null) return '—'; for (const [n, d] of [['Gb/s', 1e9], ['Mb/s', 1e6], ['kb/s', 1e3]]) if (v >= d) return `${nf.format(Math.round(v / d * 10) / 10)} ${n}`; return `${Math.round(v)} b/s`; };
+
+/* ---------------- Proxmox y Hyper-V: secciones al estilo de ProxMenux (solo lectura) ---------------- */
+const pestanaHv = new Map(), pveCache = new Map();
+function pestanasHv(s, vivo, activo) {
+  const nav = $('#srvPestanas'), cont = $('#srvPve'), gen = $('#srvGeneral');
+  if (!activo) { nav.hidden = true; cont.hidden = true; gen.hidden = false; return; }
+  const pve = s.tipo === 'proxmox';
+  const lista = pve ? [['general', 'General'], ['apps', 'Apps'], ['vms', 'VM y LXC'], ['almacen', 'Almacenamiento'], ['copias', 'Backups'], ['nodo', 'Nodo']] : [['general', 'General'], ['vms', 'Máquinas virtuales']];
+  let p = pestanaHv.get(s.id) || 'general'; if (!lista.some(([k]) => k === p)) p = 'general';
+  nav.innerHTML = lista.map(([k, t]) => `<button type="button" data-pest="${k}" aria-pressed="${p === k}" class="${p === k ? 'activa' : ''}">${t}</button>`).join('');
+  nav.hidden = false;
+  nav.querySelectorAll('[data-pest]').forEach(b => b.onclick = () => { pestanaHv.set(s.id, b.dataset.pest); vistaEquipo(s.id); });
+  gen.hidden = p !== 'general'; cont.hidden = p === 'general';
+  if (p === 'general') return;
+  // Los detalles de Proxmox se piden aparte (pueden ser grandes) y se refrescan cada 30 s
+  let d = pveCache.get(s.id);
+  if (pve && (!d || Date.now() - d.t > 30000) && !(d && d.pidiendo)) {
+    pveCache.set(s.id, { ...(d || {}), pidiendo: true });
+    api(`/api/equipos/${s.id}/proxmox`).then(r => { pveCache.set(s.id, { t: Date.now(), datos: r }); if (rutaActual().vista === 'equipo' && rutaActual().id === s.id) vistaEquipo(s.id); })
+      .catch(() => pveCache.set(s.id, { t: Date.now(), datos: {} }));
+  }
+  const datos = (pveCache.get(s.id) || {}).datos;
+  const html = p === 'vms' ? (tablaVms(s, vivo, datos) || '<div class="vacio">No hay máquinas virtuales.</div>')
+    : !datos ? gatoCargando('Preguntándole a Proxmox…')
+    : p === 'apps' ? seccionApps(s, datos) : p === 'almacen' ? seccionAlmacen(s, datos) : p === 'copias' ? seccionCopias(s, datos) : seccionNodo(s, datos);
+  if (cont.dataset.v !== html) {
+    const q = cont.querySelector('#buscarApp'), qv = q ? q.value : '', foco = document.activeElement === q;
+    cont.innerHTML = html; cont.dataset.v = html;
+    const q2 = cont.querySelector('#buscarApp');
+    if (q2) { q2.value = qv; filtrarApps(); q2.oninput = filtrarApps; if (foco) q2.focus(); const c = cont.querySelector('#catApp'); if (c) c.onchange = filtrarApps; }
+  }
+}
+const pendiente = (x, que) => x == null ? gatoCargando(`Leyendo ${que}…`) : x.error ? `<div class="msg atencion">No se pudo leer ${que}: ${esc(x.error)}</div>` : null;
+
+function seccionApps(s, d) {
+  const l = d.apps; const p = pendiente(l, 'las apps'); if (p) return p;
+  const orden = [...l].sort((a, b) => (a.app ? 0 : 1) - (b.app ? 0 : 1) || (a.estado === 'running' ? 0 : 1) - (b.estado === 'running' ? 0 : 1) || Number(a.id) - Number(b.id));
+  const cats = [...new Set(l.map(a => a.categoria).filter(Boolean))].sort();
+  const ini = t => esc(String(t || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?');
+  return `<div class="apps-barra"><label class="buscar">${ICO.lupa}<span class="sr">Buscar app o CT</span><input type="search" id="buscarApp" placeholder="Buscar app, CT o IP"></label>
+      <select class="selector" id="catApp"><option value="">Todas las categorías</option>${cats.map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+    <p class="tenue" style="margin:0 0 16px">Lo que corre en cada VM y contenedor, con su dirección. La app se reconoce por el nombre o las etiquetas del CT, y la dirección se toma de las notas del CT si allí pones su URL. Los enlaces funcionan desde la red del cliente o por VPN.</p>
+    <div class="apps-rejilla">${orden.map(a => `<article class="app-tarjeta ${a.estado === 'running' ? '' : 'apagada'}" data-buscar="${esc([a.app, a.nombre, a.id, ...(a.ips || []), ...(a.etiquetas || [])].join(' ').toLowerCase())}" data-cat="${esc(a.categoria || '')}">
+        <div class="app-cab"><span class="app-icono" aria-hidden="true">${ini(a.app || a.nombre)}</span><div><strong>${esc(a.app || a.nombre)}</strong><small><span class="punto ${a.estado === 'running' ? 'ok' : 'caido'}" aria-hidden="true"></span>${a.estado === 'running' ? 'Encendida' : 'Apagada'}${a.arranqueAuto ? ', arranca sola' : ''}</small></div></div>
+        ${a.url ? `<a class="app-url" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.url.replace(/\/$/, ''))}</a>` : a.ips && a.ips.length ? `<span class="app-url sin">${esc(a.ips.join(', '))}</span>` : '<span class="app-url sin tenue">Sin IP conocida</span>'}
+        <div class="app-pie"><span><b>${esc(a.id)}</b> ${esc(a.nombre)}</span>${a.categoria ? `<span class="chip-hv vm">${esc(a.categoria)}</span>` : `<span class="tenue">${a.tipo === 'lxc' ? 'LXC' : 'VM'}</span>`}</div>
+        ${a.notas && !a.url ? `<p class="app-notas">${esc(a.notas.slice(0, 120))}</p>` : ''}
+      </article>`).join('')}</div>`;
+}
+function filtrarApps() {
+  const q = ($('#buscarApp') || {}).value || '', c = ($('#catApp') || {}).value || '';
+  document.querySelectorAll('.app-tarjeta').forEach(t => { t.hidden = !(t.dataset.buscar.includes(q.trim().toLowerCase()) && (!c || t.dataset.cat === c)); });
+}
+
+function seccionAlmacen(s, d) {
+  const n = d.nodo; const p = pendiente(n, 'el almacenamiento'); if (p) return p;
+  const al = n.almacenes || [], ds = n.discos || [];
+  return `<div class="cab-seccion"><h2>Almacenamientos <span>${al.length}</span></h2></div>
+    <section class="hoja desliza" style="margin-bottom:32px"><table class="tabla vms"><thead><tr><th>Nombre</th><th>Tipo</th><th>Contenido</th><th>Uso</th><th>Estado</th></tr></thead><tbody>
+    ${al.map(a => { const pct = a.total ? Math.round(a.usado / a.total * 100) : null; return `<tr class="${a.activo ? '' : 'apagada'}"><td><b>${esc(a.nombre)}</b>${a.compartido ? ' <span class="tenue">compartido</span>' : ''}</td><td>${esc(a.tipo)}</td><td class="tenue">${esc((a.contenido || '').replace(/,/g, ', '))}</td>
+      <td class="num">${a.total ? `${gbs(a.usado)} <span class="tenue">de ${gbs(a.total)}</span> <b>${pct} %</b><span class="carril mini n-${nivel(pct)}"><span style="width:${pct}%"></span></span>` : '—'}</td><td>${a.activo ? '<span class="punto ok"></span>Activo' : '<span class="punto caido"></span>Inactivo'}</td></tr>`; }).join('')}
+    </tbody></table></section>
+    <div class="cab-seccion"><h2>Discos físicos <span>${ds.length}</span></h2></div>
+    ${ds.length ? `<section class="hoja desliza"><table class="tabla vms"><thead><tr><th>Disco</th><th>Modelo</th><th>Tipo</th><th>Tamaño</th><th>Salud (SMART)</th><th>Desgaste</th><th>Uso</th></tr></thead><tbody>
+    ${ds.map(x => { const bien = /pass|ok/i.test(x.salud || ''); return `<tr><td><b>${esc(x.disco)}</b></td><td>${esc(x.modelo || '—')}<br><small class="tenue">${esc(x.serie || '')}</small></td><td>${esc((x.tipo || '').toUpperCase())}</td><td class="num">${gbs(x.tamano)}</td>
+      <td>${x.salud ? `<span class="punto ${bien ? 'ok' : 'caido'}"></span>${esc(x.salud)}` : '<span class="tenue">—</span>'}</td><td class="num">${x.desgaste != null ? `${100 - x.desgaste} % usado` : '—'}</td><td class="tenue">${esc(x.uso || '—')}</td></tr>`; }).join('')}
+    </tbody></table></section>` : '<div class="vacio">Proxmox no informó discos físicos.</div>'}`;
+}
+
+function seccionCopias(s, d) {
+  const c = d.copias; const p = pendiente(c, 'las copias de seguridad'); if (p) return p;
+  const nombres = new Map((s.vms || []).map(v => [String(v.id), v.nombre]));
+  const porVm = new Map(); for (const a of c.archivos || []) if (!porVm.has(a.vmid)) porVm.set(a.vmid, { ultima: a, n: 0, total: 0 });
+  for (const a of c.archivos || []) { const x = porVm.get(a.vmid); x.n++; x.total += a.tamano || 0; }
+  const sinCopia = (s.vms || []).filter(v => !porVm.has(String(v.id)));
+  const viejo = t => Date.now() - t > 7 * 864e5;
+  const tareasMal = (c.tareas || []).filter(t => t.estado && t.estado !== 'OK' && t.estado !== 'en curso');
+  return `<div class="hv-losas">
+      <section class="hv-losa"><h3>Copias guardadas</h3><div class="hv-grande">${(c.archivos || []).length}</div><span class="chip-hv">${gbs((c.archivos || []).reduce((n, a) => n + (a.tamano || 0), 0))} en ${plural((c.almacenes || []).length, 'almacén', 'almacenes')}</span></section>
+      <section class="hv-losa"><h3>VM y LXC sin copia</h3><div class="hv-grande">${sinCopia.length}</div>${sinCopia.length ? `<span class="chip-hv aviso">${esc(sinCopia.slice(0, 4).map(v => v.nombre).join(', '))}${sinCopia.length > 4 ? '…' : ''}</span>` : '<span class="chip-hv ok">Todas tienen copia</span>'}</section>
+      <section class="hv-losa"><h3>Últimas tareas</h3><div class="hv-grande">${(c.tareas || []).length - tareasMal.length}<i>/ ${(c.tareas || []).length} bien</i></div>${tareasMal.length ? `<span class="chip-hv alerta">${plural(tareasMal.length, 'con error', 'con error')}</span>` : '<span class="chip-hv ok">Sin errores</span>'}</section>
+    </div>
+    <div class="cab-seccion"><h2>Última copia de cada VM y LXC</h2></div>
+    <section class="hoja desliza" style="margin-bottom:32px"><table class="tabla vms"><thead><tr><th>VM / LXC</th><th>Última copia</th><th>Tamaño</th><th>Almacén</th><th>Copias</th></tr></thead><tbody>
+      ${[...(s.vms || [])].sort((a, b) => Number(a.id) - Number(b.id)).map(v => { const x = porVm.get(String(v.id)); return `<tr><td><b>${esc(v.id)}</b> ${esc(v.nombre)}</td>
+        <td>${x ? `<span class="punto ${viejo(x.ultima.fecha) ? 'aviso' : 'ok'}"></span>${cuando(x.ultima.fecha)}${viejo(x.ultima.fecha) ? ' <span class="tenue">(más de 7 días)</span>' : ''}` : '<span class="punto caido"></span>Nunca'}</td>
+        <td class="num">${x ? gbs(x.ultima.tamano) : '—'}</td><td>${x ? esc(x.ultima.almacen) : '—'}</td><td class="num">${x ? `${x.n} <span class="tenue">(${gbs(x.total)})</span>` : '0'}</td></tr>`; }).join('')}
+    </tbody></table></section>
+    <div class="cab-seccion"><h2>Trabajos programados <span>${(c.trabajos || []).length}</span></h2></div>
+    ${(c.trabajos || []).length ? `<section class="hoja desliza" style="margin-bottom:32px"><table class="tabla vms"><thead><tr><th>Horario</th><th>Qué copia</th><th>Almacén</th><th>Modo</th><th>Próxima</th><th>Estado</th></tr></thead><tbody>
+      ${c.trabajos.map(j => `<tr class="${j.activo ? '' : 'apagada'}"><td><b>${esc(j.horario || '—')}</b>${j.comentario ? `<br><small class="tenue">${esc(j.comentario)}</small>` : ''}</td><td>${esc(j.que || '—')}</td><td>${esc(j.almacen || '—')}</td><td>${esc(j.modo || '—')}</td><td>${j.proxima ? cuando(j.proxima) : '—'}</td><td>${j.activo ? 'Activo' : 'Desactivado'}</td></tr>`).join('')}
+    </tbody></table></section>` : '<div class="vacio" style="margin-bottom:32px">No hay trabajos de copia programados.</div>'}
+    <div class="cab-seccion"><h2>Últimas tareas de copia</h2></div>
+    ${(c.tareas || []).length ? `<section class="hoja desliza"><table class="tabla vms"><thead><tr><th>Inicio</th><th>VM / LXC</th><th>Duración</th><th>Resultado</th></tr></thead><tbody>
+      ${c.tareas.map(t => `<tr><td>${cuando(t.inicio)}</td><td>${t.vmid ? `<b>${esc(t.vmid)}</b> ${esc(nombres.get(t.vmid) || '')}` : 'Varias'}</td><td>${t.fin ? durTxt(t.fin - t.inicio) : '—'}</td>
+        <td>${t.estado === 'OK' ? '<span class="punto ok"></span>Correcta' : t.estado === 'en curso' ? '<span class="punto aviso"></span>En curso' : `<span class="punto caido"></span>${esc(t.estado)}`}</td></tr>`).join('')}
+    </tbody></table></section>` : '<div class="vacio">Sin tareas de copia recientes.</div>'}`;
+}
+
+function seccionNodo(s, d) {
+  const n = d.nodo; const p = pendiente(n, 'el nodo'); if (p) return p;
+  const fila = (k, v) => v == null || v === '' ? '' : `<div><dt><span>${k}</span></dt><dd style="margin:0">${v}</dd></div>`;
+  return `<dl class="ficha">${[
+      fila('Procesador', esc(n.cpuModelo)), fila('Sockets e hilos', n.hilos ? `${n.sockets || 1} socket${(n.sockets || 1) > 1 ? 's' : ''}, ${n.hilos} hilos` : null),
+      fila('Proxmox VE', esc(n.pve)), fila('Kernel', esc(n.kernel)),
+      fila('Carga promedio', n.carga && n.carga.length ? n.carga.map(x => nf.format(x)).join(' / ') + ' <span class="tenue">(1, 5 y 15 min)</span>' : null),
+      fila('Swap', n.swapTotal ? `${gbs(n.swapUsado)} de ${gbs(n.swapTotal)}` : 'Sin swap'), fila('Memoria compartida (KSM)', n.ksm ? gbs(n.ksm) : null),
+      fila('Arranque', n.arranque ? esc(n.arranque.toUpperCase()) : null),
+      fila('Actualizaciones', n.actualizaciones == null ? null : n.actualizaciones ? `<span class="punto aviso"></span>${plural(n.actualizaciones, 'paquete pendiente', 'paquetes pendientes')}` : '<span class="punto ok"></span>Al día'),
+      fila('Clúster', n.cluster ? `${esc(n.cluster.nombre)}, ${n.cluster.quorum ? '<span class="punto ok"></span>con quórum' : '<span class="punto caido"></span>sin quórum'}` : 'Nodo independiente')
+    ].join('')}</dl>
+    ${n.cluster && n.cluster.nodos.length ? `<div class="cab-seccion"><h2>Nodos del clúster <span>${n.cluster.nodos.filter(x => x.online).length} de ${n.cluster.nodos.length} en línea</span></h2></div>
+      <div class="hv-chips" style="margin-bottom:28px">${n.cluster.nodos.map(x => `<span class="chip-hv ${x.online ? 'ok' : 'alerta'}">${esc(x.nombre)}</span>`).join('')}</div>` : ''}
+    ${panelRed(s, s.estado === 'ok' || s.estado === 'sinMetricas')}`;
+}
+
+const ESTADO_VM = { running: ['ok', 'Encendida'], stopped: ['caido', 'Apagada'], paused: ['aviso', 'En pausa'], suspended: ['aviso', 'Suspendida'], saved: ['aviso', 'Guardada'], starting: ['aviso', 'Arrancando'], stopping: ['aviso', 'Apagándose'] };
+const gbs = b => b == null ? '—' : b >= 1024 ** 4 ? `${nf.format(Math.round(b / 1024 ** 4 * 10) / 10)} TB` : b >= 1024 ** 3 ? `${nf.format(Math.round(b / 1024 ** 3 * 10) / 10)} GB` : `${Math.round(b / 1024 ** 2)} MB`;
+function tablaVms(s, vivo, datos) {
+  const ips = new Map(((datos && Array.isArray(datos.apps)) ? datos.apps : []).map(a => [String(a.id), a]));
+  const vms = (s.vms || []).slice().sort((a, b) => (a.estado === 'running' ? 0 : 1) - (b.estado === 'running' ? 0 : 1) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+  if (!vms.length && !s.errorVms) return '';
+  const on = vms.filter(v => v.estado === 'running').length;
+  const titulo = s.hipervisor === 'hyperv' ? 'Máquinas virtuales de Hyper-V' : 'Máquinas virtuales y contenedores';
+  const filas = vms.map(v => {
+    const [k, t] = ESTADO_VM[v.estado] || ['', v.estado || '—'];
+    const enc = v.estado === 'running';
+    const ram = v.ramMax ? Math.round((v.ram || 0) / v.ramMax * 100) : null;
+    const dsk = v.discoMax ? Math.round((v.disco || 0) / v.discoMax * 100) : null;
+    const ap = ips.get(String(v.id));
+    return `<tr class="${enc ? '' : 'apagada'}"><td><span class="punto ${k}" aria-hidden="true"></span><b>${esc(v.nombre)}</b>${v.id && s.tipo === 'proxmox' ? ` <span class="tenue">${esc(v.id)}</span>` : ''}${ap && ap.ips && ap.ips.length ? `<br><small class="tenue">${esc(ap.ips.join(', '))}</small>` : ''}</td>
+      <td>${v.tipo === 'lxc' ? 'Contenedor LXC' : v.tipo === 'qemu' ? 'VM' : 'VM'}</td><td>${esc(t)}</td>
+      <td class="num">${enc && v.cpu != null ? `${nf.format(Math.round(v.cpu))} %` : '—'}${v.cpus ? ` <span class="tenue">de ${v.cpus} ${v.cpus === 1 ? 'núcleo' : 'núcleos'}</span>` : ''}</td>
+      <td class="num">${enc && v.ram != null ? `${gbs(v.ram)}${v.ramMax ? ` <span class="tenue">de ${gbs(v.ramMax)}</span>` : ''}` : v.ramMax ? `<span class="tenue">${gbs(v.ramMax)}</span>` : '—'}${ram != null && enc ? `<span class="carril mini n-${nivel(ram)}"><span style="width:${Math.min(100, ram)}%"></span></span>` : ''}</td>
+      <td class="num">${v.discoMax ? `${v.disco ? gbs(v.disco) + ' <span class="tenue">de ' : '<span class="tenue">'}${gbs(v.discoMax)}</span>` : '—'}${dsk != null && v.disco ? `<span class="carril mini n-${nivel(dsk)}"><span style="width:${Math.min(100, dsk)}%"></span></span>` : ''}</td>
+      <td>${enc && v.uptime ? esc(durTxt(v.uptime * 1000)) : '—'}</td></tr>`;
+  }).join('');
+  return `<div class="cab-seccion"><h2>${titulo} <span>${on} de ${vms.length} encendidas</span></h2></div>
+    ${s.errorVms ? `<div class="msg atencion"><b>No se pudo leer la lista de máquinas virtuales.</b> ${esc(s.errorVms)}</div>` : ''}
+    ${vms.length ? `<section class="hoja desliza" style="margin-bottom:36px"><table class="tabla vms"><thead><tr><th>Nombre</th><th>Tipo</th><th>Estado</th><th>CPU</th><th>Memoria</th><th>Disco</th><th>Encendida</th></tr></thead><tbody>${filas}</tbody></table></section>` : ''}`;
 }
 
 function grafico(el, historial, clave, nombre, span) {
@@ -890,7 +1080,7 @@ function vistaHistorial() {
    ====================================================================== */
 function menuEn(boton, items, cab) {
   const menu = $('#menu');
-  menu.innerHTML = (cab || '') + items.map((it, i) => it.sep ? '<hr>' : `<button type="button" role="menuitem" data-i="${i}" class="${it.peligro ? 'peligro' : ''}">${esc(it.t)}</button>`).join('');
+  menu.innerHTML = (cab || '') + items.map((it, i) => it.sep ? '<hr>' : `<button type="button" role="menuitem" data-i="${i}" class="${it.peligro ? 'peligro' : ''}${it.d ? ' con-desc' : ''}">${it.d ? `<span><b>${esc(it.t)}</b><small>${esc(it.d)}</small></span>` : esc(it.t)}</button>`).join('');
   menu.hidden = false;
   const r = boton.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
   menu.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + 'px';
@@ -899,7 +1089,7 @@ function menuEn(boton, items, cab) {
   menu.onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; cerrarMenu(); items[+b.dataset.i].fn(); };
 }
 function cerrarMenu() { $('#menu').hidden = true; }
-document.addEventListener('click', e => { if (!e.target.closest('#menu, #btnCuenta')) cerrarMenu(); });
+document.addEventListener('click', e => { if (!e.target.closest('#menu, #btnCuenta, [data-abre-menu]')) cerrarMenu(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu(); });
 
 function aviso(texto, error) {
@@ -923,38 +1113,62 @@ function libre(html, ancho) {
 const ocupado = async (b, texto, fn) => { const t = b.textContent; b.disabled = true; b.textContent = texto; try { await fn(); } finally { b.disabled = false; b.textContent = t; } };
 
 /* ---------------- Clientes y agentes ---------------- */
-// Desde la página de un cliente: solo el instalador de ESE cliente, para no instalar el de otro por error
-async function agregarServidores(id) {
+// Desde la página de un cliente: solo el agente de ESE cliente (Windows, Hyper-V, Linux o Proxmox)
+function menuAgentes(boton, id) {
+  if (!$('#menu').hidden) { cerrarMenu(); return; }
+  menuEn(boton, [
+    { t: 'Windows', d: 'Servidores y PC con Windows (.exe)', fn: () => agregarServidores(id, 'windows') },
+    { t: 'Hyper-V', d: 'El agente de Windows, con sus máquinas virtuales', fn: () => agregarServidores(id, 'hyperv') },
+    { t: 'Linux', d: 'Debian, Ubuntu, Rocky… con un comando', fn: () => agregarServidores(id, 'linux') },
+    { t: 'Proxmox VE', d: 'El host, con sus VM, LXC, apps y backups', fn: () => agregarServidores(id, 'proxmox') }
+  ]);
+}
+async function agregarServidores(id, tipo = 'windows') {
   let datos;
   try { datos = await api('/api/clientes'); } catch (x) { if (!x.login) aviso(x.message, true); return; }
   const c = datos.clientes.find(x => x.id === id); if (!c) return;
   const t = encodeURIComponent(CSRF);
-  const dlg = libre(`<div><h3>Agregar servidores a ${esc(c.nombre)}</h3>
-    <p>El instalador ya va configurado para <b>${esc(c.nombre)}</b> y envía los datos a <b>${esc(datos.url)}</b>${/^https:/.test(datos.url) ? ' por HTTPS' : ''}: no hace falta VPN ni abrir puertos.</p>
-    <ol class="pasos"><li>Descarga el instalador.</li>
-      <li>Cópialo a cada servidor de ${esc(c.nombre)} y ábrelo con doble clic. Si Windows avisa de que es una aplicación desconocida, pulsa <b>Más información</b> y <b>Ejecutar de todas formas</b>.</li>
-      <li>En unos segundos el servidor aparecerá aquí. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
-    <p><a class="btn prim grande" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
-    <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>
-    <details class="clave"><summary>Clave del agente</summary>
-      <p>Va incluida en el instalador. Si generas una nueva, los agentes ya instalados de ${esc(c.nombre)} dejarán de enviar datos hasta que los reinstales con el instalador nuevo.</p>
-      <code class="codigo" data-clave-txt>${esc(c.clave)}</code>
-      <button class="btn" type="button" data-nueva-clave>Generar una clave nueva</button>
-    </details>
-    <div class="msg error" role="alert" hidden></div>
-    <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`);
-  const bn = dlg.querySelector('[data-nueva-clave]');
-  let seguro = false;
-  bn.onclick = async () => {
-    if (!seguro) { seguro = true; bn.className = 'btn peligro'; bn.textContent = '¿Seguro? Generar una clave nueva'; return; }
-    try {
-      await enviar(`/api/clientes/${c.id}/clave`, 'POST');
-      const d = await api('/api/clientes'); const n = d.clientes.find(x => x.id === id);
-      dlg.querySelector('[data-clave-txt]').textContent = n ? n.clave : '';
-      seguro = false; bn.className = 'btn'; bn.textContent = 'Generar una clave nueva';
-      aviso('Clave nueva generada. Descarga el instalador otra vez para los servidores de este cliente.');
-    } catch (x) { if (!x.login) gatoDice(dlg.querySelector('.msg'), x.message); }
+  const comando = `curl -fsSL ${datos.url}/instalar/${c.clave}.sh | bash`;
+  const TIT = { windows: 'Windows', hyperv: 'Hyper-V', linux: 'Linux', proxmox: 'Proxmox VE' };
+  const dlg = libre('<div></div>');
+  const pintar = () => {
+    const win = tipo === 'windows' || tipo === 'hyperv';
+    dlg.querySelector('.dlg').innerHTML = `<div><h3>Agregar a ${esc(c.nombre)}</h3>
+      <div class="pestanas-hv" role="group" aria-label="Sistema" style="margin-bottom:18px">${Object.entries(TIT).map(([k, v]) => `<button type="button" data-t="${k}" class="${tipo === k ? 'activa' : ''}" aria-pressed="${tipo === k}">${v}</button>`).join('')}</div>
+      ${win ? `<p>${tipo === 'hyperv' ? 'En Hyper-V se usa el mismo agente de Windows: lo instalas en el host y él detecta el rol solo. Verás el host y sus <b>máquinas virtuales</b> (encendidas o apagadas, CPU, memoria, disco y tiempo encendidas).' : `El instalador ya va configurado para <b>${esc(c.nombre)}</b> y envía los datos a <b>${esc(datos.url)}</b>${/^https:/.test(datos.url) ? ' por HTTPS' : ''}: no hace falta VPN ni abrir puertos.`}</p>
+        <ol class="pasos"><li>Descarga el instalador.</li>
+          <li>Cópialo al ${tipo === 'hyperv' ? 'host de Hyper-V' : 'servidor'} y ábrelo con doble clic. Si Windows avisa de que es una aplicación desconocida, pulsa <b>Más información</b> y <b>Ejecutar de todas formas</b>.</li>
+          <li>En unos segundos aparecerá aquí. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
+        <p><a class="btn prim grande" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
+        <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>`
+      : `<p>${tipo === 'proxmox' ? 'Instálalo en el <b>host de Proxmox</b> (no en las VM ni en los LXC). Verás el nodo y todo lo que tiene: <b>VM y contenedores, apps con su dirección, almacenamiento, discos, backups y actualizaciones</b>. Solo lectura: usa la API local de Proxmox, sin tokens.' : 'Funciona en Debian, Ubuntu, Rocky, AlmaLinux y otras distribuciones con systemd. Verás CPU, memoria, discos, red, temperatura y las sesiones SSH.'}</p>
+        <ol class="pasos"><li>Entra por SSH ${tipo === 'proxmox' ? 'al host de Proxmox (o abre su consola Shell en la web)' : 'al servidor'} como root.</li>
+          <li>Pega este comando:</li></ol>
+        <div class="en-linea" style="margin:0 0 12px"><input class="codigo" id="cmdLinux" readonly value="${esc(comando)}" style="flex:1"><button class="btn prim" type="button" data-copiar>Copiar</button></div>
+        <p class="tenue">Si no entras como root, usa <code>| sudo bash</code> al final. Necesita Python 3 (Proxmox ya lo trae) y salida a Internet hacia NodeCat. Para quitarlo: <code>sudo nodecat-agente desinstalar</code>.</p>`}
+      <details class="clave"><summary>Clave del agente</summary>
+        <p>Va incluida en el instalador y en el comando. Si generas una nueva, los agentes ya instalados de ${esc(c.nombre)} dejarán de enviar datos hasta que los reinstales.</p>
+        <code class="codigo" data-clave-txt>${esc(c.clave)}</code>
+        <button class="btn" type="button" data-nueva-clave>Generar una clave nueva</button>
+      </details>
+      <div class="msg error" role="alert" hidden></div>
+      <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`;
+    dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
+    dlg.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tipo = b.dataset.t; pintar(); });
+    const bc = dlg.querySelector('[data-copiar]');
+    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#cmdLinux'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } aviso('Comando copiado.'); };
+    const bn = dlg.querySelector('[data-nueva-clave]');
+    let seguro = false;
+    bn.onclick = async () => {
+      if (!seguro) { seguro = true; bn.className = 'btn peligro'; bn.textContent = '¿Seguro? Generar una clave nueva'; return; }
+      try {
+        await enviar(`/api/clientes/${c.id}/clave`, 'POST');
+        const d = await api('/api/clientes'); const n = d.clientes.find(x => x.id === id); if (n) c.clave = n.clave;
+        pintar(); aviso('Clave nueva generada. Descarga el instalador o copia el comando otra vez.');
+      } catch (x) { if (!x.login) gatoDice(dlg.querySelector('.msg'), x.message); }
+    };
   };
+  pintar();
 }
 
 // Enlace de solo lectura para el cliente: ve el estado de sus equipos sin cuenta y sin poder tocar nada

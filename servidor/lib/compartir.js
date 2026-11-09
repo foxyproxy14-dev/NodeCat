@@ -111,7 +111,7 @@ function vista(token, ip) {
       const nombres = new Map(eq.map(y => [y.id, y.alias || y.nombre]));
       const sucesos = eq.length ? q(`SELECT equipo_id, t, tipo FROM eventos WHERE equipo_id IN (${eq.map(() => '?').join(',')}) AND t >= ? AND tipo IN ('caida', 'vuelta', 'reinicio', 'wan-caida', 'wan-vuelta') ORDER BY t DESC LIMIT 12`).all(...eq.map(y => y.id), desde)
         .map(s => ({ t: s.t, tipo: s.tipo, equipo: nombres.get(s.equipo_id) })) : [];
-      return { nombre: x.nombre, servidores: eq.filter(y => y.tipo === 'windows').map(servidor), red: eq.filter(y => y.tipo !== 'windows').map(equipoRed), sucesos };
+      return { nombre: x.nombre, servidores: eq.filter(y => flota.esAgente(y.tipo)).map(servidor), red: eq.filter(y => !flota.esAgente(y.tipo)).map(equipoRed), sucesos };
     })
   };
 }

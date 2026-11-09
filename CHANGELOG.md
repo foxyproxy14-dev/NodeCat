@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.9.0 (noviembre de 2026)
+
+- Proxmox VE: agente para el host con una línea, al estilo de ProxMenux: General, Apps (qué corre en cada VM/LXC y su dirección), VM y LXC, Almacenamiento (con salud SMART), Backups y Nodo. Solo lectura, con la API local (sin tokens).
+- Hyper-V: el agente de Windows 1.4 detecta el rol y muestra las máquinas virtuales.
+- Linux: el mismo agente, para cualquier servidor con systemd.
+- Botón "Descargar agente" con submenú: Windows, Hyper-V, Linux y Proxmox VE.
+
 ## 0.8.0 (noviembre de 2026)
 
 - Sedes dentro de un cliente: campo opcional en cada equipo; la página del cliente los agrupa por sede y permite filtrar. Sin sedes, se ve como antes. La página compartida también los agrupa.

@@ -71,4 +71,66 @@ function instalador(cliente, url) {
 }
 const nombreArchivo = c => c.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-module.exports = { crear, instalador, nombreArchivo, disponible };
+// ---------------------------------------------------------------- Linux y Proxmox
+const PY = path.join(__dirname, '..', 'agente', 'nodecat-agente.py');
+const agentePython = () => fs.readFileSync(PY);
+/** Script de instalación de una línea: curl -fsSL <url> | sudo bash */
+function scriptLinux(cliente, url) {
+  const q = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+  return `#!/bin/bash
+# Instalador del agente de NodeCat para Linux y Proxmox VE (${cliente.nombre.replace(/[^\w .áéíóúñÁÉÍÓÚÑ-]/g, '')})
+set -e
+SERVIDOR=${q(url)}
+CLAVE=${q(cliente.clave)}
+if [ "$(id -u)" != "0" ]; then echo "Ejecútalo como root (o con sudo)."; exit 1; fi
+if ! command -v systemctl >/dev/null; then echo "Hace falta systemd."; exit 1; fi
+if ! command -v python3 >/dev/null; then
+  echo "> Instalando python3"
+  if command -v apt-get >/dev/null; then apt-get update -qq && apt-get install -y -qq python3 >/dev/null
+  elif command -v dnf >/dev/null; then dnf install -y -q python3
+  elif command -v yum >/dev/null; then yum install -y -q python3
+  else echo "Instala python3 y vuelve a ejecutar el comando."; exit 1; fi
+fi
+echo "> Descargando el agente de NodeCat"
+systemctl stop nodecat-agente 2>/dev/null || true
+mkdir -p /opt/nodecat-agente
+if command -v curl >/dev/null; then curl -fsSL "$SERVIDOR/agente/nodecat-agente.py" -o /opt/nodecat-agente/nodecat-agente.py
+else wget -qO /opt/nodecat-agente/nodecat-agente.py "$SERVIDOR/agente/nodecat-agente.py"; fi
+chmod 755 /opt/nodecat-agente/nodecat-agente.py
+ln -sf /opt/nodecat-agente/nodecat-agente.py /usr/local/bin/nodecat-agente
+INSTALACION=$(cat /proc/sys/kernel/random/uuid | tr -d '-')
+umask 077
+cat > /etc/nodecat-agente.json <<CFG
+{ "servidor": "$SERVIDOR", "clave": "$CLAVE", "instalacion": "$INSTALACION" }
+CFG
+cat > /etc/systemd/system/nodecat-agente.service <<'UNIT'
+[Unit]
+Description=Agente de NodeCat (solo lectura)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/env python3 /opt/nodecat-agente/nodecat-agente.py servicio
+Restart=always
+RestartSec=30
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now nodecat-agente >/dev/null 2>&1
+sleep 3
+if systemctl is-active --quiet nodecat-agente; then
+  if command -v pvesh >/dev/null; then QUE="Proxmox VE (con sus VM, contenedores y almacenamientos)"; else QUE="este servidor Linux"; fi
+  echo ""
+  echo "  Agente de NodeCat instalado y en marcha en $(hostname)."
+  echo "  En unos segundos aparecerá $QUE en NodeCat."
+  echo "  Para quitarlo: sudo nodecat-agente desinstalar"
+else
+  echo "El servicio no arrancó. Revisa: journalctl -u nodecat-agente -n 30"; exit 1
+fi
+`;
+}
+
+module.exports = { crear, instalador, nombreArchivo, disponible, agentePython, scriptLinux };

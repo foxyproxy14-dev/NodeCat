@@ -131,6 +131,7 @@ function equipoVisible(sesion, id) {
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
 ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.sucesosEquipo(e.id, Math.min(400, Number(url.searchParams.get('dias')) || 90)); });
+ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return flota.detallesPve(e.id); });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
 // Routers MikroTik
@@ -194,6 +195,22 @@ ruta('GET', '/api/clientes/:id/instalador', { ...soloAdmin, token: true }, ({ p,
   const c = flota.cliente(Number(p.id)); if (!c) throw error(404, 'Ese cliente no existe.');
   const b = paquete.instalador(c, urlPublica(req));
   res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/vnd.microsoft.portable-executable', 'Content-Disposition': `attachment; filename="NodeCat-Agente-${paquete.nombreArchivo(c)}.exe"`, 'Content-Length': b.length, 'Cache-Control': 'no-store' });
+  res.end(b);
+});
+// Linux y Proxmox: instalación con una línea (la clave del cliente va en la dirección, como en el instalador de Windows)
+ruta('GET', '/instalar/:clave', { publica: true }, ({ p, req, res }) => {
+  const ip = ipDe(req), f = malasClaves.get(ip);
+  if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
+  const clave = String(p.clave).replace(/\.sh$/, '');
+  const c = flota.clientes().map(x => flota.cliente(x.id)).find(x => x.clave === clave);
+  if (!c) { claveFallida(ip); res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('echo "Este comando de instalación ya no es válido. Cópialo de nuevo desde NodeCat."; exit 1\n'); return; }
+  const b = Buffer.from(paquete.scriptLinux(c, urlPublica(req)));
+  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': b.length });
+  res.end(b);
+});
+ruta('GET', '/agente/nodecat-agente.py', { publica: true }, ({ res }) => {
+  const b = paquete.agentePython();
+  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/x-python; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Length': b.length });
   res.end(b);
 });
 ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {

@@ -71,7 +71,7 @@ function editarEquipo(id, { alias, cliente_id, sede }) {
       throw new Error(`Ese cliente ya tiene un equipo llamado ${e.nombre}.`);
     q('UPDATE equipos SET cliente_id = ? WHERE id = ?').run(cliente_id, id);
     // El agente sigue usando la clave del cliente anterior: en su próximo informe recibe la del nuevo
-    if (e.tipo === 'windows') {
+    if (esAgente(e.tipo)) {
       q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
       q('INSERT OR REPLACE INTO traslados (cliente_origen, nombre, equipo_id, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, id, Date.now());
       q('DELETE FROM bajas WHERE cliente_id = ? AND nombre = ?').run(cliente_id, e.nombre);
@@ -86,7 +86,7 @@ function borrarEquipo(id) {
   const e = equipo(id);
   // Un servidor quitado del panel no vuelve a aparecer solo: su agente recibe la orden de desinstalarse.
   // Si se vuelve a instalar (instalación nueva), aparece otra vez.
-  if (e && e.tipo === 'windows' && !e.desinstalado) q('INSERT OR REPLACE INTO bajas (cliente_id, nombre, instalacion, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, e.instalacion || '', Date.now());
+  if (e && esAgente(e.tipo) && !e.desinstalado) q('INSERT OR REPLACE INTO bajas (cliente_id, nombre, instalacion, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, e.instalacion || '', Date.now());
   q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
   q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id);
 }
@@ -98,7 +98,7 @@ function cargarVivo(id) {
   const e = equipo(id);
   if (!e) { vivo.delete(id); return; }
   const previo = vivo.get(id);
-  let sonda = null; if (e.tipo !== 'windows' && e.config) { try { sonda = JSON.parse(e.config).sonda || null; } catch { } }
+  let sonda = null; if (!esAgente(e.tipo) && e.config) { try { sonda = JSON.parse(e.config).sonda || null; } catch { } }
   vivo.set(id, { ...e, config: undefined, sonda, datos: e.datos ? JSON.parse(e.datos) : null, hora: previo ? previo.hora : [], ultimaMuestra: previo ? previo.ultimaMuestra : 0, caido: previo ? previo.caido : null, errorConexion: previo ? previo.errorConexion : null });
 }
 function arrancar() {
@@ -122,8 +122,48 @@ function estadoDe(v, ahora = Date.now()) {
 }
 
 // ---------------------------------------------------------------- informes de los agentes
+const BYTES = 1e17;   // tamaños en bytes (VM, discos, copias)
 const num = (x, min = 0, max = 1e9) => (typeof x === 'number' && isFinite(x)) ? Math.min(max, Math.max(min, x)) : null;
 const txt = (x, max = 200) => x == null ? '' : String(x).slice(0, max);
+
+// Equipos con agente (servidores): Windows (con o sin Hyper-V), Linux y Proxmox
+const AGENTES = ['windows', 'linux', 'proxmox'];
+const esAgente = tipo => AGENTES.includes(tipo);
+const EN_AGENTES = "tipo IN ('windows', 'linux', 'proxmox')";
+
+// Detalles de Proxmox (apps, copias, nodo): solo los campos conocidos, con límites
+function limpiarPve(p) {
+  if (!p || typeof p !== 'object') return null;
+  const arr = (x, n) => Array.isArray(x) ? x.slice(0, n) : [];
+  const o = {};
+  if (Array.isArray(p.apps)) o.apps = arr(p.apps, 500).map(a => ({
+    id: txt(a.id, 20), nombre: txt(a.nombre, 120), tipo: txt(a.tipo, 8), estado: txt(a.estado, 20), ips: arr(a.ips, 4).map(x => txt(x, 45)),
+    so: txt(a.so, 30), arranqueAuto: !!a.arranqueAuto, app: a.app ? txt(a.app, 60) : null, categoria: a.categoria ? txt(a.categoria, 40) : null,
+    url: /^https?:\/\//i.test(a.url || '') ? txt(a.url, 300) : null, etiquetas: arr(a.etiquetas, 8).map(x => txt(x, 30)), notas: txt(a.notas, 300)
+  }));
+  else if (p.apps && p.apps.error) o.apps = { error: txt(p.apps.error, 300) };
+  if (p.copias && typeof p.copias === 'object') {
+    const c = p.copias;
+    o.copias = c.error ? { error: txt(c.error, 300) } : {
+      archivos: arr(c.archivos, 400).map(a => ({ vmid: txt(a.vmid, 20), fecha: num(a.fecha, 0, 9e15), tamano: num(a.tamano, 0, BYTES), almacen: txt(a.almacen, 60), formato: txt(a.formato, 20), notas: txt(a.notas, 120), protegida: !!a.protegida, verificada: a.verificada ? txt(a.verificada, 20) : null })),
+      trabajos: arr(c.trabajos, 40).map(j => ({ id: txt(j.id, 60), horario: txt(j.horario, 60), almacen: txt(j.almacen, 60), activo: !!j.activo, que: txt(String(j.que ?? ''), 200), modo: txt(j.modo, 20), comentario: txt(j.comentario, 120), proxima: num(j.proxima, 0, 9e15) })),
+      tareas: arr(c.tareas, 30).map(t => ({ vmid: txt(t.vmid, 20), inicio: num(t.inicio, 0, 9e15), fin: num(t.fin, 0, 9e15), estado: txt(t.estado, 200), usuario: txt(t.usuario, 60) })),
+      almacenes: arr(c.almacenes, 30).map(x => txt(x, 60))
+    };
+  }
+  if (p.nodo && typeof p.nodo === 'object') {
+    const n = p.nodo;
+    o.nodo = n.error ? { error: txt(n.error, 300) } : {
+      cpuModelo: txt(n.cpuModelo, 120), sockets: num(n.sockets, 0, 64), hilos: num(n.hilos, 0, 4096), kernel: txt(n.kernel, 120), pve: txt(n.pve, 80),
+      carga: arr(n.carga, 3).map(x => num(x, 0, 1e4)), swapTotal: num(n.swapTotal, 0, BYTES), swapUsado: num(n.swapUsado, 0, BYTES), ksm: num(n.ksm, 0, BYTES), arranque: txt(n.arranque, 20),
+      actualizaciones: num(n.actualizaciones, 0, 1e5),
+      cluster: n.cluster ? { nombre: txt(n.cluster.nombre, 60), quorum: !!n.cluster.quorum, nodos: arr(n.cluster.nodos, 64).map(x => ({ nombre: txt(x.nombre, 63), online: !!x.online })) } : null,
+      discos: arr(n.discos, 64).map(d => ({ disco: txt(d.disco, 60), modelo: txt(d.modelo, 80), tamano: num(d.tamano, 0, BYTES), tipo: txt(d.tipo, 20), salud: txt(d.salud, 30), desgaste: d.desgaste === 'N/A' ? null : num(d.desgaste, 0, 100), uso: txt(d.uso, 40), serie: txt(d.serie, 60) })),
+      almacenes: arr(n.almacenes, 64).map(a => ({ nombre: txt(a.nombre, 60), tipo: txt(a.tipo, 30), contenido: txt(a.contenido, 120), activo: !!a.activo, compartido: !!a.compartido, usado: num(a.usado, 0, BYTES), total: num(a.total, 0, BYTES) }))
+    };
+  }
+  return o;
+}
 
 function limpiarInforme(c) {
   const d = {
@@ -136,7 +176,19 @@ function limpiarInforme(c) {
     sesiones: (Array.isArray(c.sesiones) ? c.sesiones : []).slice(0, 500).map(x => ({
       usuario: txt(x.usuario, 100), dominio: txt(x.dominio, 100), id: num(x.id, 0, 1e7), estado: txt(x.estado, 20),
       estadoTexto: txt(x.estadoTexto, 40), equipo: txt(x.equipo, 100), inicio: num(x.inicio, 0, 9e15), inactivo: num(x.inactivo, 0, 1e7)
-    })).filter(s => s.usuario)
+    })).filter(s => s.usuario),
+    // Hipervisor (Proxmox o Hyper-V): sus máquinas virtuales y contenedores, y los almacenamientos
+    nucleos: num(c.nucleos, 0, 4096), carga: num(c.carga, 0, 1e4), temperatura: num(c.temperatura, -50, 150),
+    ramCache: num(c.ramCache), cpuUsuario: num(c.cpuUsuario, 0, 100), cpuSistema: num(c.cpuSistema, 0, 100),
+    red: (Array.isArray(c.red) ? c.red : []).slice(0, 30).map(x => ({ nombre: txt(x.nombre, 40), rx: num(x.rx, 0, 1e13), tx: num(x.tx, 0, 1e13), activa: x.activa !== false })),
+    hipervisor: c.hipervisor ? txt(c.hipervisor, 40) : null,
+    vms: (Array.isArray(c.vms) ? c.vms : []).slice(0, 1000).map(x => ({
+      id: txt(x.id, 60), nombre: txt(x.nombre, 120), tipo: txt(x.tipo, 12), estado: txt(x.estado, 20), nodo: txt(x.nodo, 63),
+      cpu: num(x.cpu, 0, 100), cpus: num(x.cpus, 0, 4096), ram: num(x.ram, 0, BYTES), ramMax: num(x.ramMax, 0, BYTES), disco: num(x.disco, 0, BYTES), discoMax: num(x.discoMax, 0, BYTES),
+      uptime: num(x.uptime, 0, 1e10), netin: num(x.netin, 0, BYTES), netout: num(x.netout, 0, BYTES)
+    })).filter(v => v.nombre || v.id),
+    errorVms: c.errorVms ? txt(c.errorVms, 400) : null,
+    pve: limpiarPve(c.pve)
   };
   if (d.errorMetricas) { d.cpu = d.ramPct = null; }
   return d;
@@ -148,10 +200,11 @@ function recibir(clave, c, ip) {
   const nombre = txt(c && c.nombre, 63).trim().toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(nombre)) { const e = new Error('El informe no trae un nombre de equipo válido.'); e.status = 400; throw e; }
   const d = limpiarInforme(c);
+  const plataforma = ['linux', 'proxmox'].includes(c.plataforma) ? c.plataforma : 'windows';
   const ahora = Date.now();
   // Informes atrasados (el agente los guardó mientras no había conexión): solo completan el historial
   if (d.hora && ahora - d.hora > 120000 && ahora - d.hora < 2 * DIA) {
-    const f = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, nombre);
+    const f = q(`SELECT id FROM equipos WHERE cliente_id = ? AND ${EN_AGENTES} AND nombre = ?`).get(cli.id, nombre);
     if (f && (d.cpu != null || d.ramPct != null) && !q('SELECT 1 FROM metricas WHERE equipo_id = ? AND t BETWEEN ? AND ?').get(f.id, d.hora - 50000, d.hora + 50000)) {
       const disco = d.discos.length ? Math.max(...d.discos.map(x => x.pct || 0)) : null;
       q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(f.id, Math.round(d.hora), d.cpu, d.ramPct, disco);
@@ -161,7 +214,7 @@ function recibir(clave, c, ip) {
   const intervalo = Math.round(num(c.intervalo, 5, 3600) || INTERVALO_AGENTE);
   const instalacion = txt(c.instalacion, 40).trim();
 
-  let fila = q("SELECT id, cliente_id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, nombre);
+  let fila = q(`SELECT id, cliente_id FROM equipos WHERE cliente_id = ? AND ${EN_AGENTES} AND nombre = ?`).get(cli.id, nombre);
   let claveNueva = null, clienteNuevo = null;
   // El traslado se conserva: un agente antiguo (sin cambio automático de clave) sigue informando con la clave vieja
   if (!fila) {
@@ -187,7 +240,7 @@ function recibir(clave, c, ip) {
   }
   let nuevo = false;
   if (!fila) {
-    const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado) VALUES (?, 'windows', ?, ?)").run(cli.id, nombre, ahora);
+    const r = q('INSERT INTO equipos (cliente_id, tipo, nombre, creado) VALUES (?, ?, ?, ?)').run(cli.id, plataforma, nombre, ahora);
     fila = { id: Number(r.lastInsertRowid) }; nuevo = true;
     log(`Nuevo equipo de ${cli.nombre}: ${nombre} (${ip}).`);
   }
@@ -196,6 +249,7 @@ function recibir(clave, c, ip) {
   const antes = previo && previo.datos;
 
   transaccion(() => {
+    q('UPDATE equipos SET tipo = ? WHERE id = ? AND tipo != ?').run(plataforma, id, plataforma);   // p. ej. un Linux que pasó a ser Proxmox
     q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ?, desinstalado = NULL, instalacion = COALESCE(NULLIF(?, \'\'), instalacion) WHERE id = ?')
       .run(ahora, txt(c.version, 20), txt(ip, 60), intervalo, JSON.stringify(d), instalacion, id);
     if (previo && previo.desinstalado) evento(id, 'nuevo', 'El agente se volvió a instalar.', ahora);
@@ -223,7 +277,7 @@ function agenteDe(clave, nombre) {
   const cli = clave && q('SELECT id FROM clientes WHERE clave = ?').get(String(clave));
   if (!cli) { const e = new Error('La clave del agente no es válida.'); e.status = 403; throw e; }
   const n = txt(nombre, 63).trim().toUpperCase();
-  const f = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, n)
+  const f = q(`SELECT id FROM equipos WHERE cliente_id = ? AND ${EN_AGENTES} AND nombre = ?`).get(cli.id, n)
     || q('SELECT equipo_id AS id FROM traslados WHERE cliente_origen = ? AND nombre = ?').get(cli.id, n);
   if (!f) { const e = new Error('Este equipo todavía no ha enviado su primer informe.'); e.status = 404; throw e; }
   return f.id;
@@ -353,10 +407,15 @@ function vistaEquipo(v, ahora) {
     cpu: d.cpu ?? null, ramPct: d.ramPct ?? null, ramTotal: d.ramTotal ?? null, ramUsada: d.ramUsada ?? null,
     so: d.so || '', arranque: d.arranque || null, discos: d.discos || [], sesiones: d.sesiones || [],
     errorSesiones: d.errorSesiones || null, errorMetricas: d.errorMetricas || null,
-    red: d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null, sede: v.sede || null,
+    red: esAgente(v.tipo) ? null : d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null, sede: v.sede || null,
+    interfaces: esAgente(v.tipo) ? d.red || [] : undefined, nucleos: d.nucleos ?? null, carga: d.carga ?? null, temperatura: d.temperatura ?? null,
+    ramCache: d.ramCache ?? null, cpuUsuario: d.cpuUsuario ?? null, cpuSistema: d.cpuSistema ?? null,
+    hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve,
     historial: v.hora
   };
 }
+/** Detalles de Proxmox de un equipo (aparte de /api/estado porque pueden ser grandes). */
+function detallesPve(id) { const v = vivo.get(id); return (v && v.datos && v.datos.pve) || {}; }
 function estado(sesion) {
   const ahora = Date.now();
   const cs = visibles(sesion);
@@ -465,6 +524,7 @@ function mantenimiento() {
 }
 
 module.exports = {
+  AGENTES, esAgente, detallesPve,
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,

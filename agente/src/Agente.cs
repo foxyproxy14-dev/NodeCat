@@ -14,8 +14,8 @@ using System.Threading;
 [assembly: AssemblyTitle("NodeCat Agente")]
 [assembly: AssemblyDescription("Agente de NodeCat: envía las sesiones, la CPU, la memoria y los discos de este servidor a NodeCat.")]
 [assembly: AssemblyProduct("NodeCat")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace NodeCat
 {
@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.3.0";
+        public const string Version = "1.4.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -202,6 +202,13 @@ namespace NodeCat
                     { "unidad", d.Unidad }, { "etiqueta", d.Etiqueta }, { "total", d.TotalGB }, { "libre", d.LibreGB }, { "pct", d.Pct } }).ToList();
             }
             catch (Exception ex) { o["errorMetricas"] = ex.Message; }
+            // Hyper-V: sus máquinas virtuales
+            if (HyperV.Disponible())
+            {
+                o["hipervisor"] = "hyperv";
+                try { o["vms"] = Limite.Ejecutar(() => HyperV.Listar(), 70, "Lectura de Hyper-V", control.HyperV); }
+                catch (Exception ex) { o["errorVms"] = ex.Message; }
+            }
             return o;
         }
 

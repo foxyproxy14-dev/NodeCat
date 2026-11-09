@@ -123,6 +123,23 @@ En unos segundos el servidor aparece dentro de su cliente. Para muchos servidore
 
 El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *NodeCat Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
 
+## Proxmox VE, Hyper-V y Linux
+
+En la página del cliente, **Descargar agente** tiene cuatro opciones:
+
+- **Windows:** el instalador `.exe` de siempre.
+- **Hyper-V:** el mismo agente de Windows. Si el servidor tiene el rol de Hyper-V lo detecta solo y muestra sus **máquinas virtuales** (encendidas o apagadas, CPU, memoria, disco y tiempo encendidas).
+- **Linux:** un comando que se pega por SSH como root (`curl -fsSL https://NODECAT/instalar/CLAVE.sh | bash`). Instala un servicio de systemd que solo necesita Python 3. Muestra CPU, memoria, discos, red, temperatura y sesiones SSH.
+- **Proxmox VE:** el mismo comando, en el host (no en las VM ni en los LXC). Usa la API local de Proxmox (`pvesh`), sin tokens, y muestra al estilo de ProxMenux:
+  - **General:** CPU (usuario, sistema, núcleos, carga), memoria (usada, en caché, total), VM y LXC activos, temperatura, gráficos y red.
+  - **Apps:** qué corre en cada VM y contenedor, con su dirección. La app se reconoce por el nombre o las etiquetas del CT (AdGuard, Nginx Proxy Manager, Home Assistant, Jellyfin, MikroDash y muchas más) y la URL se toma de las notas del CT si la escribes allí.
+  - **VM y LXC:** estado, CPU, memoria, disco, IP y tiempo encendidas.
+  - **Almacenamiento:** cada almacenamiento con su uso y los discos físicos con su salud SMART y desgaste.
+  - **Backups:** última copia de cada VM y LXC (avisa de las que no tienen o tienen más de 7 días), trabajos programados y resultado de las últimas tareas.
+  - **Nodo:** procesador, versión, kernel, carga, swap, actualizaciones pendientes y estado del clúster.
+
+Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. Para quitarlo: `sudo nodecat-agente desinstalar`.
+
 ## Agregar un router MikroTik
 
 En la página del cliente: **Agregar router MikroTik**. NodeCat se conecta a la API del router y solo lee; no puede cambiar nada.

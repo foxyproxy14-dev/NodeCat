@@ -1,0 +1,486 @@
+#!/usr/bin/env python3
+# Agente de NodeCat para Linux y Proxmox VE.
+# Solo lee: CPU, memoria, discos, red, temperatura, sesiones SSH y, en Proxmox, las VM, los
+# contenedores LXC y los almacenamientos (con pvesh, la API local; no hace falta token).
+# Envía un informe por HTTPS cada 30 segundos. Sin dependencias: solo Python 3 de la distribución.
+import json, os, re, socket, subprocess, sys, threading, time, urllib.request, urllib.error, uuid, shutil
+
+VERSION = '1.0.0'
+CONFIG = '/etc/nodecat-agente.json'
+CARPETA = '/opt/nodecat-agente'
+SERVICIO = 'nodecat-agente'
+FS_REALES = {'ext2', 'ext3', 'ext4', 'xfs', 'btrfs', 'zfs', 'vfat', 'ntfs', 'f2fs', 'reiserfs', 'jfs', 'nfs', 'nfs4', 'cifs'}
+
+
+def log(t):
+    print(time.strftime('%Y-%m-%d %H:%M:%S'), t, flush=True)
+
+
+def cargar():
+    with open(CONFIG, encoding='utf-8') as f:
+        c = json.load(f)
+    c['servidor'] = c['servidor'].rstrip('/')
+    return c
+
+
+def guardar(c):
+    tmp = CONFIG + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(c, f, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, CONFIG)
+
+
+def leer(ruta, defecto=''):
+    try:
+        with open(ruta, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return defecto
+
+
+def cmd(args, tiempo=20):
+    r = subprocess.run(args, capture_output=True, text=True, timeout=tiempo)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or 'error').strip()[:300])
+    return r.stdout
+
+
+# ------------------------------------------------------------------ lecturas del sistema
+_cpu_prev = None
+def cpu():
+    global _cpu_prev
+    p = [int(x) for x in leer('/proc/stat').splitlines()[0].split()[1:9]]
+    if _cpu_prev is None:
+        _cpu_prev = p
+        time.sleep(0.5)
+        p = [int(x) for x in leer('/proc/stat').splitlines()[0].split()[1:9]]
+    d = [a - b for a, b in zip(p, _cpu_prev)]
+    _cpu_prev = p
+    total = sum(d) or 1
+    inactivo = d[3] + d[4]
+    return {'cpu': round(100 * (total - inactivo) / total, 1), 'cpuUsuario': round(100 * (d[0] + d[1]) / total, 1),
+            'cpuSistema': round(100 * (d[2] + d[5] + d[6]) / total, 1)}
+
+
+def memoria():
+    m = {}
+    for l in leer('/proc/meminfo').splitlines():
+        k, _, v = l.partition(':')
+        m[k] = int(v.split()[0]) * 1024 if v.strip() else 0
+    total, disp = m.get('MemTotal', 0), m.get('MemAvailable', 0)
+    cache = m.get('Cached', 0) + m.get('Buffers', 0) + m.get('SReclaimable', 0)
+    usada = max(0, total - disp)
+    gb = lambda b: round(b / 1024 ** 3, 1)
+    return {'ramTotal': gb(total), 'ramUsada': gb(usada), 'ramCache': gb(cache), 'ramPct': round(100 * usada / total) if total else None}
+
+
+def discos():
+    vistos, l = set(), []
+    for linea in leer('/proc/mounts').splitlines():
+        dev, punto, fs = linea.split()[:3]
+        if fs not in FS_REALES or punto.startswith(('/snap', '/boot/efi', '/var/lib/docker', '/run')) or dev in vistos:
+            continue
+        if fs == 'zfs' and punto not in ('/',) and punto.count('/') > 1:
+            continue   # en ZFS solo los conjuntos de primer nivel
+        try:
+            s = os.statvfs(punto)
+        except OSError:
+            continue
+        total, libre = s.f_blocks * s.f_frsize, s.f_bavail * s.f_frsize
+        if total < 512 * 1024 ** 2:
+            continue
+        vistos.add(dev)
+        l.append({'unidad': punto, 'etiqueta': fs, 'total': round(total / 1024 ** 3, 1), 'libre': round(libre / 1024 ** 3, 1),
+                  'pct': round(100 * (total - libre) / total)})
+    return l[:20]
+
+
+_red_prev = {}
+def red():
+    global _red_prev
+    ahora, l, nuevos = time.time(), [], {}
+    for linea in leer('/proc/net/dev').splitlines()[2:]:
+        nombre, _, datos = linea.partition(':')
+        nombre = nombre.strip()
+        if nombre == 'lo' or nombre.startswith(('veth', 'fwbr', 'fwpr', 'fwln', 'tap', 'docker', 'br-')):
+            continue
+        c = datos.split()
+        rx, tx = int(c[0]), int(c[8])
+        nuevos[nombre] = (ahora, rx, tx)
+        p = _red_prev.get(nombre)
+        if p and ahora > p[0]:
+            l.append({'nombre': nombre, 'rx': max(0, round((rx - p[1]) * 8 / (ahora - p[0]))), 'tx': max(0, round((tx - p[2]) * 8 / (ahora - p[0]))),
+                      'activa': leer(f'/sys/class/net/{nombre}/operstate').strip() in ('up', 'unknown')})
+    _red_prev = nuevos
+    return l[:20]
+
+
+def temperatura():
+    mejor = None
+    for base in ('/sys/class/hwmon',):
+        if not os.path.isdir(base):
+            continue
+        for h in os.listdir(base):
+            nombre = leer(f'{base}/{h}/name').strip()
+            if nombre not in ('coretemp', 'k10temp', 'zenpower', 'cpu_thermal', 'acpitz'):
+                continue
+            for f in os.listdir(f'{base}/{h}'):
+                if f.startswith('temp') and f.endswith('_input'):
+                    try:
+                        v = int(leer(f'{base}/{h}/{f}').strip()) / 1000
+                        if 0 < v < 130:
+                            mejor = max(mejor or 0, v)
+                    except ValueError:
+                        pass
+    return round(mejor) if mejor else None
+
+
+def sesiones():
+    l = []
+    try:
+        for i, linea in enumerate(cmd(['who'], 5).splitlines()):
+            p = linea.split()
+            if len(p) < 2:
+                continue
+            origen = linea[linea.find('(') + 1:linea.find(')')] if '(' in linea else 'consola'
+            l.append({'usuario': p[0], 'id': i + 1, 'estado': 'activa', 'estadoTexto': p[1], 'equipo': origen})
+    except Exception:
+        pass
+    return l
+
+
+def so():
+    d = {}
+    for l in leer('/etc/os-release').splitlines():
+        k, _, v = l.partition('=')
+        d[k] = v.strip('"')
+    return d.get('PRETTY_NAME', 'Linux')
+
+
+# ------------------------------------------------------------------ Proxmox
+def es_proxmox():
+    return shutil.which('pvesh') is not None
+
+
+def pvesh(ruta, *extra, tiempo=25):
+    return json.loads(cmd(['pvesh', 'get', ruta, '--output-format', 'json', *extra], tiempo) or 'null')
+
+
+# Apps conocidas: nombre del CT/VM (o etiqueta) → nombre visible, puerto, esquema, ruta, categoría
+APPS = [
+    ('adguard', 'AdGuard Home', 80, 'http', '', 'DNS y bloqueo de anuncios'), ('pihole', 'Pi-hole', 80, 'http', '/admin', 'DNS y bloqueo de anuncios'),
+    ('technitium', 'Technitium DNS', 5380, 'http', '', 'DNS'), ('nginxproxymanager', 'Nginx Proxy Manager', 81, 'http', '', 'Proxy inverso'),
+    ('npm', 'Nginx Proxy Manager', 81, 'http', '', 'Proxy inverso'), ('traefik', 'Traefik', 8080, 'http', '', 'Proxy inverso'),
+    ('portainer', 'Portainer', 9443, 'https', '', 'Contenedores'), ('dockge', 'Dockge', 5001, 'http', '', 'Contenedores'),
+    ('homeassistant', 'Home Assistant', 8123, 'http', '', 'Domótica'), ('haos', 'Home Assistant', 8123, 'http', '', 'Domótica'),
+    ('jellyfin', 'Jellyfin', 8096, 'http', '', 'Multimedia'), ('plex', 'Plex', 32400, 'http', '/web', 'Multimedia'), ('emby', 'Emby', 8096, 'http', '', 'Multimedia'),
+    ('nextcloud', 'Nextcloud', 443, 'https', '', 'Archivos'), ('immich', 'Immich', 2283, 'http', '', 'Fotos'), ('paperless', 'Paperless-ngx', 8000, 'http', '', 'Documentos'),
+    ('syncthing', 'Syncthing', 8384, 'http', '', 'Archivos'), ('grafana', 'Grafana', 3000, 'http', '', 'Monitoreo'), ('prometheus', 'Prometheus', 9090, 'http', '', 'Monitoreo'),
+    ('uptimekuma', 'Uptime Kuma', 3001, 'http', '', 'Monitoreo'), ('uptime-kuma', 'Uptime Kuma', 3001, 'http', '', 'Monitoreo'), ('zabbix', 'Zabbix', 80, 'http', '', 'Monitoreo'),
+    ('mikrodash', 'MikroDash', 3081, 'http', '', 'Monitoreo'), ('nodecat', 'NodeCat', 8080, 'http', '', 'Monitoreo'), ('netdata', 'Netdata', 19999, 'http', '', 'Monitoreo'),
+    ('vaultwarden', 'Vaultwarden', 443, 'https', '', 'Contraseñas'), ('unifi', 'UniFi Network', 8443, 'https', '', 'Red'), ('omada', 'Omada Controller', 8043, 'https', '', 'Red'),
+    ('wireguard', 'WireGuard (wg-easy)', 51821, 'http', '', 'VPN'), ('wg-easy', 'WireGuard (wg-easy)', 51821, 'http', '', 'VPN'), ('tailscale', 'Tailscale', None, '', '', 'VPN'),
+    ('frigate', 'Frigate', 5000, 'http', '', 'Cámaras'), ('n8n', 'n8n', 5678, 'http', '', 'Automatización'), ('nodered', 'Node-RED', 1880, 'http', '', 'Automatización'),
+    ('gitea', 'Gitea', 3000, 'http', '', 'Desarrollo'), ('forgejo', 'Forgejo', 3000, 'http', '', 'Desarrollo'), ('minio', 'MinIO', 9001, 'http', '', 'Almacenamiento'),
+    ('pbs', 'Proxmox Backup Server', 8007, 'https', '', 'Copias de seguridad'), ('proxmox-backup', 'Proxmox Backup Server', 8007, 'https', '', 'Copias de seguridad'),
+    ('truenas', 'TrueNAS', 443, 'https', '', 'Almacenamiento'), ('openmediavault', 'OpenMediaVault', 80, 'http', '', 'Almacenamiento'), ('omv', 'OpenMediaVault', 80, 'http', '', 'Almacenamiento'),
+    ('cockpit', 'Cockpit', 9090, 'https', '', 'Administración'), ('webmin', 'Webmin', 10000, 'https', '', 'Administración'), ('homepage', 'Homepage', 3000, 'http', '', 'Panel'),
+    ('heimdall', 'Heimdall', 80, 'http', '', 'Panel'), ('dashy', 'Dashy', 4000, 'http', '', 'Panel'), ('qbittorrent', 'qBittorrent', 8090, 'http', '', 'Descargas'),
+    ('transmission', 'Transmission', 9091, 'http', '', 'Descargas'), ('sonarr', 'Sonarr', 8989, 'http', '', 'Multimedia'), ('radarr', 'Radarr', 7878, 'http', '', 'Multimedia'),
+    ('prowlarr', 'Prowlarr', 9696, 'http', '', 'Multimedia'), ('mosquitto', 'Mosquitto (MQTT)', None, '', '', 'Domótica'), ('zigbee2mqtt', 'Zigbee2MQTT', 8080, 'http', '', 'Domótica'),
+    ('windows', 'Windows', None, '', '', 'Sistema'), ('mikrotik', 'MikroTik CHR', 80, 'http', '', 'Red'), ('chr', 'MikroTik CHR', 80, 'http', '', 'Red'), ('pfsense', 'pfSense', 443, 'https', '', 'Red'), ('opnsense', 'OPNsense', 443, 'https', '', 'Red'),
+]
+URL_RE = re.compile(r'https?://[^\s<>"\')\]]+', re.I)
+
+
+def ip_de_config(cfg):
+    for k, v in cfg.items():
+        if k.startswith(('net', 'ipconfig')) and isinstance(v, str):
+            m = re.search(r'ip=(\d+\.\d+\.\d+\.\d+)', v)
+            if m:
+                return m.group(1)
+    return None
+
+
+def ips_invitado(nodo, tipo, vmid, cfg):
+    ips = []
+    try:
+        if tipo == 'lxc':
+            for i in pvesh(f'/nodes/{nodo}/lxc/{vmid}/interfaces', tiempo=10) or []:
+                inet = i.get('inet') or ''
+                if inet and not inet.startswith('127.'):
+                    ips.append(inet.split('/')[0])
+        elif str(cfg.get('agent', '')).startswith(('1', 'enabled=1')):
+            r = pvesh(f'/nodes/{nodo}/qemu/{vmid}/agent/network-get-interfaces', tiempo=10) or {}
+            for i in r.get('result', []):
+                if i.get('name') == 'lo':
+                    continue
+                for a in i.get('ip-addresses', []):
+                    if a.get('ip-address-type') == 'ipv4' and not a['ip-address'].startswith(('127.', '169.254.')):
+                        ips.append(a['ip-address'])
+    except Exception:
+        pass
+    fija = ip_de_config(cfg)
+    if not ips and fija:
+        ips.append(fija)
+    return ips[:4]
+
+
+def app_de(nombre, cfg, ips):
+    notas = cfg.get('description') or ''
+    etiquetas = [t for t in re.split(r'[;,\s]+', cfg.get('tags') or '') if t]
+    clave = re.sub(r'[^a-z0-9-]', '', nombre.lower())
+    conocida = next((a for a in APPS if a[0] in clave or a[0] in [t.lower() for t in etiquetas]), None)
+    url = None
+    m = URL_RE.search(notas)
+    if m:
+        url = m.group(0).rstrip('.,;')
+    elif conocida and conocida[2] and ips:
+        url = f'{conocida[3]}://{ips[0]}' + ('' if conocida[2] in (80, 443) and ((conocida[3] == 'http') == (conocida[2] == 80)) else f':{conocida[2]}') + conocida[4]
+    return {'app': conocida[1] if conocida else None, 'categoria': conocida[5] if conocida else None, 'url': url, 'etiquetas': etiquetas[:8],
+            'notas': re.sub(r'<[^>]+>', '', notas)[:300] if notas else ''}
+
+
+class Lento:
+    """Lecturas lentas de Proxmox (apps, copias, discos, nodo): en segundo plano y con caché."""
+    def __init__(self):
+        self.datos, self.cuando, self.bloqueo = {}, {}, threading.Lock()
+
+    def obtener(self, clave, cada, fn):
+        with self.bloqueo:
+            if time.time() - self.cuando.get(clave, 0) >= cada and not self.cuando.get(clave + '!'):
+                self.cuando[clave + '!'] = True
+                threading.Thread(target=self._leer, args=(clave, fn), daemon=True).start()
+            return self.datos.get(clave)
+
+    def _leer(self, clave, fn):
+        try:
+            v = fn()
+        except Exception as e:
+            v = {'error': str(e)[:300]}
+        with self.bloqueo:
+            self.datos[clave], self.cuando[clave] = v, time.time()
+            self.cuando[clave + '!'] = False
+
+
+lento = Lento()
+
+
+def leer_apps(nodo, vms):
+    l = []
+    for v in vms:
+        try:
+            cfg = pvesh(f"/nodes/{nodo}/{v['tipo']}/{v['id']}/config", tiempo=10) or {}
+        except Exception:
+            cfg = {}
+        ips = ips_invitado(nodo, v['tipo'], v['id'], cfg) if v.get('estado') == 'running' else ([ip_de_config(cfg)] if ip_de_config(cfg) else [])
+        a = app_de(v['nombre'], cfg, ips)
+        l.append({'id': v['id'], 'nombre': v['nombre'], 'tipo': v['tipo'], 'estado': v['estado'], 'ips': ips, 'so': cfg.get('ostype'),
+                  'arranqueAuto': str(cfg.get('onboot', '0')) == '1', **a})
+    return l
+
+
+def leer_copias(nodo):
+    archivos, almacenes = [], []
+    for st in pvesh(f'/nodes/{nodo}/storage') or []:
+        if 'backup' not in (st.get('content') or '') or not st.get('active', 1):
+            continue
+        almacenes.append(st['storage'])
+        try:
+            for x in pvesh(f"/nodes/{nodo}/storage/{st['storage']}/content", '--content', 'backup', tiempo=40) or []:
+                archivos.append({'vmid': str(x.get('vmid', '')), 'fecha': (x.get('ctime') or 0) * 1000, 'tamano': x.get('size'), 'almacen': st['storage'],
+                                 'formato': x.get('format') or x.get('subtype') or '', 'notas': (x.get('notes') or '')[:120], 'protegida': bool(x.get('protected')),
+                                 'verificada': (x.get('verification') or {}).get('state')})
+        except Exception:
+            pass
+    archivos.sort(key=lambda a: a['fecha'], reverse=True)
+    try:
+        trabajos = [{'id': j.get('id'), 'horario': j.get('schedule') or j.get('starttime'), 'almacen': j.get('storage'), 'activo': str(j.get('enabled', 1)) != '0',
+                     'que': 'Todas' if j.get('all') else (j.get('vmid') or j.get('pool') or ''), 'modo': j.get('mode'), 'comentario': (j.get('comment') or '')[:120],
+                     'proxima': (j.get('next-run') or 0) * 1000 or None} for j in pvesh('/cluster/backup') or []]
+    except Exception:
+        trabajos = []
+    try:
+        tareas = [{'vmid': str(t.get('id') or ''), 'inicio': (t.get('starttime') or 0) * 1000, 'fin': (t.get('endtime') or 0) * 1000 or None,
+                   'estado': t.get('status') or 'en curso', 'usuario': t.get('user')} for t in pvesh(f'/nodes/{nodo}/tasks', '--typefilter', 'vzdump', '--limit', '30') or []]
+    except Exception:
+        tareas = []
+    return {'archivos': archivos[:400], 'trabajos': trabajos[:40], 'tareas': tareas, 'almacenes': almacenes}
+
+
+def leer_nodo(nodo):
+    st = pvesh(f'/nodes/{nodo}/status') or {}
+    ci = st.get('cpuinfo') or {}
+    n = {'cpuModelo': ci.get('model'), 'sockets': ci.get('sockets'), 'hilos': ci.get('cpus'), 'kernel': st.get('kversion'), 'pve': st.get('pveversion'),
+         'carga': st.get('loadavg'), 'swapTotal': (st.get('swap') or {}).get('total'), 'swapUsado': (st.get('swap') or {}).get('used'),
+         'ksm': (st.get('ksm') or {}).get('shared'), 'arranque': (st.get('boot-info') or {}).get('mode')}
+    try:
+        n['actualizaciones'] = len(pvesh(f'/nodes/{nodo}/apt/update', tiempo=30) or [])
+    except Exception:
+        n['actualizaciones'] = None
+    try:
+        cl = pvesh('/cluster/status') or []
+        c = next((x for x in cl if x.get('type') == 'cluster'), None)
+        n['cluster'] = {'nombre': c.get('name'), 'quorum': bool(c.get('quorate')), 'nodos': [{'nombre': x.get('name'), 'online': bool(x.get('online'))} for x in cl if x.get('type') == 'node']} if c else None
+    except Exception:
+        n['cluster'] = None
+    try:
+        n['discos'] = [{'disco': d.get('devpath'), 'modelo': d.get('model'), 'tamano': d.get('size'), 'tipo': d.get('type'), 'salud': d.get('health'),
+                        'desgaste': d.get('wearout'), 'uso': d.get('used'), 'serie': d.get('serial')} for d in pvesh(f'/nodes/{nodo}/disks/list', tiempo=30) or []]
+    except Exception:
+        n['discos'] = []
+    try:
+        n['almacenes'] = [{'nombre': x.get('storage'), 'tipo': x.get('type'), 'contenido': x.get('content'), 'activo': bool(x.get('active')), 'compartido': bool(x.get('shared')),
+                           'usado': x.get('used'), 'total': x.get('total')} for x in pvesh(f'/nodes/{nodo}/storage') or []]
+    except Exception:
+        n['almacenes'] = []
+    return n
+
+
+def proxmox(nodo):
+    datos = {'hipervisor': 'proxmox'}
+    try:
+        datos['so'] = 'Proxmox VE ' + cmd(['pveversion'], 10).split('/')[1].strip()
+    except Exception:
+        pass
+    try:
+        rec = pvesh('/cluster/resources')
+        vms, almacen = [], []
+        for r in rec:
+            if r.get('node') != nodo:
+                continue
+            if r.get('type') in ('qemu', 'lxc'):
+                vms.append({'id': str(r.get('vmid', '')), 'nombre': r.get('name') or f"{r.get('type')}-{r.get('vmid')}", 'tipo': r.get('type'),
+                            'estado': r.get('status'), 'nodo': nodo, 'cpu': round((r.get('cpu') or 0) * 100, 1), 'cpus': r.get('maxcpu') or 0,
+                            'ram': r.get('mem'), 'ramMax': r.get('maxmem'), 'disco': r.get('disk') or None, 'discoMax': r.get('maxdisk'),
+                            'uptime': r.get('uptime'), 'netin': r.get('netin'), 'netout': r.get('netout')})
+            elif r.get('type') == 'storage' and r.get('maxdisk'):
+                total, usado = r['maxdisk'], r.get('disk') or 0
+                almacen.append({'unidad': r.get('storage'), 'etiqueta': r.get('plugintype') or 'storage', 'total': round(total / 1024 ** 3, 1),
+                                'libre': round((total - usado) / 1024 ** 3, 1), 'pct': round(100 * usado / total)})
+        datos['vms'] = vms
+        if almacen:
+            datos['discos'] = almacen
+        # Lo lento, en segundo plano: apps cada 2 min, nodo cada 5, copias cada 5
+        pve = {'apps': lento.obtener('apps', 120, lambda: leer_apps(nodo, vms)),
+               'copias': lento.obtener('copias', 300, lambda: leer_copias(nodo)),
+               'nodo': lento.obtener('nodo', 300, lambda: leer_nodo(nodo))}
+        datos['pve'] = {k: v for k, v in pve.items() if v is not None}
+    except Exception as e:
+        datos['errorVms'] = str(e)
+    return datos
+
+
+# ------------------------------------------------------------------ informe
+def recolectar(c, evento='periodico'):
+    nodo = socket.gethostname().split('.')[0]
+    o = {'nombre': nodo, 'version': VERSION + '-linux', 'evento': evento, 'hora': int(time.time() * 1000), 'instalacion': c.get('instalacion', ''),
+         'plataforma': 'linux', 'intervalo': c.get('intervalo', 30)}
+    try:
+        o.update(cpu()); o.update(memoria())
+        o['so'] = so()
+        o['arranque'] = int((time.time() - float(leer('/proc/uptime').split()[0])) * 1000)
+        o['discos'] = discos()
+        o['nucleos'] = os.cpu_count()
+        o['carga'] = round(os.getloadavg()[0], 2)
+        o['temperatura'] = temperatura()
+        o['red'] = red()
+    except Exception as e:
+        o['errorMetricas'] = str(e)
+    o['sesiones'] = sesiones()
+    if es_proxmox():
+        o['plataforma'] = 'proxmox'
+        o.update(proxmox(nodo))
+    return o
+
+
+def enviar(c, informe):
+    req = urllib.request.Request(c['servidor'] + '/api/agente/informe', data=json.dumps(informe).encode(), method='POST',
+                                 headers={'Content-Type': 'application/json; charset=utf-8', 'X-NodeCat-Agente': c['clave'], 'User-Agent': 'NodeCat-Agente-Linux/' + VERSION})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.status, json.loads(r.read() or b'{}')
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b'{}')
+        except Exception:
+            return e.code, {}
+
+
+def bucle():
+    c = cargar()
+    log(f'Agente {VERSION} iniciado. Envía a {c["servidor"]}.')
+    pendientes, conectado = [], True
+    while True:
+        try:
+            pendientes.append(recolectar(c))
+            pendientes = pendientes[-120:]
+            while pendientes:
+                try:
+                    estado, r = enviar(c, pendientes[0])
+                except Exception as e:
+                    if conectado:
+                        log(f'No se pudo conectar con NodeCat ({e}). Se reintentará; los datos se guardan mientras tanto.')
+                    conectado = False
+                    break
+                if estado == 410:
+                    log('Este servidor se quitó de NodeCat. El agente se desinstala solo.')
+                    desinstalar(silencioso=True)
+                    return
+                if estado == 403:
+                    log('NodeCat rechazó la clave del agente. Vuelve a instalarlo con el comando de NodeCat.')
+                    pendientes.pop(0)
+                    break
+                pendientes.pop(0)
+                if not conectado:
+                    log('Conectado de nuevo con NodeCat.')
+                conectado = True
+                if 5 <= int(r.get('intervalo', 30)) <= 600:
+                    c['intervalo'] = int(r['intervalo'])
+                nueva = r.get('clave')
+                if nueva and len(nueva) >= 16 and nueva != c['clave']:
+                    c['clave'] = nueva
+                    guardar(c)
+                    log(f'Este servidor ahora pertenece a {r.get("cliente", "otro cliente")} en NodeCat.')
+        except Exception as e:
+            log(f'Error al recoger los datos: {e}')
+        time.sleep(c.get('intervalo', 30))
+
+
+def desinstalar(silencioso=False):
+    try:
+        c = cargar()
+        enviar(c, {'nombre': socket.gethostname().split('.')[0], 'version': VERSION + '-linux', 'evento': 'desinstalado',
+                   'instalacion': c.get('instalacion', ''), 'plataforma': 'proxmox' if es_proxmox() else 'linux', 'hora': int(time.time() * 1000)})
+    except Exception:
+        pass
+    for f in (CONFIG, f'/etc/systemd/system/{SERVICIO}.service', '/usr/local/bin/nodecat-agente'):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    shutil.rmtree(CARPETA, ignore_errors=True)
+    subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+    if not silencioso:
+        print('Agente de NodeCat desinstalado: no queda ningún servicio ni archivo.')
+    # Al final: detener el servicio (si este proceso es el servicio, termina aquí)
+    subprocess.Popen(['systemctl', 'disable', '--now', SERVICIO], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+if __name__ == '__main__':
+    orden = sys.argv[1] if len(sys.argv) > 1 else 'ayuda'
+    if orden == 'servicio':
+        bucle()
+    elif orden == 'probar':
+        c = cargar()
+        i = recolectar(c, 'prueba')
+        print(json.dumps(i, indent=2, ensure_ascii=False))
+        estado, r = enviar(c, i)
+        print(f'\nNodeCat respondió {estado}: {r.get("error") or "correcto"}')
+    elif orden == 'desinstalar':
+        if os.geteuid() != 0:
+            sys.exit('Ejecútalo con sudo.')
+        desinstalar()
+    else:
+        print(f'Agente de NodeCat {VERSION} para Linux y Proxmox\n\n  nodecat-agente probar        Muestra lo que lee y lo envía una vez\n  sudo nodecat-agente desinstalar   Lo quita por completo\n')

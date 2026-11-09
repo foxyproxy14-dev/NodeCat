@@ -15,7 +15,7 @@ namespace NodeCat
         public int FallosSeguidos;
         public string Via;                      // "WMI" o "WinRM": la que funcionó la última vez
         public bool AvisadoLento;
-        public readonly Contador Wts = new Contador(), Wmi = new Contador(), WinRm = new Contador();
+        public readonly Contador Wts = new Contador(), Wmi = new Contador(), WinRm = new Contador(), HyperV = new Contador();
         public readonly Dictionary<string, string> Equipos = new Dictionary<string, string>();   // id|usuario|estado -> equipo de origen
     }
 

@@ -18,8 +18,8 @@ const CLIENTES = [
   { nombre: 'Transportes Andes', grupo: 'Grupo Andes', notas: 'Sede Valencia y almacén de Puerto Cabello.', equipos: [
     { nombre: 'TA-DC01', perfil: 'dc' }, { nombre: 'TA-TS01', perfil: 'rds' }, { nombre: 'TA-TS02', perfil: 'rds', caido: true }, { nombre: 'TA-ERP', perfil: 'sql', alto: 'disco' }] },
   { nombre: 'Andes Logística Barquisimeto', grupo: 'Grupo Andes', notas: 'Sede nueva.', equipos: [{ nombre: 'ALB-SRV01', perfil: 'rds' }] },
-  { nombre: 'Estudio Contable Mérida', notas: '', equipos: [{ nombre: 'ECM-SRV01', perfil: 'rds' }, { nombre: 'ECM-BACKUP', perfil: 'archivo' }] },
-  { nombre: 'Ferretería El Tornillo', notas: 'Horario: lunes a sábado.', equipos: [{ nombre: 'FT-SERVIDOR', perfil: 'rds' }] }
+  { nombre: 'Estudio Contable Mérida', notas: '', equipos: [{ nombre: 'ECM-SRV01', perfil: 'rds' }, { nombre: 'ECM-BACKUP', perfil: 'archivo' }, { nombre: 'PVE01', perfil: 'proxmox' }] },
+  { nombre: 'Ferretería El Tornillo', notas: 'Horario: lunes a sábado.', equipos: [{ nombre: 'FT-SERVIDOR', perfil: 'rds' }, { nombre: 'FT-HYPERV', perfil: 'hyperv' }] }
 ];
 const PERSONAS = ['mgarcia', 'jrodriguez', 'aperez', 'lfernandez', 'cgonzalez', 'rmartinez', 'psanchez', 'dramirez', 'vtorres', 'eflores',
   'hmorales', 'njimenez', 'scastro', 'ovargas', 'iromero', 'bherrera', 'gmedina', 'kaguilar', 'tsilva', 'fmendoza', 'ureyes', 'yortiz'];
@@ -27,9 +27,47 @@ const PERFILES = {
   dc: { cpu: 8, ram: 46, ramTotal: 8, sesiones: [0, 2], discos: [['C:', 'Sistema', 80, 41]] },
   rds: { cpu: 34, ram: 62, ramTotal: 32, sesiones: [6, 16], discos: [['C:', 'Sistema', 120, 63], ['D:', 'Perfiles', 500, 48]] },
   sql: { cpu: 22, ram: 66, ramTotal: 64, sesiones: [0, 2], discos: [['C:', 'Sistema', 100, 52], ['E:', 'Datos', 1000, 71], ['F:', 'Registros', 200, 38]] },
-  archivo: { cpu: 5, ram: 30, ramTotal: 8, sesiones: [0, 1], discos: [['C:', 'Sistema', 80, 37], ['D:', 'Copias', 4000, 66]] }
+  archivo: { cpu: 5, ram: 30, ramTotal: 8, sesiones: [0, 1], discos: [['C:', 'Sistema', 80, 37], ['D:', 'Copias', 4000, 66]] },
+  proxmox: { cpu: 9, ram: 27, ramTotal: 15.4, sesiones: [0, 0], discos: [['local', 'dir', 94, 31], ['local-lvm', 'lvmthin', 832, 46], ['backups', 'nfs', 3600, 58]] },
+  hyperv: { cpu: 18, ram: 71, ramTotal: 128, sesiones: [0, 1], discos: [['C:', 'Sistema', 240, 44], ['D:', 'Máquinas virtuales', 3800, 62]] }
 };
-const SO = { dc: 'Windows Server 2019 Standard', rds: 'Windows Server 2022 Standard', sql: 'Windows Server 2022 Datacenter', archivo: 'Windows Server 2016 Standard' };
+// Hipervisores de la demo: sus VM y contenedores
+const VMS_PVE = [
+  ['100', 'adguard', 'lxc', 'running', 1, 0.5, 2, 'AdGuard Home', 'DNS y bloqueo de anuncios', 'http://10.20.20.10'],
+  ['101', 'nginxproxymanager', 'lxc', 'running', 2, 1, 4, 'Nginx Proxy Manager', 'Proxy inverso', 'http://10.20.40.10:81'],
+  ['102', 'mikrodash', 'lxc', 'running', 1, 1, 8, 'MikroDash', 'Monitoreo', 'http://10.20.20.30:3081'],
+  ['103', 'uptime-kuma', 'lxc', 'running', 1, 0.5, 4, 'Uptime Kuma', 'Monitoreo', 'http://10.20.20.31:3001'],
+  ['110', 'homeassistant', 'qemu', 'running', 2, 4, 32, 'Home Assistant', 'Domótica', 'http://10.20.20.40:8123'],
+  ['120', 'srv-contabilidad', 'qemu', 'running', 4, 8, 120, null, null, null],
+  ['130', 'win11-pruebas', 'qemu', 'stopped', 4, 8, 64, null, null, null]
+];
+const VMS_HV = [['SRV-APPS', 'running', 4, 16, 200], ['SRV-DC02', 'running', 2, 4, 80], ['SRV-CAMARAS', 'running', 4, 8, 2000], ['PLANTILLA-W2022', 'stopped', 2, 4, 60]];
+const GB = 1024 ** 3;
+function hipervisor(e, ahora, j) {
+  if (e.perfil === 'proxmox') {
+    const vms = VMS_PVE.map(([id, n, t, est, cpus, ram, disco]) => ({ id, nombre: n, tipo: t, estado: est, nodo: 'pve01', cpus, cpu: est === 'running' ? Math.round((2 + rnd() * 6 + j * 8) * 10) / 10 : 0,
+      ram: est === 'running' ? Math.round(ram * GB * (0.35 + rnd() * 0.3)) : 0, ramMax: ram * GB, disco: t === 'lxc' ? Math.round(disco * GB * 0.41) : null, discoMax: disco * GB, uptime: est === 'running' ? Math.round((ahora - (ahora - 6 * 864e5)) / 1000) : 0 }));
+    const apps = VMS_PVE.map(([id, n, t, est, , , , app, cat, url]) => ({ id, nombre: n, tipo: t, estado: est, ips: url ? [url.replace(/^https?:\/\//, '').split(':')[0]] : est === 'running' ? ['10.20.20.' + (50 + Number(id) % 50)] : [], so: t === 'lxc' ? 'debian' : id === '130' ? 'win11' : 'l26', arranqueAuto: est === 'running', app, categoria: cat, url, etiquetas: t === 'lxc' ? ['community-script'] : [], notas: '' }));
+    const dia = 864e5, archivos = [];
+    for (const [id, , , , , , disco] of VMS_PVE) { if (id === '130') continue; for (let k = 0; k < (id === '120' ? 7 : 3); k++) archivos.push({ vmid: id, fecha: ahora - (k + (id === '110' ? 9 : 0)) * dia - 3 * 3600e3, tamano: Math.round(disco * GB * 0.18), almacen: 'backups', formato: 'tar.zst', notas: '', protegida: k === 0 && id === '120', verificada: 'ok' }); }
+    archivos.sort((a, b) => b.fecha - a.fecha);
+    return { plataforma: 'proxmox', hipervisor: 'proxmox', so: 'Proxmox VE 8.2.7', nucleos: 12, carga: Math.round((0.4 + j * 1.6 + rnd() * 0.3) * 100) / 100, temperatura: Math.round(42 + j * 6 + rnd() * 2),
+      cpuUsuario: Math.round((5 + j * 8) * 10) / 10, cpuSistema: Math.round((1 + j * 2) * 10) / 10, ramCache: 1.6,
+      red: [{ nombre: 'vmbr0', rx: Math.round(2e6 + rnd() * 8e6), tx: Math.round(1e6 + rnd() * 4e6) }, { nombre: 'enp3s0', rx: Math.round(2e6 + rnd() * 8e6), tx: Math.round(1e6 + rnd() * 4e6) }],
+      vms, pve: { apps,
+        copias: { archivos, almacenes: ['backups'], trabajos: [{ id: 'backup-diario', horario: '02:00', almacen: 'backups', activo: true, que: '100,101,102,103,110,120', modo: 'snapshot', comentario: 'Diario a las 2 a. m.', proxima: ahora + 7 * 3600e3 }],
+          tareas: [['120', 'OK'], ['103', 'OK'], ['102', 'OK'], ['101', 'OK'], ['100', 'OK'], ['110', 'ERROR: unable to create temporary directory']].map(([v, est], i) => ({ vmid: v, inicio: ahora - 16 * 3600e3 + i * 240000, fin: ahora - 16 * 3600e3 + i * 240000 + 180000, estado: est, usuario: 'root@pam' })) },
+        nodo: { cpuModelo: 'Intel(R) Core(TM) i5-10500T CPU @ 2.30GHz', sockets: 1, hilos: 12, kernel: 'Linux 6.8.12-4-pve', pve: 'pve-manager/8.2.7', carga: [0.62, 0.71, 0.66], swapTotal: 8 * GB, swapUsado: 0.2 * GB, ksm: 0, arranque: 'efi', actualizaciones: 14, cluster: null,
+          discos: [{ disco: '/dev/nvme0n1', modelo: 'Samsung SSD 980 1TB', tamano: 1000 * 1e9, tipo: 'nvme', salud: 'PASSED', desgaste: 96, uso: 'LVM', serie: 'S64DNX0R' }, { disco: '/dev/sda', modelo: 'WDC WD40EFRX', tamano: 4000 * 1e9, tipo: 'hdd', salud: 'PASSED', desgaste: null, uso: 'ext4', serie: 'WD-WCC7K' }],
+          almacenes: [{ nombre: 'local', tipo: 'dir', contenido: 'iso,vztmpl,backup', activo: true, compartido: false, usado: 29 * GB, total: 94 * GB }, { nombre: 'local-lvm', tipo: 'lvmthin', contenido: 'images,rootdir', activo: true, compartido: false, usado: 383 * GB, total: 832 * GB }, { nombre: 'backups', tipo: 'nfs', contenido: 'backup', activo: true, compartido: true, usado: 2088 * GB, total: 3600 * GB }] } } };
+  }
+  if (e.perfil === 'hyperv') {
+    return { hipervisor: 'hyperv', vms: VMS_HV.map(([n, est, cpus, ram, disco], i) => ({ id: 'a1b2c3d4-000' + i, nombre: n, tipo: 'hyperv', estado: est, cpus, cpu: est === 'running' ? Math.round(3 + rnd() * 10 + j * 15) : 0,
+      ram: est === 'running' ? Math.round(ram * GB * (0.6 + rnd() * 0.2)) : 0, ramMax: ram * GB, disco: Math.round(disco * GB * 0.55), discoMax: disco * GB, uptime: est === 'running' ? 11 * 86400 + i * 3600 : 0 })) };
+  }
+  return {};
+}
+const SO = { dc: 'Windows Server 2019 Standard', rds: 'Windows Server 2022 Standard', sql: 'Windows Server 2022 Datacenter', archivo: 'Windows Server 2016 Standard', proxmox: 'Proxmox VE 8.2.7', hyperv: 'Windows Server 2022 Datacenter' };
 
 let semilla = 7;
 const azar = () => { semilla = (semilla * 16807) % 2147483647; return (semilla - 1) / 2147483646; };
@@ -172,7 +210,8 @@ function informe(x, ahora) {
     nombre: e.nombre, version: '1.2.0', intervalo: 30, hora: ahora,
     cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque,
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
-    sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12) }))
+    sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12) })),
+    ...hipervisor(e, ahora, j)
   };
 }
 
