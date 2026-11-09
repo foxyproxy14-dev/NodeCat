@@ -13,6 +13,7 @@ const avisos = require('./lib/avisos');
 const paquete = require('./lib/paquete');
 const mikrotik = require('./lib/mikrotik');
 const fortigate = require('./lib/fortigate');
+const sonda = require('./lib/sonda');
 const modRed = e => e.tipo === 'fortigate' ? fortigate : mikrotik;
 
 const WEB = path.join(__dirname, 'web');
@@ -224,6 +225,16 @@ ruta('POST', '/api/agente/informe', { publica: true, agente: true }, async ({ re
   const cuerpo = await leerCuerpo(req, 2 * 1024 * 1024);
   try { const r = flota.recibir(clave, cuerpo, ip); avisos.evaluar(); return r; }
   catch (e) { if (e.status === 403) claveFallida(ip); throw e; }
+});
+ruta('POST', '/api/agente/sonda', { publica: true, agente: true }, async ({ req, res }) => {
+  const ip = ipDe(req);
+  const f = malasClaves.get(ip);
+  if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
+  const cuerpo = await leerCuerpo(req, 8 * 1024 * 1024);
+  let id;
+  try { id = flota.agenteDe(req.headers['x-nodecat-agente'], cuerpo.nombre); }
+  catch (e) { if (e.status === 403) claveFallida(ip); throw e; }
+  return sonda.atender(id, cuerpo.resultados, res);
 });
 ruta('GET', '/salud', { publica: true }, () => ({ ok: true, version: config.VERSION }));
 

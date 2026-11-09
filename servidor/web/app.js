@@ -698,7 +698,8 @@ function vistaEquipo(id) {
   $('#ficha').innerHTML = [
     ['Cliente', esc(s.clienteNombre)], s.alias ? ['Nombre del equipo', esc(s.nombre)] : null,
     ['Último informe', s.ultimo ? cuando(s.ultimo) : '—'], ['Agente', s.version ? 'versión ' + esc(s.version) : '—'],
-    ['Conecta desde', s.ip ? esc(s.ip) : '—']
+    ['Conecta desde', s.ip ? esc(s.ip) : '—'],
+    (() => { const l = equipos().filter(x => x.sonda === s.id); return l.length ? ['Hace de sonda para', l.map(x => `<a href="#/e/${x.id}">${esc(x.alias || x.nombre)}</a>`).join(', ')] : null; })()
   ].filter(Boolean).map(([k, v]) => `<div><dt><span>${k}</span></dt><dd style="margin:0">${v}</dd></div>`).join('');
 
   document.querySelectorAll('[data-rango]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.rango === rango)));

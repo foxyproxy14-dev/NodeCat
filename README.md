@@ -26,6 +26,7 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
 - **Página de cada servidor** con gráficos de CPU y memoria de 1 hora a 30 días, discos, disponibilidad, caídas y sesiones.
 - **Routers MikroTik al estilo MikroDash**, en solo lectura: tráfico en vivo de cada interfaz, enlace WAN, latencia a Cloudflare, Google y la puerta de enlace, CPU, memoria y temperatura, con un menú lateral como el de MikroDash: red (IP, rutas, ARP, DNS, bridges y VLAN, vecinos), inalámbrico (clientes por red, redes, CAPsMAN), servicios IP, túneles y VPN, tráfico (ancho de banda, colas, conexiones con los destinos más usados), seguridad (filtro, NAT, mangle, listas), sistema (registro, paquetes y firmware, servicios, scripts, tareas, NTP, SNMP, archivos, contenedores, usuarios), ping y traceroute desde el router, y el historial de caídas. Funciona con RouterOS 6 y 7.
 - **FortiGate**, también en solo lectura y con su propio menú: CPU, memoria, sesiones, temperatura, tráfico en vivo, enlaces SD-WAN con latencia, jitter y pérdida de cada SLA, túneles IPsec y SSL-VPN, políticas con sus usos, rutas, DHCP, licencias FortiGuard (avisa de las que vencen pronto), alta disponibilidad, usuarios autenticados y registro de eventos. Funciona con FortiOS 6.4 y 7.x.
+- **Sonda sin VPN:** si NodeCat no llega a un router o a un FortiGate, el agente de un servidor del cliente lo lee desde dentro de su red y se lo pasa a NodeCat, sin abrir puertos.
 - **Sesiones de Escritorio remoto** en vivo de todos los clientes, e **historial** de quién entró, cuándo y desde qué equipo, exportable a Excel.
 - **Avisos por Telegram** cuando un servidor, un router o un FortiGate deja de responder, se cae un enlace WAN o se queda sin CPU, memoria o disco, y cuando se resuelve. Resumen diario por cliente. Cada cliente puede tener además su propio chat.
 - **Grupos** para juntar las sedes de una misma empresa.
@@ -177,6 +178,16 @@ En la página del cliente: **Agregar FortiGate**. NodeCat usa la API REST con un
 
 Si usas SD-WAN, NodeCat vigila cada enlace por separado y avisa por Telegram cuando uno cae. La latencia sale de las pruebas de SLA que ya tengas configuradas.
 
+## Leer equipos de red sin VPN (sonda)
+
+Si NodeCat no llega a la red del cliente, cualquier servidor de esa red con el agente de NodeCat (versión 1.2.0 o superior) puede hacer de sonda:
+
+1. Al agregar o editar el MikroTik o el FortiGate, en **Cómo llega NodeCat** elige **Por SERVIDOR**.
+2. Escribe la IP **interna** del equipo de red.
+3. En el router o el FortiGate, permite la IP interna de ese servidor (en `address=` del servicio API o en el trusthost del usuario de API), en lugar de la de NodeCat.
+
+El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, las hace en la red local y devuelve el resultado. Solo acepta comandos de lectura. Todo funciona igual que con una conexión directa (secciones, ping, traceroute, avisos); si la sonda se desconecta, el equipo se marca caído en segundos. La contraseña o el token viajan cifrados por HTTPS hasta el agente de ese cliente y no se guardan en el servidor.
+
 ## Avisos por Telegram
 
 Menú con tu nombre > **Notificaciones por Telegram**. Crea un bot con @BotFather, pega el token, escribe algo al bot, pulsa *Buscar chats* y elige el tuyo o el de tu grupo. Puedes decidir los umbrales (por ejemplo, CPU por encima del 90 % durante 5 minutos), recibir un resumen diario y recordar los avisos que sigan sin resolverse.
@@ -211,5 +222,4 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 
 ## Próximas fases
 
-- Sonda para leer routers de clientes sin VPN.
 - Informes mensuales por cliente en PDF y Excel.

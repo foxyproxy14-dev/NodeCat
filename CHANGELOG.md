@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.6.0 (noviembre de 2026)
+
+- Sonda: un servidor del cliente con el agente de NodeCat puede leer sus MikroTik y FortiGate y pasárselos a NodeCat. No hace falta VPN ni abrir puertos en el cliente; todo sale del agente hacia NodeCat.
+- Al agregar o editar un MikroTik o un FortiGate se elige cómo llega NodeCat: directo o a través de un servidor del cliente.
+- Agente 1.2.0: hace de sonda cuando NodeCat se lo pide, solo con comandos de lectura. Nuevo comando `NodeCatAgente.exe sonda` para verla en primer plano.
+- Si la sonda se desconecta, el equipo de red se marca caído en segundos y vuelve en cuanto la sonda se reconecta.
+
 ## 0.5.0 (noviembre de 2026)
 
 - FortiGate en solo lectura, por la API REST con un token: CPU, memoria, sesiones, temperatura y tráfico en vivo.

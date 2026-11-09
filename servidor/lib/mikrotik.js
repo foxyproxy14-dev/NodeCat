@@ -5,6 +5,7 @@ const flota = require('./flota');
 const { Conexion, segundos } = require('./routeros');
 const { cifrar, descifrar } = require('./secreto');
 const { log } = require('./util');
+const sonda = require('./sonda');
 
 const RAPIDO = 3000, LENTO = 15000, REINTENTO = 5000, CAIDO = 10000;      // cada 3 s mientras alguien mira el router; si no, cada 15 s
 const VENTANA = 6 * 60 * 1000;           // serie en vivo: últimos 6 minutos
@@ -16,7 +17,7 @@ function leerConfig(id) {
   const r = q("SELECT config FROM equipos WHERE id = ? AND tipo = 'mikrotik'").get(id);
   return r && r.config ? JSON.parse(r.config) : null;
 }
-function validar(c, previa) {
+function validar(c, previa, clienteId) {
   const host = String(c.host || '').trim();
   if (!/^[A-Za-z0-9.\-:\[\]]{1,253}$/.test(host)) throw new Error('Escribe la IP o el nombre del router.');
   const ssl = !!c.ssl;
@@ -28,14 +29,16 @@ function validar(c, previa) {
   const wan = String(c.wan || '').trim().slice(0, 64);
   const ping = String(c.ping || '').trim().slice(0, 253);
   if (ping && !/^[A-Za-z0-9.\-:]+$/.test(ping)) throw new Error('El destino del ping debe ser una IP o un nombre.');
-  return { host, puerto, ssl, usuario, clave, wan, ping };
+  return { host, puerto, ssl, usuario, clave, wan, ping, sonda: sonda.validar(c.sonda, clienteId) };
 }
-const guardable = c => ({ host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, clave: cifrar(c.clave), wan: c.wan, ping: c.ping, demo: c.demo, perfil: c.perfil });
-function publica(c) { return c ? { host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, wan: c.wan || '', ping: c.ping || '', claveGuardada: !!c.clave, demo: !!c.demo } : null; }
+const guardable = c => ({ host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, clave: cifrar(c.clave), wan: c.wan, ping: c.ping, sonda: c.sonda || null, demo: c.demo, perfil: c.perfil });
+const clienteDe = id => { const e = flota.equipo(id); return e ? e.cliente_id : null; };
+const nueva = (c, extra = {}) => c.sonda ? new sonda.ConexionSonda({ ...c, ...extra }) : new Conexion({ ...c, ...extra });
+function publica(c) { return c ? { host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, wan: c.wan || '', ping: c.ping || '', sonda: c.sonda || null, sondaNombre: c.sonda ? sonda.nombre(c.sonda) : null, claveGuardada: !!c.clave, demo: !!c.demo } : null; }
 
 async function probar(datos, id) {
-  const c = validar(datos, id ? leerConfig(id) : null);
-  const con = new Conexion(c);
+  const c = validar(datos, id ? leerConfig(id) : null, id ? clienteDe(id) : datos.clienteId);
+  const con = nueva(c, { tiempo: 10000 });
   try {
     await con.conectar();
     const [res] = await con.imprimir('/system/resource/print');
@@ -45,7 +48,7 @@ async function probar(datos, id) {
 }
 
 function crear(clienteId, nombre, datos) {
-  const c = validar(datos);
+  const c = validar(datos, null, clienteId);
   const id = flota.crearRouter(clienteId, nombre, guardable(c));
   iniciar(id);
   return id;
@@ -56,7 +59,7 @@ function editar(id, nombre, datos) {
   if (previa.demo) {
     q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify({ ...previa, ping: String(datos.ping || '').trim().slice(0, 253) }), id);
   } else {
-    const c = validar(datos, previa);
+    const c = validar(datos, previa, clienteDe(id));
     q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify(guardable(c)), id);
   }
   quitar(id); iniciar(id);
@@ -64,7 +67,7 @@ function editar(id, nombre, datos) {
 function quitar(id) {
   const r = routers.get(id); if (!r) return;
   clearTimeout(r.temporizador); if (r.con) r.con.cerrar();
-  routers.delete(id);
+  routers.delete(id); sonda.soltar(id);
 }
 
 // ---------------------------------------------------------------- bucle de consulta
@@ -73,6 +76,7 @@ function iniciar(id) {
   const r = { id, c, con: null, observado: 0, lat: new Map(), latT: 0, prev: new Map(), serie: new Map(), acum: new Map(), minuto: 0, lento: {}, cache: new Map(), ocupado: false, ultimoError: null };
   if (c.clave) c.clave = descifrar(c.clave);
   routers.set(id, r);
+  if (c.sonda && !c.demo) sonda.registrar(c.sonda, id);
   r.temporizador = setTimeout(() => ciclo(r), 500 + Math.random() * 2000);
 }
 function programar(r) {
@@ -98,7 +102,7 @@ async function conexion(r) {
   if (r.c.demo) return simulador.conexion(r.id);
   if (r.con && r.con.lista) return r.con;
   if (r.con) r.con.cerrar();
-  r.con = new Conexion({ ...r.c, tiempo: 6000 });
+  r.con = nueva(r.c, { tiempo: r.c.sonda ? 10000 : 6000 });
   await r.con.conectar();
   if (r.ultimoError) { log(`Router ${r.c.host}: conectado de nuevo.`); r.ultimoError = null; }
   return r.con;

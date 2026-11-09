@@ -127,6 +127,7 @@ function vistaRouter(id) {
   $('#rtNombre').textContent = e.nombre;
   const meta = [e.estado === 'caido' ? 'Sin respuesta' : e.estado === 'pendiente' ? 'Conectando…' : 'En línea'];
   if (red.version) meta.push(`${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}`);
+  if (e.sonda) { const s = equipo(e.sonda); meta.push(`leído a través de ${s ? esc(s.alias || s.nombre) : 'una sonda'}`); }
   if (e.tipo === 'fortigate' && red.ha > 1) meta.push(`en alta disponibilidad (${red.ha} equipos)`);
   if (red.modelo) meta.push(red.modelo);
   if (red.identidad && red.identidad !== e.nombre) meta.push(`identidad “${red.identidad}”`);
@@ -445,8 +446,9 @@ const latCf = red => { const c = (red.latencia || [])[0]; return c && c.ms != nu
 function filaRouter(e) {
   const red = e.red || {}, vivo = e.estado === 'ok' || e.estado === 'sinMetricas', w = red.wan;
   let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, ${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}` : e.so);
+  const via = e.sonda && equipo(e.sonda) ? `<span class="via" title="Leído a través del agente de este servidor (sonda)">vía ${esc(equipo(e.sonda).alias || equipo(e.sonda).nombre)}</span>` : '';
   return `<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
-    <span class="f-nombre"><span class="punto ${esc(e.estado)}" aria-hidden="true"></span><span><strong>${esc(e.nombre)}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre"><span class="punto ${esc(e.estado)}" aria-hidden="true"></span><span><strong>${esc(e.nombre)}${via}</strong><small>${esc(sub)}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : '<span></span><span></span>'}
     <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : (red.wans && red.wans.length > 1 && red.wans.some(x => !x.activa)) ? `<b>${esc(red.wans.filter(x => !x.activa).map(x => x.interfaz).join(', '))} caído</b><small>${red.wans.filter(x => x.activa).length} de ${red.wans.length} enlaces arriba</small>` : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
     <span class="f-extra f-ses" data-etq="Equipos y VPN">${vivo ? `<span class="valor">${red.dhcp == null ? '—' : red.dhcp}</span><small>con IP${red.vpnTotal ? `, VPN ${red.vpn}/${red.vpnTotal}` : ''}</small>` : ''}</span>
@@ -455,6 +457,19 @@ function filaRouter(e) {
 }
 
 /* ---------------- Alta y edición de routers ---------------- */
+
+/* ---------------- Cómo llega NodeCat al equipo de red: directo o por una sonda ---------------- */
+const VERSION_SONDA = [1, 2, 0];
+function agenteVale(v) { const p = String(v || '0').split('.').map(Number); for (let i = 0; i < 3; i++) if ((p[i] || 0) !== VERSION_SONDA[i]) return (p[i] || 0) > VERSION_SONDA[i]; return true; }
+function campoSonda(clienteId, cfg, que) {
+  const c = cliente(clienteId), ws = c ? c.equipos.filter(x => x.tipo === 'windows') : [];
+  const actual = cfg && cfg.sonda;
+  const ops = ws.map(w => { const vale = agenteVale(w.version); return `<option value="${w.id}" ${actual === w.id ? 'selected' : ''} ${vale || actual === w.id ? '' : 'disabled'}>Por ${esc(w.alias || w.nombre)}${vale ? '' : ' (agente antiguo: actualízalo)'}${w.estado === 'caido' ? ' (sin conexión)' : ''}</option>`; }).join('');
+  return `<label class="campo">Cómo llega NodeCat
+      <select name="sonda" class="selector"><option value="">Directo: por VPN o IP pública</option>${ops}</select>
+      <span class="ayuda-campo" data-ayuda-sonda>${ws.length ? `Si NodeCat no llega a ${que}, elige un servidor del cliente que esté en su misma red: su agente lee ${que} y se lo pasa a NodeCat. Sin VPN y sin abrir puertos; usa la IP interna.` : `Si NodeCat no llega a ${que}, instala el agente en un servidor de esa red y podrás leerlo a través de él, sin VPN.`}</span></label>`;
+}
+
 async function dialogoRouter(clienteId, id) {
   let cfg = null, e = id ? equipo(id) : null;
   if (id) { try { cfg = (await api(`/api/routers/${id}/vivo`)).config; } catch (x) { if (!x.login) aviso(x.message, true); return; } }
@@ -467,14 +482,14 @@ async function dialogoRouter(clienteId, id) {
       <code class="codigo pasos-cmd">/user group add name=nodecat policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
 /user add name=nodecat group=nodecat password=UNA-CLAVE-LARGA
 /ip service set api disabled=no address=IP-DE-NODECAT/32</code>
-      <p><b>Si llegas al router por VPN o red interna</b>, usa la API normal (puerto 8728).<br><b>Si solo tiene IP pública</b>, usa API‑SSL (puerto 8729) y deja entrar solo a tu IP pública:</p>
+      <p><b>Si llegas al router por VPN o red interna</b>, usa la API normal (puerto 8728).<br><b>Si lo lees a través de un servidor del cliente</b> (sonda), usa también el 8728 y pon la IP interna de ese servidor en lugar de la de NodeCat.<br><b>Si solo tiene IP pública</b>, usa API‑SSL (puerto 8729) y deja entrar solo a tu IP pública:</p>
       <code class="codigo pasos-cmd">/certificate add name=api common-name=api days-valid=3650
 /certificate sign api
 /ip service set api-ssl disabled=no certificate=api address=TU-IP-PUBLICA/32</code>
     </details>` : ''}
     ${demo ? '<div class="msg atencion">Router del modo demo: solo se puede cambiar el nombre.</div>' : ''}
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Router principal" required></label>
-    ${demo ? '' : `<div class="tres">
+    ${demo ? '' : `${campoSonda(clienteId, cfg, 'el router')}<div class="tres">
       <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
       <label class="campo">Usuario<input name="usuario" spellcheck="false" autocomplete="off" value="${esc(cfg ? cfg.usuario : 'nodecat')}" required></label>
       <label class="campo">Puerto<input name="puerto" type="number" min="1" max="65535" value="${cfg ? cfg.puerto : 8728}"></label>
@@ -492,7 +507,7 @@ async function dialogoRouter(clienteId, id) {
     if (!t || tipo !== 'bien') return gatoDice(m, t);
     m.className = 'msg bien'; m.textContent = t; m.hidden = false; caraDeGato('reparando', 1);
   };
-  const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, ping: f.ping.value, id };
+  const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, ping: f.ping.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
   if (!demo) f.ssl.onchange = () => { if (f.ssl.checked && +f.puerto.value === 8728) f.puerto.value = 8729; if (!f.ssl.checked && +f.puerto.value === 8729) f.puerto.value = 8728; };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');
@@ -772,11 +787,11 @@ config system api-user
     next
 end
 execute api-user generate-key nodecat</code>
-      <p>Si llegas por Internet, usa la IP pública de NodeCat en el trusthost y permite HTTPS de administración en la interfaz WAN solo desde esa IP.</p>
+      <p>Si lo lees a través de un servidor del cliente (sonda), pon en el trusthost la IP interna de ese servidor. Si llegas por Internet, usa la IP pública de NodeCat y permite HTTPS de administración en la interfaz WAN solo desde esa IP.</p>
     </details>` : ''}
     ${demo ? '<div class="msg atencion">FortiGate del modo demo: solo se puede cambiar el nombre.</div>' : ''}
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Firewall principal" required></label>
-    ${demo ? '' : `<div class="tres">
+    ${demo ? '' : `${campoSonda(clienteId, cfg, 'el FortiGate')}<div class="tres">
       <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
       <label class="campo">VDOM <span class="ayuda-campo">opcional</span><input name="vdom" spellcheck="false" value="${esc(cfg ? cfg.vdom : '')}" placeholder="root"></label>
       <label class="campo">Puerto HTTPS<input name="puerto" type="number" min="1" max="65535" value="${cfg ? cfg.puerto : 443}"></label>
@@ -788,10 +803,10 @@ execute api-user generate-key nodecat</code>
     <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar FortiGate'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
   const msg = (t, tipo) => { if (!t || tipo !== 'bien') return gatoDice(m, t); m.className = 'msg bien'; m.textContent = t; m.hidden = false; };
-  const datos = () => demo ? { nombre: f.nombre.value } : { tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, id };
+  const datos = () => demo ? { nombre: f.nombre.value } : { tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');
-  if (bp) bp.onclick = ev => ocupado(ev.currentTarget, 'Probando…', async () => {
+  if (bp) bp.onclick = ev => ocupado(ev.currentTarget, f.sonda.value ? 'Probando por la sonda…' : 'Probando…', async () => {
     msg('');
     try { const r = await enviar('/api/routers/probar', 'POST', datos()); msg(`Conectado con “${r.identidad}”: ${r.modelo}, FortiOS ${r.version.replace(/^v/, '')}.`, 'bien'); if (!f.nombre.value.trim()) f.nombre.value = r.identidad || ''; }
     catch (x) { if (!x.login) msg(x.message); }

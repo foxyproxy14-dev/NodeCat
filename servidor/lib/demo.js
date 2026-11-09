@@ -9,7 +9,7 @@ const ROUTERS = {
   'Clínica San Rafael': [['Router principal', 'rb5009'], ['Firewall perimetral', 'fg100f', 'fortigate']],
   'Andes Logística Barquisimeto': [['FortiGate sede', 'fg40f', 'fortigate']],
   'Transportes Andes': [['Core sede Valencia', 'ccr2004'], ['Almacén Puerto Cabello', 'hapax2']],
-  'Estudio Contable Mérida': [['Router oficina', 'hex']],
+  'Estudio Contable Mérida': [['Router oficina', 'hex', 'mikrotik', true]],   // leído a través de su servidor (sonda)
   'Ferretería El Tornillo': [['Router tienda', 'hapac2']]
 };
 const CLIENTES = [
@@ -76,7 +76,7 @@ function sembrar() {
       for (const e of c.equipos) {
         const p = PERFILES[e.perfil];
         const creado = ahora - 32 * 864e5;
-        const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, ultimo_contacto, version_agente, ip, intervalo) VALUES (?, 'windows', ?, ?, ?, '1.1.0', ?, 30)")
+        const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, ultimo_contacto, version_agente, ip, intervalo) VALUES (?, 'windows', ?, ?, ?, '1.2.0', ?, 30)")
           .run(cid, e.nombre, creado, e.caido ? ahora - 47 * 60000 : ahora - 20000, `10.${cid}.0.${10 + Number(q('SELECT COUNT(*) n FROM equipos').get().n)}`);
         const id = Number(r.lastInsertRowid);
         if (e.caido) q('UPDATE equipos SET datos = ? WHERE id = ?').run(JSON.stringify(informe({ cfg: e, p, arranque: ahora - 9 * 864e5, discos: p.discos.map(([u, et, tot, pct]) => ({ u, et, tot, pct })), sesiones: [] }, ahora - 47 * 60000)), id);
@@ -127,8 +127,9 @@ function sembrarRouters() {
   const PERFILES = { ...require('./mikrotik-demo').PERFILES, ...require('./fortigate-demo').PERFILES };
   for (const [cliNombre, lista] of Object.entries(ROUTERS)) {
     const cli = q('SELECT id FROM clientes WHERE nombre = ?').get(cliNombre); if (!cli) continue;
-    for (const [nombre, perfil, tipo = 'mikrotik'] of lista) {
-      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil }, tipo);
+    for (const [nombre, perfil, tipo = 'mikrotik', porSonda] of lista) {
+      const srv = porSonda && q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' ORDER BY id LIMIT 1").get(cli.id);
+      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil, sonda: srv ? srv.id : null }, tipo);
       const p = PERFILES[perfil], creado = ahora - 32 * 864e5;
       if (!p.cpu) p.cpu = 8;
       q('UPDATE equipos SET creado = ? WHERE id = ?').run(creado, id);
@@ -160,7 +161,7 @@ function informe(x, ahora) {
   const cpu = Math.round(Math.min(100, Math.max(1, p.cpu * (0.3 + j * 1.4) + (rnd() * 15 - 6) + (e.alto === 'cpu' ? 55 : 0))));
   const ramPct = Math.round(Math.min(99, Math.max(5, p.ram + j * 14 + (rnd() * 8 - 4) + (e.alto === 'ram' ? 30 : 0))));
   return {
-    nombre: e.nombre, version: '1.1.0', intervalo: 30, hora: ahora,
+    nombre: e.nombre, version: '1.2.0', intervalo: 30, hora: ahora,
     cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque,
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
     sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12) }))

@@ -13,8 +13,8 @@ using System.Threading;
 [assembly: AssemblyTitle("NodeCat Agente")]
 [assembly: AssemblyDescription("Agente de NodeCat: envía las sesiones, la CPU, la memoria y los discos de este servidor a NodeCat.")]
 [assembly: AssemblyProduct("NodeCat")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 namespace NodeCat
 {
@@ -55,7 +55,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -86,6 +86,7 @@ namespace NodeCat
                     case "instalar": return Instalar(silencioso);
                     case "desinstalar": return Desinstalar(silencioso);
                     case "probar": return Probar();
+                    case "sonda": return SoloSonda();
                     default: Ayuda(); Pausa(silencioso); return 0;
                 }
             }
@@ -106,6 +107,7 @@ namespace NodeCat
             Console.WriteLine("  NodeCatAgente.exe instalar [/silencioso]    Lo instala como servicio (usa agente.json de esta carpeta).");
             Console.WriteLine("  NodeCatAgente.exe desinstalar               Lo quita de este servidor.");
             Console.WriteLine("  NodeCatAgente.exe probar                    Comprueba que puede leer los datos y hablar con NodeCat.");
+            Console.WriteLine("  NodeCatAgente.exe sonda                     Ejecuta la sonda en primer plano para ver qué lee (para el servicio antes).");
             Console.WriteLine();
         }
 
@@ -128,6 +130,7 @@ namespace NodeCat
             proxy = Json.Txt(o, "proxy").Trim();   // opcional: "http://proxy.cliente.local:8080" si el servidor solo sale a Internet por un proxy
             if (!servidor.StartsWith("http://") && !servidor.StartsWith("https://")) throw new Exception("En agente.json, \"servidor\" debe ser la dirección de NodeCat, por ejemplo https://nodecat.miempresa.com");
             if (clave.Length < 16) throw new Exception("En agente.json falta la clave de los agentes.");
+            Sonda.Servidor = servidor; Sonda.Clave = clave; Sonda.Proxy = proxy;
         }
 
         // ------------------------------------------------------------ recogida y envío
@@ -184,6 +187,8 @@ namespace NodeCat
                     var o = Json.LeerObjeto(r.ReadToEnd());
                     int i = Json.Num(o, "intervalo", intervalo);
                     if (i >= 5 && i <= 600) intervalo = i;
+                    // NodeCat pide que este servidor lea equipos de red de su red (sonda)
+                    if (ComoServicio || modoSonda) Sonda.Ajustar(Json.Txt(o, "sonda") == "True" || Json.Txt(o, "sonda") == "true");
                 }
                 return true;
             }
@@ -248,7 +253,20 @@ namespace NodeCat
             }
         }
 
-        public static void Parar() { detener = true; despertar.Set(); }
+        public static void Parar() { detener = true; Sonda.Parar(); despertar.Set(); }
+
+        // ------------------------------------------------------------ sonda en primer plano (diagnóstico)
+        static bool modoSonda;
+        static int SoloSonda()
+        {
+            string carpeta = File.Exists(Path.Combine(CarpetaExe, "agente.json")) ? CarpetaExe : CarpetaInstalacion;
+            CargarConfig(carpeta);
+            modoSonda = true;
+            Console.WriteLine();
+            Console.WriteLine("  Sonda de NodeCat en primer plano (Ctrl+C para salir). Si el servicio también está en marcha, para el servicio antes.");
+            Sonda.Ajustar(true);
+            while (true) { Thread.Sleep(20000); Sonda.Ajustar(true); }
+        }
 
         // ------------------------------------------------------------ probar
         static int Probar()

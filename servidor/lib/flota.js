@@ -74,7 +74,7 @@ function editarEquipo(id, { alias, cliente_id }) {
   if (alias != null) q('UPDATE equipos SET alias = ? WHERE id = ?').run(String(alias).trim().slice(0, 60), id);
   cargarVivo(id);
 }
-function borrarEquipo(id) { q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); }
+function borrarEquipo(id) { q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id); }
 
 // ---------------------------------------------------------------- estado en memoria
 // Por equipo: la fila de la base, el último informe y la última hora de CPU y memoria (para las miniaturas)
@@ -83,7 +83,8 @@ function cargarVivo(id) {
   const e = equipo(id);
   if (!e) { vivo.delete(id); return; }
   const previo = vivo.get(id);
-  vivo.set(id, { ...e, config: undefined, datos: e.datos ? JSON.parse(e.datos) : null, hora: previo ? previo.hora : [], ultimaMuestra: previo ? previo.ultimaMuestra : 0, caido: previo ? previo.caido : null, errorConexion: previo ? previo.errorConexion : null });
+  let sonda = null; if (e.tipo !== 'windows' && e.config) { try { sonda = JSON.parse(e.config).sonda || null; } catch { } }
+  vivo.set(id, { ...e, config: undefined, sonda, datos: e.datos ? JSON.parse(e.datos) : null, hora: previo ? previo.hora : [], ultimaMuestra: previo ? previo.ultimaMuestra : 0, caido: previo ? previo.caido : null, errorConexion: previo ? previo.errorConexion : null });
 }
 function arrancar() {
   for (const { id } of q('SELECT id FROM equipos').all()) cargarVivo(id);
@@ -173,7 +174,16 @@ function recibir(clave, c, ip) {
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
   if (v.caido) volvio(v, ahora);
-  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre };
+  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre, sonda: require('./sonda').enUso(id) };
+}
+
+/** La sonda: identifica al agente por su clave y su nombre de equipo. */
+function agenteDe(clave, nombre) {
+  const cli = clave && q('SELECT id FROM clientes WHERE clave = ?').get(String(clave));
+  if (!cli) { const e = new Error('La clave del agente no es válida.'); e.status = 403; throw e; }
+  const f = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, txt(nombre, 63).trim().toUpperCase());
+  if (!f) { const e = new Error('Este equipo todavía no ha enviado su primer informe.'); e.status = 404; throw e; }
+  return f.id;
 }
 
 // ---------------------------------------------------------------- routers (los consulta lib/mikrotik.js)
@@ -300,7 +310,7 @@ function vistaEquipo(v, ahora) {
     cpu: d.cpu ?? null, ramPct: d.ramPct ?? null, ramTotal: d.ramTotal ?? null, ramUsada: d.ramUsada ?? null,
     so: d.so || '', arranque: d.arranque || null, discos: d.discos || [], sesiones: d.sesiones || [],
     errorSesiones: d.errorSesiones || null, errorMetricas: d.errorMetricas || null,
-    red: d.red || null, errorConexion: v.errorConexion || null,
+    red: d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null,
     historial: v.hora
   };
 }
@@ -415,5 +425,5 @@ module.exports = {
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
 };

@@ -33,6 +33,13 @@ CONFIGURACIÓN (agente.json)
   clave:    clave de los agentes de ${cliente.nombre}. Si se genera una nueva en NodeCat,
             hay que actualizarla aquí (o descargar el paquete otra vez).
 
+SONDA (LEER MIKROTIK Y FORTIGATE DE ESTA RED)
+  Si en NodeCat eliges este servidor como sonda de un router o un FortiGate, el agente
+  lee ese equipo desde aquí (solo lectura) y se lo pasa a NodeCat. Así no hace falta VPN.
+  Permite en el router (API, puerto 8728) o en el FortiGate (HTTPS) la IP interna de este
+  servidor. Para ver la sonda en primer plano: para el servicio y ejecuta
+  NodeCatAgente.exe sonda
+
 REQUISITOS
   Windows Server 2012 R2 o superior (o Windows 10/11) con .NET Framework 4.5 o superior.
   Funciona con la cuenta del sistema.

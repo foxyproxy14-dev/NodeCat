@@ -3,6 +3,7 @@
 const { q } = require('./db');
 const flota = require('./flota');
 const { FortiOS } = require('./fortios');
+const sonda = require('./sonda');
 const { cifrar, descifrar } = require('./secreto');
 const { log } = require('./util');
 
@@ -16,7 +17,7 @@ function leerConfig(id) {
   const r = q("SELECT config FROM equipos WHERE id = ? AND tipo = 'fortigate'").get(id);
   return r && r.config ? JSON.parse(r.config) : null;
 }
-function validar(c, previa) {
+function validar(c, previa, clienteId) {
   const host = String(c.host || '').trim();
   if (!/^[A-Za-z0-9.\-:\[\]]{1,253}$/.test(host)) throw new Error('Escribe la IP o el nombre del FortiGate.');
   const puerto = Number(c.puerto || 443);
@@ -25,14 +26,16 @@ function validar(c, previa) {
   if (!token) throw new Error('Pega el token del usuario de API.');
   const vdom = String(c.vdom || '').trim().slice(0, 32);
   const wan = String(c.wan || '').trim().slice(0, 64);
-  return { host, puerto, token, verificar: !!c.verificar, vdom, wan };
+  return { host, puerto, token, verificar: !!c.verificar, vdom, wan, sonda: sonda.validar(c.sonda, clienteId) };
 }
-const guardable = c => ({ host: c.host, puerto: c.puerto, token: cifrar(c.token), verificar: c.verificar, vdom: c.vdom, wan: c.wan, demo: c.demo, perfil: c.perfil });
-const publica = c => c ? { host: c.host, puerto: c.puerto, verificar: !!c.verificar, vdom: c.vdom || '', wan: c.wan || '', tokenGuardado: !!c.token, demo: !!c.demo } : null;
+const guardable = c => ({ host: c.host, puerto: c.puerto, token: cifrar(c.token), verificar: c.verificar, vdom: c.vdom, wan: c.wan, sonda: c.sonda || null, demo: c.demo, perfil: c.perfil });
+const clienteDe = id => { const e = flota.equipo(id); return e ? e.cliente_id : null; };
+const nueva = (c, extra = {}) => c.sonda ? new sonda.FortiOSSonda({ ...c, ...extra }) : new FortiOS({ ...c, ...extra });
+const publica = c => c ? { host: c.host, puerto: c.puerto, verificar: !!c.verificar, vdom: c.vdom || '', wan: c.wan || '', sonda: c.sonda || null, sondaNombre: c.sonda ? sonda.nombre(c.sonda) : null, tokenGuardado: !!c.token, demo: !!c.demo } : null;
 
 async function probar(datos, id) {
-  const c = validar(datos, id ? leerConfig(id) : null);
-  const api = new FortiOS(c);
+  const c = validar(datos, id ? leerConfig(id) : null, id ? clienteDe(id) : datos.clienteId);
+  const api = nueva(c);
   try {
     const s = await api.get('monitor/system/status');
     const r = s.results || {};
@@ -40,7 +43,7 @@ async function probar(datos, id) {
   } finally { api.cerrar(); }
 }
 function crear(clienteId, nombre, datos) {
-  const c = validar(datos);
+  const c = validar(datos, null, clienteId);
   const id = flota.crearRouter(clienteId, nombre, guardable(c), 'fortigate');
   iniciar(id);
   return id;
@@ -48,13 +51,13 @@ function crear(clienteId, nombre, datos) {
 function editar(id, nombre, datos) {
   const previa = leerConfig(id); if (!previa) throw new Error('Ese FortiGate no existe.');
   if (nombre) flota.renombrarRouter(id, nombre);
-  if (!previa.demo) q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify(guardable(validar(datos, previa))), id);
+  if (!previa.demo) q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify(guardable(validar(datos, previa, clienteDe(id)))), id);
   quitar(id); iniciar(id);
 }
 function quitar(id) {
   const r = equipos.get(id); if (!r) return;
   clearTimeout(r.temporizador); if (r.api) r.api.cerrar();
-  equipos.delete(id);
+  equipos.delete(id); sonda.soltar(id);
 }
 
 // ---------------------------------------------------------------- bucle de consulta
@@ -63,6 +66,7 @@ function iniciar(id) {
   if (c.token) c.token = descifrar(c.token);
   const r = { id, c, api: null, observado: 0, prev: new Map(), serie: new Map(), acum: new Map(), minuto: 0, lento: {}, cache: new Map(), lat: new Map(), ocupado: false, fallos: 0, ultimoError: null };
   equipos.set(id, r);
+  if (c.sonda && !c.demo) sonda.registrar(c.sonda, id);
   r.temporizador = setTimeout(() => ciclo(r), 500 + Math.random() * 2000);
 }
 function programar(r) {
@@ -82,7 +86,7 @@ async function ciclo(r) {
     if (r.ultimoError !== e.message) { log(`FortiGate ${v ? v.nombre : r.id}: ${e.message}`); r.ultimoError = e.message; }
   } finally { r.ocupado = false; programar(r); }
 }
-const api = r => r.c.demo ? simulador.api(r.id) : (r.api || (r.api = new FortiOS({ ...r.c, tiempo: 8000 })));
+const api = r => r.c.demo ? simulador.api(r.id) : (r.api || (r.api = nueva(r.c, { tiempo: r.c.sonda ? 10000 : 8000 })));
 const opcional = async p => { try { return await p; } catch (e) { if (e.tipo === 'falta' || e.tipo === 'permiso') return null; throw e; } };
 const lista = x => Array.isArray(x) ? x : x && typeof x === 'object' ? Object.values(x) : [];
 const num = x => x == null || x === '' || isNaN(Number(x)) ? null : Number(x);
