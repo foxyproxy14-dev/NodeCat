@@ -752,3 +752,22 @@ body.iniciando .inicio-carga { display: grid; }
 @keyframes g-chispa2 { 0%, 45% { opacity: 0; transform: scale(.3); } 55% { opacity: 1; transform: scale(1.1) rotate(20deg); } 75%, 100% { opacity: 0; transform: scale(.4) rotate(60deg); } }
 @keyframes g-cae { 0%, 70% { opacity: 0; transform: translate(0, 0); } 72% { opacity: 1; } 95% { opacity: 1; transform: translate(4px, 26px); } 100% { opacity: 0; transform: translate(4px, 26px); } }
 .titular-gato .gato.g-arreglando { width: 150px; height: 125px; }
+
+/* Bocadillos del gato de la barra (cambios de estado en vivo) */
+.bocadillos { position: fixed; z-index: 45; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 24px)); pointer-events: none; }
+.bocadillo { all: unset; box-sizing: border-box; pointer-events: auto; cursor: pointer; position: relative; display: flex; flex-direction: column; gap: 2px;
+  padding: 11px 34px 12px 15px; border-radius: 16px; background: var(--hoja); color: var(--tinta-2); font-size: 13.5px; line-height: 1.45;
+  border: 1px solid var(--linea-2); box-shadow: 0 12px 32px rgba(0, 0, 0, .18); transform-origin: 22px -10px;
+  animation: g-bocadillo .45s cubic-bezier(.2, 1.4, .4, 1); transition: opacity .35s, transform .35s; }
+.bocadillo b { font-size: 15px; color: var(--tinta); font-weight: 600; }
+.bocadillo:first-child::before { content: ""; position: absolute; top: -8px; left: 20px; width: 14px; height: 14px; background: var(--hoja); border-left: 1px solid var(--linea-2); border-top: 1px solid var(--linea-2); transform: rotate(45deg); border-radius: 3px 0 0 0; }
+.bocadillo.malo { border-color: color-mix(in srgb, var(--alerta) 60%, var(--linea-2)); }
+.bocadillo.malo:first-child::before { border-color: color-mix(in srgb, var(--alerta) 60%, var(--linea-2)); }
+.bocadillo .cerrar-aviso { position: absolute; top: 6px; right: 11px; font-size: 18px; color: var(--tinta-3); }
+.bocadillo:hover { border-color: var(--tinta-3); }
+.bocadillo:focus-visible { outline: 2px solid var(--senal); outline-offset: 2px; }
+.bocadillo.fuera { opacity: 0; transform: scale(.9); }
+#barraGato { display: inline-flex; }
+#barraGato.salta { animation: g-salta .6s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes g-bocadillo { from { opacity: 0; transform: scale(.6); } }
+@keyframes g-salta { 0% { transform: translateY(0); } 35% { transform: translateY(-7px) scale(1.12); } 100% { transform: translateY(0); } }

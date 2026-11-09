@@ -99,7 +99,7 @@ function entrar(info) {
 }
 
 function mostrarAcceso(msg, configurar) {
-  SESION = null; CSRF = null; estado = null;
+  SESION = null; CSRF = null; estado = null; previos = null;
   ocultarInicio();
   document.body.classList.add('sin-sesion');
   cerrarMenu();
@@ -162,6 +162,7 @@ async function cargar(forzar) {
     const e = await api('/api/estado');
     for (const c of e.clientes) c.equipos = arr(c.equipos).map(x => ({ ...x, clienteNombre: c.nombre, sesiones: arr(x.sesiones), discos: arr(x.discos), historial: arr(x.historial) }));
     const nuevo = !estado || e.actualizado !== estado.actualizado;
+    vigilarCambios(e);
     estado = e;
     $('#aviso').hidden = true;
     const v = `${e.actualizado}|${e.clientes.map(c => c.id + c.nombre + c.equipos.map(x => x.id + x.estado + x.ultimo + x.alias + x.sesiones.length).join()).join('|')}`;
@@ -174,6 +175,50 @@ async function cargar(forzar) {
     const t = err.message === 'No hay conexión con Atalaya.' ? 'Uy, perdí la conexión con Atalaya. Comprueba que el servidor sigue en marcha; lo sigo intentando.' : err.message;
     if (a.dataset.t !== t || a.hidden) { a.innerHTML = gatoError(esc(t)); a.dataset.t = t; }
     a.hidden = false;
+  }
+}
+
+/* ---------------- El gato avisa de los cambios ---------------- */
+let previos = null;
+function vigilarCambios(e) {
+  const ahora = new Map();
+  for (const c of e.clientes) for (const x of c.equipos) ahora.set(x.id, { estado: x.estado, wan: x.red && x.red.wan ? x.red.wan.activa : null, x, c });
+  if (previos) {
+    for (const [id, n] of ahora) {
+      const p = previos.get(id), nom = n.x.alias || n.x.nombre, tipo = n.x.tipo === 'mikrotik' ? 'El router' : 'El servidor';
+      if (!p) { avisoGato('reparando', n.x.tipo === 'mikrotik' ? '¡Router nuevo!' : '¡Servidor nuevo!', `${nom} se unió a ${n.c.nombre}. Ya lo estoy vigilando.`, id); continue; }
+      if (p.estado === 'pendiente' && (n.estado === 'ok' || n.estado === 'sinMetricas')) avisoGato('reparando', '¡Conectado!', `${nom} (${n.c.nombre}) ya está enviando datos.`, id);
+      else if (p.estado !== 'caido' && n.estado === 'caido') avisoGato('avergonzado', `${nom} no responde`, `${tipo} de ${n.c.nombre} dejó de responder${n.x.errorConexion ? ': ' + n.x.errorConexion : '.'}`, id, true);
+      else if (p.estado === 'caido' && n.estado !== 'caido') avisoGato('programando', `${nom} volvió`, `${tipo} de ${n.c.nombre} está otra vez en línea.`, id);
+      if (p.wan === true && n.wan === false && n.estado !== 'caido') avisoGato('molesto', `Se cayó el WAN de ${nom}`, `La interfaz ${n.x.red.wan.interfaz} de ${n.c.nombre} está sin enlace.`, id, true);
+      if (p.wan === false && n.wan === true) avisoGato('programando', `Volvió el WAN de ${nom}`, `${n.c.nombre} tiene Internet otra vez por ${n.x.red.wan.interfaz}.`, id);
+    }
+  }
+  previos = ahora;
+}
+// El gato de la barra lo cuenta en un bocadillo y pone la cara de la noticia
+let caraGato = null;
+function avisoGato(pose, titulo, texto, idEquipo, malo) {
+  const cont = $('#bocadillos'), g = $('#barraGato');
+  const r = g.getBoundingClientRect();
+  cont.style.left = Math.max(8, r.left - 6) + 'px';
+  cont.style.top = (r.bottom + 10) + 'px';
+  const d = document.createElement('button');
+  d.type = 'button';
+  d.className = 'bocadillo' + (malo ? ' malo' : '');
+  d.setAttribute('role', malo ? 'alert' : 'status');
+  d.innerHTML = `<b>${esc(titulo)}</b><span>${esc(texto)}</span><span class="cerrar-aviso" aria-hidden="true">×</span>`;
+  d.onclick = ev => { if (!ev.target.closest('.cerrar-aviso') && idEquipo) ir('#/e/' + idEquipo); quitar(); };
+  cont.prepend(d);
+  while (cont.children.length > 4) cont.lastChild.remove();
+  // La cara del gato de la barra cambia unos segundos
+  g.innerHTML = gatoSVG(pose); g.classList.remove('salta'); void g.offsetWidth; g.classList.add('salta');
+  clearTimeout(caraGato);
+  caraGato = setTimeout(() => { g.innerHTML = gatoSVG('reparando'); }, malo ? 12000 : 6000);
+  const quitar = () => { d.classList.add('fuera'); setTimeout(() => d.remove(), 350); };
+  setTimeout(quitar, malo ? 15000 : 8000);
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try { const n = new Notification(titulo, { body: texto, icon: $('#favicon').href, tag: 'atalaya-' + idEquipo }); n.onclick = () => { window.focus(); if (idEquipo) ir('#/e/' + idEquipo); }; } catch (x) { }
   }
 }
 
@@ -940,6 +985,7 @@ $('#btnCuenta').addEventListener('click', e => {
   if (!$('#menu').hidden) { cerrarMenu(); return; }
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }];
   if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => gestionClientes() }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
+  if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque Atalaya esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
   menuEn(e.currentTarget, it, `<div class="menu-cab"><b>${esc(SESION.usuario)}</b><span>${ROLES[SESION.rol] || esc(SESION.rol)}${alcance}${SESION.demo ? ', modo demo' : ''}</span></div>`);
