@@ -394,7 +394,7 @@ function vistaResumen() {
   const contento = eq.length && !graves && !leves;
   $('#titular').classList.toggle('titular-gato', !!contento);
   const gatoT = $('#titular').querySelector('.gato');
-  if (contento && !gatoT) $('#titular').insertAdjacentHTML('beforeend', gatoSVG('reparando'));
+  if (contento && !gatoT) $('#titular').insertAdjacentHTML('beforeend', gatoSVG('arreglando', 'El gato arreglando un servidor'));
   if (!contento && gatoT) gatoT.remove();
   let tt = $('#titular .texto'); if (!tt) { $('#titular').insertAdjacentHTML('afterbegin', '<div class="texto"></div>'); tt = $('#titular .texto'); }
   tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${plural(eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores')} y ${plural(eq.filter(e => e.tipo === 'mikrotik').length, 'router', 'routers')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
