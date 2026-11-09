@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.11.1 (noviembre de 2026)
+
+- NodeCat se puede instalar en el teléfono como app (acceso directo en la pantalla de inicio, a pantalla completa, con su icono). En iPhone aparece una hoja con los pasos de Safari; en Android, el botón Instalar. Se puede posponer o no volver a mostrar, y queda en el menú de la cuenta como "Instalar en este teléfono".
+
 ## 0.11.0 (noviembre de 2026)
 
 - Proxmox, pestaña Apps: cada app se puede editar desde el panel (nombre, enlace, categoría y logo), ocultar o agregar a mano. Los logos de apps se suben una vez y sirven para todos los servidores. Nada de esto toca Proxmox.

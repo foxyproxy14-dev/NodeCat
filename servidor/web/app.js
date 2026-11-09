@@ -1398,6 +1398,7 @@ $('#btnCuenta').addEventListener('click', e => {
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }, { t: 'Verificación en dos pasos', fn: dosPasos }];
   if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Logos de los sistemas', fn: logosSistemas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
+  if (window.nodecatInstalar && matchMedia('(pointer: coarse)').matches && !matchMedia('(display-mode: standalone)').matches && navigator.standalone !== true) it.push({ t: 'Instalar en este teléfono', fn: () => window.nodecatInstalar() });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
   menuEn(e.currentTarget, it, `<div class="menu-cab"><b>${esc(SESION.usuario)}</b><span>${ROLES[SESION.rol] || esc(SESION.rol)}${alcance}${SESION.demo ? ', modo demo' : ''}</span></div>`);
