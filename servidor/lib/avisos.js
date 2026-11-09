@@ -1,40 +1,11 @@
 'use strict';
 // Avisos por Telegram: ajustes, reglas con histéresis, cola de envío y resumen diario.
-const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
 const { q, ajustes } = require('./db');
 const flota = require('./flota');
 const config = require('./config');
 const { log, duracion, html: H, nf } = require('./util');
 
-// ---------------------------------------------------------------- token cifrado en reposo
-const archivoSecreto = path.join(config.DATA_DIR, 'secreto.key');
-let secreto;
-function llave() {
-  if (secreto) return secreto;
-  try { secreto = Buffer.from(fs.readFileSync(archivoSecreto, 'utf8').trim(), 'hex'); } catch { }
-  if (!secreto || secreto.length !== 32) {
-    secreto = crypto.randomBytes(32);
-    fs.writeFileSync(archivoSecreto, secreto.toString('hex'), { mode: 0o600 });
-  }
-  return secreto;
-}
-function cifrar(t) {
-  if (!t) return '';
-  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', llave(), iv);
-  const d = Buffer.concat([c.update(t, 'utf8'), c.final()]);
-  return 'gcm:' + Buffer.concat([iv, c.getAuthTag(), d]).toString('base64');
-}
-function descifrar(t) {
-  if (!t || !t.startsWith('gcm:')) return '';
-  try {
-    const b = Buffer.from(t.slice(4), 'base64');
-    const d = crypto.createDecipheriv('aes-256-gcm', llave(), b.subarray(0, 12));
-    d.setAuthTag(b.subarray(12, 28));
-    return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
-  } catch { return ''; }
-}
+const { cifrar, descifrar } = require('./secreto');
 
 // ---------------------------------------------------------------- ajustes
 const DEFECTO = {
@@ -43,6 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
+  wan: true,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -76,7 +48,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100),
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen
   };
@@ -241,7 +213,7 @@ function evaluar(forzar) {
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
-      () => `🔴 <b>${hs} no responde</b>${hc}\nSin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`,
+      () => `🔴 <b>${hs} no responde</b>${hc}\n${e.tipo === 'mikrotik' ? `Atalaya no puede conectar con el router${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: '2-digit', minute: '2-digit' })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
@@ -250,7 +222,11 @@ function evaluar(forzar) {
     regla(s + '|ram', A.ram, ram == null ? null : ram >= A.ramUmbral, ram != null && ram < A.ramUmbral - 3, A.ramMin,
       () => `🟠 <b>${hs}: memoria al ${ram} %</b>${hc}\n${e.ramTotal ? `${gb(e.ramUsada)} de ${gb(e.ramTotal)} GB en uso.` : ''}`,
       t => `✅ <b>${hs}: memoria normal</b> (${ram} %)${hc}\nEstuvo alta ${duracion(t)}.`, ahora, primera, e.cliente);
-    if (vivo) for (const d of e.discos) {
+    const wan = vivo && e.red && e.red.wan;
+    regla(s + '|wan', A.wan, wan ? !wan.activa : null, wan ? wan.activa : false, 0,
+      () => `🔴 <b>${hs}: se cayó el enlace WAN</b>${hc}\nLa interfaz ${H(wan.interfaz)} está sin enlace. El router sigue respondiendo (quizá por un respaldo).`,
+      t => `🟢 <b>${hs}: el enlace WAN volvió</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
+    if (vivo && e.tipo !== 'mikrotik') for (const d of e.discos) {
       if (d.pct == null) continue;
       regla(`${s}|disco|${d.unidad}`, A.disco, d.pct >= A.discoUmbral, d.pct < A.discoUmbral - 2, 0,
         () => `🟠 <b>${hs}: disco ${H(d.unidad)} al ${d.pct} %</b>${hc}\nQuedan ${gb(d.libre)} GB libres de ${gb(d.total)} GB.`,

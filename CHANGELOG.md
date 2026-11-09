@@ -1,5 +1,16 @@
 # Cambios
 
+## 0.2.0 (noviembre de 2026)
+
+Fase 2: routers MikroTik.
+
+- Routers MikroTik por cliente, en solo lectura, por la API de RouterOS (8728, o 8729 con SSL). RouterOS 6 y 7.
+- Página del router al estilo MikroDash, siempre en oscuro: tráfico en vivo cada 3 segundos, interfaces, CPU, memoria, temperatura, conexiones, DHCP, Wi‑Fi, WireGuard, PPP e IPsec, firewall y registro.
+- Historial de tráfico por interfaz (minuto a minuto 7 días, cada 5 minutos 400 días) y de CPU y memoria.
+- Avisos de router caído y de enlace WAN caído; los routers aparecen en el resumen y en la página de cada cliente.
+- Contraseñas de los routers cifradas en disco. Detrás de Nginx Proxy Manager o Cloudflare se toma bien la IP real.
+- Modo demo con cinco routers simulados.
+
 ## 0.1.0 (noviembre de 2026)
 
 Primera versión: fase 1.

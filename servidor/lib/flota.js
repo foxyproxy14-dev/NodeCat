@@ -28,8 +28,10 @@ function editarCliente(id, nombre, notas) {
   if (otro && otro.id !== id) throw new Error(`Ya existe el cliente ${nombre}.`);
   q('UPDATE clientes SET nombre = ?, notas = ? WHERE id = ?').run(nombre, String(notas || '').slice(0, 500), id);
 }
+let alBorrarEquipo = () => { };
 function borrarCliente(id) {
   const c = cliente(id); if (!c) return;
+  for (const e of q('SELECT id FROM equipos WHERE cliente_id = ?').all(id)) alBorrarEquipo(e.id);
   q('DELETE FROM clientes WHERE id = ?').run(id);
   for (const k of [...vivo.keys()]) if (vivo.get(k).cliente_id === id) vivo.delete(k);
   log(`Cliente borrado: ${c.nombre}.`);
@@ -60,7 +62,7 @@ function cargarVivo(id) {
   const e = equipo(id);
   if (!e) { vivo.delete(id); return; }
   const previo = vivo.get(id);
-  vivo.set(id, { ...e, datos: e.datos ? JSON.parse(e.datos) : null, hora: previo ? previo.hora : [], ultimaMuestra: previo ? previo.ultimaMuestra : 0, caido: previo ? previo.caido : null });
+  vivo.set(id, { ...e, config: undefined, datos: e.datos ? JSON.parse(e.datos) : null, hora: previo ? previo.hora : [], ultimaMuestra: previo ? previo.ultimaMuestra : 0, caido: previo ? previo.caido : null, errorConexion: previo ? previo.errorConexion : null });
 }
 function arrancar() {
   for (const { id } of q('SELECT id FROM equipos').all()) cargarVivo(id);
@@ -152,6 +154,49 @@ function recibir(clave, c, ip) {
   return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre };
 }
 
+// ---------------------------------------------------------------- routers (los consulta lib/mikrotik.js)
+function crearRouter(clienteId, nombre, config) {
+  nombre = String(nombre || '').trim().replace(/\s+/g, ' ');
+  if (!nombre) throw new Error('Escribe un nombre para el router.');
+  if (nombre.length > 60) throw new Error('El nombre es demasiado largo (máximo 60).');
+  if (!cliente(clienteId)) throw new Error('Ese cliente no existe.');
+  if (q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'mikrotik' AND nombre = ?").get(clienteId, nombre)) throw new Error(`Ese cliente ya tiene un router llamado ${nombre}.`);
+  const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, intervalo, config) VALUES (?, 'mikrotik', ?, ?, 30, ?)").run(clienteId, nombre, Date.now(), JSON.stringify(config));
+  const id = Number(r.lastInsertRowid);
+  cargarVivo(id);
+  return id;
+}
+function renombrarRouter(id, nombre) {
+  nombre = String(nombre || '').trim().replace(/\s+/g, ' ');
+  if (!nombre || nombre.length > 60) throw new Error('Escribe un nombre de hasta 60 caracteres.');
+  const e = equipo(id);
+  const otro = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'mikrotik' AND nombre = ?").get(e.cliente_id, nombre);
+  if (otro && otro.id !== id) throw new Error(`Ese cliente ya tiene un router llamado ${nombre}.`);
+  q('UPDATE equipos SET nombre = ? WHERE id = ?').run(nombre, id);
+  cargarVivo(id);
+}
+function actualizarRouter(id, d, ip, version) {
+  const ahora = Date.now();
+  const previo = vivo.get(id); if (!previo) return;
+  const antes = previo.datos;
+  transaccion(() => {
+    q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = 30, datos = ? WHERE id = ?').run(ahora, version || '', ip || '', JSON.stringify(d), id);
+    if (antes && d.arranque && antes.arranque && d.arranque - antes.arranque > 120000) evento(id, 'reinicio', 'El router se reinició.', d.arranque);
+    const wa = antes && antes.red && antes.red.wan, wn = d.red && d.red.wan;
+    if (wa && wn && wa.interfaz === wn.interfaz && wa.activa !== wn.activa)
+      evento(id, wn.activa ? 'wan-vuelta' : 'wan-caida', wn.activa ? `El enlace WAN (${wn.interfaz}) volvió.` : `El enlace WAN (${wn.interfaz}) se cayó.`, ahora);
+  });
+  cargarVivo(id);
+  const v = vivo.get(id);
+  v.errorConexion = null;
+  if (ahora - v.ultimaMuestra >= 55000 && d.cpu != null) {
+    q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, NULL)').run(id, ahora, d.cpu, d.ramPct);
+    v.hora.push({ t: ahora, cpu: d.cpu, ram: d.ramPct }); v.ultimaMuestra = ahora;
+  }
+  v.hora = v.hora.filter(m => m.t >= ahora - HORA);
+  if (v.caido) volvio(v, ahora);
+}
+
 function evento(equipoId, tipo, detalle, t = Date.now()) {
   q('INSERT INTO eventos (equipo_id, t, tipo, detalle) VALUES (?, ?, ?, ?)').run(equipoId, t, tipo, detalle || null);
 }
@@ -216,6 +261,7 @@ function vistaEquipo(v, ahora) {
     cpu: d.cpu ?? null, ramPct: d.ramPct ?? null, ramTotal: d.ramTotal ?? null, ramUsada: d.ramUsada ?? null,
     so: d.so || '', arranque: d.arranque || null, discos: d.discos || [], sesiones: d.sesiones || [],
     errorSesiones: d.errorSesiones || null, errorMetricas: d.errorMetricas || null,
+    red: d.red || null, errorConexion: v.errorConexion || null,
     historial: v.hora
   };
 }
@@ -252,6 +298,15 @@ function metricas(equipoId, rango) {
   return { desde, hasta, paso, puntos, eventos, disponibilidad: Math.max(0, Math.min(100, 100 - sin / dur * 100)), caidas: eventos.filter(e => e.tipo === 'caida').length };
 }
 
+function trafico(equipoId, rango, interfaz) {
+  const dur = RANGOS[rango] || DIA, desde = Date.now() - dur;
+  const paso = Math.max(60000, Math.ceil(dur / 360 / 60000) * 60000);
+  const interfaces = q('SELECT DISTINCT interfaz FROM trafico WHERE equipo_id = ? AND t >= ?').all(equipoId, desde).map(r => r.interfaz);
+  const puntos = interfaz ? q(`SELECT (t / ${paso}) * ${paso} AS t, ROUND(AVG(rx)) AS rx, ROUND(AVG(tx)) AS tx, MAX(rx_max) AS rxMax, MAX(tx_max) AS txMax
+    FROM trafico WHERE equipo_id = ? AND interfaz = ? AND t >= ? GROUP BY t / ${paso} ORDER BY 1`).all(equipoId, interfaz, desde) : [];
+  return { desde, paso, interfaz, interfaces, puntos };
+}
+
 function historialSesiones(sesion, { cliente: cid, equipo: eid, desde, hasta, texto }) {
   desde = Number(desde) || Date.now() - 7 * DIA; hasta = Number(hasta) || Date.now();
   const params = [hasta, desde];
@@ -285,15 +340,21 @@ function mantenimiento() {
        SELECT equipo_id, (t / ${paso}) * ${paso}, ROUND(AVG(cpu)), ROUND(AVG(ram)), MAX(disco), 1 FROM metricas
        WHERE resumen = 0 AND t < ? GROUP BY equipo_id, t / ${paso}`).run(corte);
     q('DELETE FROM metricas WHERE resumen = 0 AND t < ?').run(corte);
+    q(`INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen)
+       SELECT equipo_id, (t / ${paso}) * ${paso}, interfaz, ROUND(AVG(rx)), ROUND(AVG(tx)), MAX(rx_max), MAX(tx_max), 1 FROM trafico
+       WHERE resumen = 0 AND t < ? GROUP BY equipo_id, interfaz, t / ${paso}`).run(corte);
+    q('DELETE FROM trafico WHERE resumen = 0 AND t < ?').run(corte);
     const viejo = Date.now() - 400 * DIA;
     q('DELETE FROM metricas WHERE t < ?').run(viejo);
+    q('DELETE FROM trafico WHERE t < ?').run(viejo);
     q('DELETE FROM eventos WHERE t < ?').run(viejo);
     q('DELETE FROM sesiones WHERE inicio < ? AND fin IS NOT NULL').run(viejo);
   });
 }
 
 module.exports = {
+  set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, historialSesiones, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, metricas, trafico, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, eventosRecientes, mantenimiento, evento
 };

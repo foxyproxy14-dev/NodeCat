@@ -11,6 +11,7 @@ const auth = require('./lib/auth');
 const flota = require('./lib/flota');
 const avisos = require('./lib/avisos');
 const paquete = require('./lib/paquete');
+const mikrotik = require('./lib/mikrotik');
 
 const WEB = path.join(__dirname, 'web');
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -22,10 +23,11 @@ const SEGURIDAD = {
 // ---------------------------------------------------------------- utilidades HTTP
 function ipDe(req) {
   if (config.CONFIAR_PROXY) {
-    const cf = req.headers['cf-connecting-ip'];
-    if (cf) return String(cf).trim();
-    const xf = req.headers['x-forwarded-for'];
-    if (xf) return String(xf).split(',')[0].trim();
+    // Se toma la última dirección de X-Forwarded-For: la añade el propio proxy (Nginx Proxy Manager, Cloudflare)
+    // y no se puede falsear desde fuera, al contrario que la primera
+    const xf = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+    if (xf.length) return xf[xf.length - 1].replace(/^::ffff:/, '');
+    if (req.headers['x-real-ip']) return String(req.headers['x-real-ip']).trim();
   }
   return (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
 }
@@ -93,6 +95,8 @@ function claveFallida(ip) {
 const rutas = [];
 const ruta = (metodo, patron, opc, fn) => rutas.push({ metodo, patron: new RegExp('^' + patron.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), ...opc, fn });
 
+const soloAdmin = { admin: true };
+
 // Sesión
 ruta('GET', '/api/sesion', { publica: true }, ({ sesion }) => {
   if (!auth.hayCuentas()) return { configurar: true };
@@ -122,6 +126,18 @@ function equipoVisible(sesion, id) {
   return e;
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
+ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
+
+// Routers MikroTik
+function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik') throw error(404, 'Ese equipo no es un router.'); return e; }
+ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = mikrotik.vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
+ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await mikrotik.seccion(e.id, p.nombre) }; });
+ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => mikrotik.probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
+ruta('POST', '/api/clientes/:id/routers', soloAdmin, ({ p, cuerpo, sesion }) => {
+  const id = mikrotik.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el router ${cuerpo.nombre}.`); return { id };
+});
+ruta('PUT', '/api/routers/:id', soloAdmin, ({ p, cuerpo }) => { mikrotik.editar(Number(p.id), cuerpo.nombre, cuerpo); return { ok: true }; });
+
 ruta('GET', '/api/historial/sesiones', {}, ({ sesion, url, res }) => {
   const f = Object.fromEntries(url.searchParams);
   if (f.cliente && !flota.puedeVer(sesion, Number(f.cliente))) throw error(404, 'Ese cliente no existe o no tienes acceso.');
@@ -145,7 +161,6 @@ ruta('GET', '/api/equipos/:id/rdp', {}, ({ sesion, p, res }) => {
 });
 
 // Administración: clientes y equipos
-const soloAdmin = { admin: true };
 ruta('GET', '/api/clientes', soloAdmin, ({ req }) => ({
   clientes: flota.clientes().map(c => ({ ...c, clave: flota.cliente(c.id).clave })), url: urlPublica(req), urlGuardada: ajustes.leer('urlAgentes', ''), agente: paquete.disponible()
 }));
@@ -169,7 +184,7 @@ ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   ajustes.guardar('urlAgentes', u); return { ok: true };
 });
 ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null }); return { ok: true }; });
-ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
+ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { mikrotik.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
 
 // Cuentas
 ruta('GET', '/api/cuentas', soloAdmin, () => ({ cuentas: auth.cuentas() }));
@@ -242,6 +257,8 @@ const demo = config.DEMO ? require('./lib/demo') : null;
 if (demo) demo.preparar();
 flota.arrancar();
 avisos.arrancar();
+flota.alBorrarEquipo = id => mikrotik.quitar(id);
+mikrotik.arrancar(demo ? require('./lib/mikrotik-demo') : null);
 if (demo) demo.arrancar();
 auth.prepararInicio();
 setInterval(() => { flota.vigilar(); }, 10000).unref();

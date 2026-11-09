@@ -33,7 +33,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS equipos (
     id INTEGER PRIMARY KEY,
     cliente_id INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-    tipo TEXT NOT NULL,             -- windows (más adelante: mikrotik, fortigate)
+    tipo TEXT NOT NULL,             -- windows, mikrotik (más adelante: fortigate)
     nombre TEXT NOT NULL COLLATE NOCASE,
     alias TEXT NOT NULL DEFAULT '',
     creado INTEGER, ultimo_contacto INTEGER, version_agente TEXT, ip TEXT, intervalo INTEGER,
@@ -59,9 +59,18 @@ db.exec(`
     t INTEGER NOT NULL, tipo TEXT NOT NULL, detalle TEXT
   );
   CREATE INDEX IF NOT EXISTS ix_eventos ON eventos (equipo_id, t);
+  CREATE TABLE IF NOT EXISTS trafico (
+    equipo_id INTEGER NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
+    t INTEGER NOT NULL, interfaz TEXT NOT NULL, rx INTEGER, tx INTEGER, rx_max INTEGER, tx_max INTEGER, resumen INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS ix_trafico ON trafico (equipo_id, interfaz, t);
   CREATE TABLE IF NOT EXISTS ajustes (clave TEXT PRIMARY KEY, valor TEXT);
   CREATE TABLE IF NOT EXISTS alertas (clave TEXT PRIMARY KEY, desde INTEGER, aviso INTEGER, texto TEXT);
 `);
+
+// Cambios de esquema de versiones anteriores
+const columnas = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+if (!columnas('equipos').includes('config')) db.exec('ALTER TABLE equipos ADD COLUMN config TEXT');
 
 const cache = new Map();
 function q(sql) {

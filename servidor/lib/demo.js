@@ -5,6 +5,12 @@ const flota = require('./flota');
 const auth = require('./auth');
 const { log } = require('./util');
 
+const ROUTERS = {
+  'Clínica San Rafael': [['Router principal', 'rb5009']],
+  'Transportes Andes': [['Core sede Valencia', 'ccr2004'], ['Almacén Puerto Cabello', 'hapax2']],
+  'Estudio Contable Mérida': [['Router oficina', 'hex']],
+  'Ferretería El Tornillo': [['Router tienda', 'hapac2']]
+};
 const CLIENTES = [
   { nombre: 'Clínica San Rafael', notas: 'Soporte 24/7. Contacto: Dra. Paredes.', equipos: [
     { nombre: 'SRV-DC01', perfil: 'dc' }, { nombre: 'SRV-RDS01', perfil: 'rds', alto: 'cpu' }, { nombre: 'SRV-RDS02', perfil: 'rds' }, { nombre: 'SRV-SQL01', perfil: 'sql' }] },
@@ -38,7 +44,7 @@ function jornada(t) {
 const equiposDemo = [];   // { id, clave, cfg, perfil, sesiones, arranque, discos }
 
 function preparar() {
-  if (!q('SELECT COUNT(*) n FROM clientes').get().n) sembrar();
+  if (!q('SELECT COUNT(*) n FROM clientes').get().n) { sembrar(); transaccion(sembrarRouters); }
   if (!auth.hayCuentas()) {
     auth.guardarCuenta({ usuario: 'demo', clave: 'atalaya-demo', rol: 'admin', clientes: null }, true);
     auth.guardarCuenta({ usuario: 'andes', clave: 'atalaya-demo', rol: 'lector', clientes: [q("SELECT id FROM clientes WHERE nombre = 'Transportes Andes'").get().id] }, true);
@@ -46,7 +52,7 @@ function preparar() {
   for (const c of CLIENTES) {
     const cli = q('SELECT id, clave FROM clientes WHERE nombre = ?').get(c.nombre); if (!cli) continue;
     for (const e of c.equipos) {
-      const fila = q("SELECT id FROM equipos WHERE cliente_id = ? AND nombre = ?").get(cli.id, e.nombre); if (!fila) continue;
+      const fila = q("SELECT id FROM equipos WHERE cliente_id = ? AND nombre = ? AND tipo = 'windows'").get(cli.id, e.nombre); if (!fila) continue;
       const p = PERFILES[e.perfil];
       equiposDemo.push({
         id: fila.id, cliente: cli.id, cfg: e, p, arranque: Date.now() - entre(3, 40) * 864e5,
@@ -93,7 +99,7 @@ function sembrar() {
           ev.run(id, t + dur, 'vuelta', `Volvió a responder tras ${Math.round(dur / 60000)} min.`);
         }
         if (e.caido) ev.run(id, ahora - 47 * 60000 + 90000, 'caida', 'Dejó de responder.');
-        // Sesiones de los últimos 30 días
+        // Sesiones de los últimos 30 días (solo servidores)
         if (p.sesiones[1] > 2) {
           const ses = q('INSERT INTO sesiones (equipo_id, sid, usuario, dominio, origen, estado, inicio, fin, visto, desconexiones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
           for (let d = 30; d >= 1; d--) {
@@ -110,6 +116,38 @@ function sembrar() {
       }
     }
   });
+}
+
+// Routers simulados con su historial de CPU, memoria y tráfico
+function sembrarRouters() {
+  const ahora = Date.now();
+  const { PERFILES } = require('./mikrotik-demo');
+  for (const [cliNombre, lista] of Object.entries(ROUTERS)) {
+    const cli = q('SELECT id FROM clientes WHERE nombre = ?').get(cliNombre); if (!cli) continue;
+    for (const [nombre, perfil] of lista) {
+      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil });
+      const p = PERFILES[perfil], creado = ahora - 32 * 864e5;
+      q('UPDATE equipos SET creado = ? WHERE id = ?').run(creado, id);
+      const insM = q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, NULL, ?)');
+      const insT = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const conHist = p.interfaces.filter(i => i[3] > 0).slice(0, 4);
+      for (let t = creado; t < ahora - 60000;) {
+        const reciente = t > ahora - 864e5, j = jornada(t) * 0.82 + 0.18;
+        insM.run(id, t, Math.round(p.cpu * (0.5 + j) + entre(0, 8)), Math.round(52 + entre(-4, 6)), reciente ? 0 : 1);
+        for (const [n, , , rx, tx] of conHist) {
+          const r = rx * j * entre(0.7, 1.3), x = tx * j * entre(0.7, 1.3);
+          insT.run(id, t, n, Math.round(r), Math.round(x), Math.round(r * entre(1.2, 2.2)), Math.round(x * entre(1.2, 2)), reciente ? 0 : 1);
+        }
+        t += reciente ? 60000 : 300000;
+      }
+      const ev = q('INSERT INTO eventos (equipo_id, t, tipo, detalle) VALUES (?, ?, ?, ?)');
+      if (perfil === 'hapax2') {
+        const t = Math.round(ahora - entre(2, 6) * 864e5);
+        ev.run(id, t, 'wan-caida', 'El enlace WAN (ether1) se cayó.'); ev.run(id, t + 23 * 60000, 'wan-vuelta', 'El enlace WAN (ether1) volvió.');
+      }
+      if (perfil === 'hex') { const t = Math.round(ahora - entre(8, 20) * 864e5); ev.run(id, t, 'caida', 'Dejó de responder.'); ev.run(id, t + 14 * 60000, 'vuelta', 'Volvió a responder tras 14 min.'); }
+    }
+  }
 }
 
 function informe(x, ahora) {

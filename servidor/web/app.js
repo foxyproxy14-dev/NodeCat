@@ -168,10 +168,12 @@ const todasLasSesiones = (lista = equipos()) => lista.flatMap(e => e.sesiones.ma
 function problemasDe(e) {
   const l = [], n = nombreEq(e);
   if (e.estado === 'caido') { l.push({ e, n: 'alerta', t: `${n} no responde` }); return l; }
+  if (e.red && e.red.wan && !e.red.wan.activa) l.push({ e, n: 'alerta', t: `${n}: WAN caído (${e.red.wan.interfaz})` });
   if (e.cpu != null && e.cpu >= ALTO) l.push({ e, n: 'alerta', t: `${n}: CPU al ${e.cpu} %` });
   if (e.ramPct != null && e.ramPct >= ALTO) l.push({ e, n: 'alerta', t: `${n}: memoria al ${e.ramPct} %` });
   for (const d of e.discos) if (d.pct >= ALTO) l.push({ e, n: 'alerta', t: `${n}: disco ${d.unidad} al ${d.pct} %` });
   if (e.estado === 'sinMetricas') l.push({ e, n: 'aviso', t: `${n}: no se pueden leer CPU ni memoria` });
+  if (e.estado === 'pendiente' && e.errorConexion) l.push({ e, n: 'aviso', t: `${n}: no se puede conectar` });
   if (e.errorSesiones) l.push({ e, n: 'aviso', t: `${n}: no se pueden leer las sesiones` });
   return l;
 }
@@ -218,6 +220,8 @@ function render() {
   const r = rutaActual();
   if (r.vista === 'cliente' && !cliente(r.id)) { ir('#/'); return; }
   if (r.vista === 'equipo' && !equipo(r.id)) { ir('#/'); return; }
+  const esRouter = r.vista === 'equipo' && equipo(r.id).tipo === 'mikrotik';
+  document.body.classList.toggle('consola', esRouter);
   pintarNav(r);
   if (montada !== r.clave) { montar(r); montada = r.clave; }
   actualizar(r);
@@ -268,12 +272,18 @@ function montar(r) {
             ${esAdmin() ? `<button class="btn" type="button" id="btnAgente">Agregar servidores</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
           </div>
           <div id="tablero"></div>
+          <div class="cab-seccion" style="margin-top:36px">
+            <h2 id="tituloRed">Red</h2>
+            ${esAdmin() ? '<button class="btn" type="button" id="btnRouter">Agregar router MikroTik</button>' : ''}
+          </div>
+          <div id="tableroRed"></div>
         </div>
         <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos"><div class="vacio">Cargando…</div></section></aside>
       </div>`;
     if (esAdmin()) {
       $('#btnAgente').addEventListener('click', () => gestionClientes(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
+      $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
     }
     cargarSucesos();
   } else if (r.vista === 'sesiones') {
@@ -313,6 +323,8 @@ function montar(r) {
     $('#histTexto').addEventListener('input', e => { clearTimeout(tTexto); tTexto = setTimeout(() => { hist.texto = e.target.value; cargarHistorial(); }, 300); });
     hist.datos = null;
     cargarHistorial();
+  } else if (equipo(r.id).tipo === 'mikrotik') {
+    montarRouter(equipo(r.id), cliente(equipo(r.id).cliente));
   } else {
     const e = equipo(r.id), c = cliente(e.cliente);
     v.innerHTML = `
@@ -352,6 +364,7 @@ function actualizar(r = rutaActual()) {
   else if (r.vista === 'cliente') vistaCliente(r.id);
   else if (r.vista === 'sesiones') vistaSesiones();
   else if (r.vista === 'historial') vistaHistorial();
+  else if (equipo(r.id) && equipo(r.id).tipo === 'mikrotik') vistaRouter(r.id);
   else vistaEquipo(r.id);
 }
 
@@ -376,7 +389,7 @@ function vistaResumen() {
   else if (graves) titulo = graves === 1 ? 'Un cliente necesita atención.' : `${graves} clientes necesitan atención.`;
   else if (leves) titulo = leves === 1 ? 'Todo en marcha, con un aviso.' : `Todo en marcha, con avisos en ${leves} clientes.`;
   else titulo = 'Todo en orden.';
-  $('#titular').innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> servidores en línea en ${plural(cs.length, 'cliente', 'clientes')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
+  $('#titular').innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${plural(eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores')} y ${plural(eq.filter(e => e.tipo === 'mikrotik').length, 'router', 'routers')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
   chipsProblemas(p, true);
   $('#tituloTablero').innerHTML = `Clientes <span>${cs.length}</span>`;
 
@@ -393,7 +406,7 @@ function vistaResumen() {
   }
   if (!lista.length) { t.innerHTML = `<div class="hoja vacio"><strong>Nada coincide con “${esc(filtroCli)}”</strong>Busca por el nombre del cliente o de uno de sus servidores.</div>`; return; }
   t.innerHTML = `<div class="tablero">
-    <div class="tablero-cab cli" aria-hidden="true"><span>Cliente</span><span>Servidores</span><span>CPU más alta</span><span>Memoria más alta</span><span class="c-disco">Disco más lleno</span><span>Sesiones</span><span></span></div>
+    <div class="tablero-cab cli" aria-hidden="true"><span>Cliente</span><span>Equipos</span><span>CPU más alta</span><span>Memoria más alta</span><span class="c-disco">Disco más lleno</span><span>Sesiones</span><span></span></div>
     ${lista.map(filaCliente).join('')}</div>`;
   if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
 }
@@ -405,11 +418,12 @@ function filaCliente(c) {
   const cpu = max(vivos, e => e.cpu), ram = max(vivos, e => e.ramPct);
   const disco = max(vivos.flatMap(e => e.discos.map(d => ({ ...d, e }))), d => d.pct);
   const act = vivos.reduce((n, e) => n + e.sesiones.filter(s => s.estado === 'activa').length, 0);
-  const sub = !eq.length ? 'Sin servidores todavía' : p.length ? p[0].t + (p.length > 1 ? ` y ${p.length - 1} más` : '') : c.notas ? c.notas.split('\n')[0] : plural(eq.length, 'servidor', 'servidores');
+  const nS = eq.filter(e => e.tipo === 'windows').length, nR = eq.length - nS;
+  const sub = !eq.length ? 'Sin equipos todavía' : p.length ? p[0].t + (p.length > 1 ? ` y ${p.length - 1} más` : '') : c.notas ? c.notas.split('\n')[0] : [nS && plural(nS, 'servidor', 'servidores'), nR && plural(nR, 'router', 'routers')].filter(Boolean).join(' y ');
   const val = (m, etq, extra) => m ? `<span class="medidor" data-etq="${etq}"><span class="valor">${m.v}<i>%</i></span><span class="carril n-${nivel(m.v)}"><span style="width:${m.v}%"></span></span><small>${esc(extra(m))}</small></span>` : `<span class="medidor" data-etq="${etq}"><span class="valor vacio-valor">—</span></span>`;
   return `<button type="button" class="fila cli ${nv}" data-cli="${c.id}" aria-label="${esc(c.nombre)}. Abrir">
     <span class="f-nombre"><span class="punto ${nv === 'alerta' ? 'caido' : nv === 'aviso' ? 'sinMetricas' : eq.length ? 'ok' : ''}" aria-hidden="true"></span><span><strong>${esc(c.nombre)}</strong><small>${esc(sub)}</small></span></span>
-    <span class="f-luces" data-etq="Servidores">${eq.length ? `<span class="luces" aria-hidden="true">${eq.map(e => `<i class="${nivelDe(e)}" title="${esc(nombreEq(e))}: ${esc(ESTADOS[e.estado])}"></i>`).join('')}</span><small>${vivos.length} de ${eq.length} en línea</small>` : '<span class="cli-vacio">—</span>'}</span>
+    <span class="f-luces" data-etq="Equipos">${eq.length ? `<span class="luces" aria-hidden="true">${eq.map(e => `<i class="${nivelDe(e)}" title="${esc(nombreEq(e))}: ${esc(ESTADOS[e.estado])}"></i>`).join('')}</span><small>${vivos.length} de ${eq.length} en línea</small>` : '<span class="cli-vacio">—</span>'}</span>
     ${val(cpu, 'CPU más alta', m => nombreEq(m.x))}
     ${val(ram, 'Memoria más alta', m => nombreEq(m.x))}
     <span class="f-disco">${val(disco, 'Disco más lleno', m => `${nombreEq(m.x.e)} ${m.x.unidad}`)}</span>
@@ -438,13 +452,17 @@ function pintarSucesos() {
 
 /* ---------------- Cliente ---------------- */
 function vistaCliente(id) {
-  const c = cliente(id), eq = c.equipos, p = problemas(eq);
-  const vivos = eq.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas').length;
+  const c = cliente(id), todos = c.equipos, eq = todos.filter(e => e.tipo !== 'mikrotik'), routers = todos.filter(e => e.tipo === 'mikrotik'), p = problemas(todos);
+  $('#tituloRed').innerHTML = `Red <span>${routers.length}</span>`;
+  $('#tableroRed').innerHTML = routers.length ? `<div class="tablero">
+    <div class="tablero-cab rt" aria-hidden="true"><span>Router</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Equipos con IP</span><span class="c-up">Encendido</span><span></span></div>
+    ${routers.map(filaRouter).join('')}</div>` : `<div class="hoja vacio"><strong>Sin routers</strong>${esAdmin() ? 'Agrega sus MikroTik para ver el tráfico, el enlace a Internet, DHCP, Wi‑Fi y VPN.' : 'Un administrador puede agregar sus routers MikroTik.'}</div>`;
+  const vivos = todos.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas').length;
   const ses = todasLasSesiones(eq), act = ses.filter(s => s.estado === 'activa').length, dsc = ses.filter(s => s.estado === 'desconectada').length;
   $('#cliTitulo').textContent = c.nombre;
   const graves = new Set(p.filter(x => x.n === 'alerta').map(x => x.e.id)).size;
-  $('#cliSub').innerHTML = !eq.length ? 'Todavía no hay servidores. Descarga el agente de este cliente e instálalo en cada servidor.' :
-    `${graves ? `<b>${graves === 1 ? 'Un servidor necesita' : graves + ' servidores necesitan'} atención.</b> ` : ''}<b>${vivos} de ${eq.length}</b> en línea, ${plural(act, 'sesión activa', 'sesiones activas')} y ${plural(dsc, 'desconectada', 'desconectadas')}.` +
+  $('#cliSub').innerHTML = !todos.length ? 'Todavía no hay equipos. Descarga el agente de este cliente e instálalo en cada servidor, y agrega sus routers.' :
+    `${graves ? `<b>${graves === 1 ? 'Un equipo necesita' : graves + ' equipos necesitan'} atención.</b> ` : ''}<b>${vivos} de ${todos.length}</b> equipos en línea, ${plural(act, 'sesión activa', 'sesiones activas')} y ${plural(dsc, 'desconectada', 'desconectadas')}.` +
     (c.notas ? `<br><span class="tenue">${esc(c.notas)}</span>` : '');
   chipsProblemas(p, false);
   $('#tituloTablero').innerHTML = `Servidores <span>${eq.length}</span>`;

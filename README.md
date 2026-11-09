@@ -6,7 +6,7 @@
 
 <p align="center">
   Todos tus clientes, todos sus servidores, desde un mismo lugar.<br>
-  Servidores Windows, sesiones de Escritorio remoto, CPU, memoria, discos y avisos por Telegram.
+  Servidores Windows, routers MikroTik, sesiones de Escritorio remoto y avisos por Telegram.
 </p>
 
 ---
@@ -20,11 +20,18 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
 - **Resumen por cliente.** De un vistazo, qué clientes necesitan atención, cuántos servidores tienen en línea y cuál está peor de CPU, memoria o disco.
 - **Página de cada cliente** con sus servidores, sus problemas y sus últimos sucesos (caídas, vueltas, reinicios).
 - **Página de cada servidor** con gráficos de CPU y memoria de 1 hora a 30 días, discos, disponibilidad, caídas y sesiones.
+- **Routers MikroTik al estilo MikroDash**, en solo lectura: tráfico en vivo de cada interfaz, enlace WAN, CPU, memoria, temperatura, concesiones DHCP, clientes Wi‑Fi, WireGuard y VPN, reglas del firewall con sus contadores y el registro del router. Funciona con RouterOS 6 y 7.
 - **Sesiones de Escritorio remoto** en vivo de todos los clientes, e **historial** de quién entró, cuándo y desde qué equipo, exportable a Excel.
-- **Avisos por Telegram** cuando un servidor deja de responder o se queda sin CPU, memoria o disco, y cuando se resuelve. Resumen diario por cliente. Cada cliente puede tener además su propio chat.
+- **Avisos por Telegram** cuando un servidor o un router deja de responder, se cae el enlace WAN o se queda sin CPU, memoria o disco, y cuando se resuelve. Resumen diario por cliente. Cada cliente puede tener además su propio chat.
 - **Cuentas** de administrador o de solo lectura, que se pueden limitar a algunos clientes (por ejemplo, para que un cliente vea solo lo suyo).
 
+<p align="center"><img src="docs/img/router.png" alt="Router MikroTik en vivo" width="900"></p>
+
 <table>
+  <tr>
+    <td><img src="docs/img/router-wifi.png" alt="Clientes Wi-Fi del router"></td>
+    <td><img src="docs/img/router-firewall.png" alt="Reglas del firewall"></td>
+  </tr>
   <tr>
     <td><img src="docs/img/cliente.png" alt="Página de un cliente"></td>
     <td><img src="docs/img/servidor.png" alt="Página de un servidor"></td>
@@ -69,6 +76,27 @@ En unos segundos el servidor aparece dentro de su cliente. Para muchos servidore
 
 El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *Atalaya Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
 
+## Agregar un router MikroTik
+
+En la página del cliente: **Agregar router MikroTik**. Atalaya se conecta a la API del router y solo lee; no puede cambiar nada.
+
+1. En la terminal del router, crea un usuario de solo lectura y activa la API (cambia la contraseña y la IP):
+   ```
+   /user group add name=atalaya policy=read,api,test,!write,!policy,!sensitive,!reboot,!ftp,!ssh,!telnet,!winbox,!web,!sniff,!romon
+   /user add name=atalaya group=atalaya password=UNA-CLAVE-LARGA
+   /ip service set api disabled=no address=IP-DE-ATALAYA/32
+   ```
+2. **Si llegas al router por VPN o red interna**, usa la API normal (puerto 8728).
+   **Si solo tiene IP pública**, usa API‑SSL (puerto 8729) y permite solo la IP pública de Atalaya:
+   ```
+   /certificate add name=api common-name=api days-valid=3650
+   /certificate sign api
+   /ip service set api-ssl disabled=no certificate=api address=TU-IP-PUBLICA/32
+   ```
+3. Escribe la IP, el usuario y la contraseña, pulsa **Probar conexión** y luego **Agregar router**.
+
+Mientras miras la página de un router, Atalaya lo consulta cada 3 segundos; el resto del tiempo, cada 30. Guarda el tráfico de cada interfaz minuto a minuto y la contraseña cifrada en disco.
+
 ## Avisos por Telegram
 
 Menú con tu nombre > **Notificaciones por Telegram**. Crea un bot con @BotFather, pega el token, escribe algo al bot, pulsa *Buscar chats* y elige el tuyo o el de tu grupo. Puedes decidir los umbrales (por ejemplo, CPU por encima del 90 % durante 5 minutos), recibir un resumen diario y recordar los avisos que sigan sin resolverse.
@@ -96,14 +124,13 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 
 ## Cómo está hecho
 
-- **Servidor:** Node.js 22 con SQLite integrado, sin ninguna dependencia de npm. Historial por minuto durante 7 días y cada 5 minutos durante 400 días.
+- **Servidor:** Node.js 22 con SQLite integrado, sin ninguna dependencia de npm. Cliente propio de la API de RouterOS. Historial por minuto durante 7 días y cada 5 minutos durante 400 días.
 - **Agente:** C# para .NET Framework 4.5, compilado con Mono (`agente/build.sh`). El ejecutable listo está en `servidor/agente/`.
 - **Web:** HTML, CSS y JavaScript sin frameworks, con tema claro y oscuro y diseño adaptado al móvil.
 - **Seguridad:** contraseñas con PBKDF2-SHA256, sesiones con cookie HttpOnly y protección CSRF, bloqueo tras 5 intentos fallidos, clave de agente distinta por cliente y token de Telegram cifrado en disco.
 
 ## Próximas fases
 
-- MikroTik (solo lectura): interfaces, tráfico, CPU, memoria, clientes DHCP y VPN, al estilo de MikroDash.
 - FortiGate (solo lectura): CPU, memoria, SD-WAN y puertos.
 - Sonda para leer routers de clientes sin VPN.
 - Informes mensuales por cliente en PDF y Excel.

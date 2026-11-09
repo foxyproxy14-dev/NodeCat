@@ -520,3 +520,123 @@ dialog::backdrop { background: var(--velo); backdrop-filter: blur(2px); }
   .fila.cli .f-luces { grid-column: 1 / -1; }
   .miga { margin: 20px 0 -18px; }
 }
+
+/* ======================================================================
+   Atalaya: routers MikroTik, modo consola (al estilo de MikroDash)
+   La página de un router siempre usa el tema oscuro, más denso y en vivo.
+   ====================================================================== */
+body.consola {
+  color-scheme: dark;
+  --papel: #0b0e10; --hoja: #12171a; --hoja-2: #171d21; --linea: #222a2f; --linea-2: #313a40;
+  --tinta: #e8ece9; --tinta-2: #a9b3af; --tinta-3: #85908b;
+  --senal: #5cbfc7; --senal-suave: rgba(92, 191, 199, .12); --senal-tinta: #06191b;
+  --alerta-tinta: #ff8f87; --velo: rgba(0, 0, 0, .6);
+  --bajada: #4cc3d9; --subida: #f2a65a;
+}
+body.consola .barra { background: color-mix(in srgb, var(--papel) 90%, transparent); }
+.rt-cab { padding: 40px 0 18px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+.rt-cab h1 { margin: 0; font-size: clamp(28px, 3.4vw, 40px); font-weight: 600; letter-spacing: -.025em; line-height: 1.05; display: flex; align-items: center; gap: 14px; }
+.rt-cab h1 .punto { width: 12px; height: 12px; }
+.rt-cab p { margin: 8px 0 0; color: var(--tinta-2); font-size: 15px; }
+.rt-cab .acciones { margin-left: auto; display: flex; gap: 8px; }
+.en-vivo { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--tinta-2); padding: 4px 10px; border: 1px solid var(--linea-2); border-radius: 99px; }
+.en-vivo i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: vivo 2s ease-in-out infinite; }
+.en-vivo.pausa i { background: var(--tinta-3); animation: none; }
+@keyframes vivo { 50% { opacity: .35; } }
+
+.pestanas-rt { display: flex; gap: 2px; border-bottom: 1px solid var(--linea); margin: 0 0 22px; overflow-x: auto; scrollbar-width: none; }
+.pestanas-rt button { border: 0; background: none; padding: 11px 14px; font-size: 14.5px; color: var(--tinta-2); cursor: pointer; position: relative; white-space: nowrap; }
+.pestanas-rt button:hover { color: var(--tinta); }
+.pestanas-rt button[aria-selected="true"] { color: var(--tinta); font-weight: 600; }
+.pestanas-rt button[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--senal); }
+.pestanas-rt .cuenta { margin-left: 6px; }
+
+.losas { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.losa { background: var(--hoja); border: 1px solid var(--linea); border-radius: 12px; padding: 13px 15px 12px; min-width: 0; }
+.losa h4 { margin: 0 0 6px; font-size: 12.5px; font-weight: 400; color: var(--tinta-3); }
+.losa .v { font-size: 26px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; white-space: nowrap; }
+.losa .v i { font-style: normal; font-size: 13px; font-weight: 400; color: var(--tinta-3); margin-left: 2px; }
+.losa small { display: block; margin-top: 4px; font-size: 12.5px; color: var(--tinta-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.losa .carril { margin-top: 9px; height: 4px; }
+.losa.mal { border-color: color-mix(in srgb, var(--alerta) 55%, var(--linea)); }
+.losa.mal .v { color: var(--alerta-tinta); }
+
+.rejilla-rt { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr); gap: 14px; margin-bottom: 14px; }
+.tablero-vivo { background: var(--hoja); border: 1px solid var(--linea); border-radius: 14px; padding: 16px 18px 12px; min-width: 0; }
+.tv-cab { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.tv-cab h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.tv-cab h3 small { display: block; font-weight: 400; font-size: 12.5px; color: var(--tinta-3); margin-top: 2px; }
+.tv-cifras { margin-left: auto; display: flex; gap: 22px; }
+.tv-cifras div { display: flex; flex-direction: column; align-items: flex-end; }
+.tv-cifras b { font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; white-space: nowrap; }
+.tv-cifras span { font-size: 12.5px; color: var(--tinta-3); display: inline-flex; align-items: center; gap: 6px; }
+.tv-cifras span::before { content: ""; width: 10px; height: 3px; border-radius: 2px; background: currentColor; }
+.tv-cifras .bajada span::before { background: var(--bajada); }
+.tv-cifras .subida span::before { background: var(--subida); }
+.grafico-vivo { position: relative; height: 300px; }
+.grafico-vivo svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.grafico-vivo .eje { fill: var(--tinta-3); font-size: 11px; font-family: var(--fuente); }
+.grafico-vivo .rejilla { stroke: var(--linea); }
+.grafico-vivo .a-bajada { fill: color-mix(in srgb, var(--bajada) 22%, transparent); }
+.grafico-vivo .l-bajada { fill: none; stroke: var(--bajada); stroke-width: 2; stroke-linejoin: round; }
+.grafico-vivo .l-subida { fill: none; stroke: var(--subida); stroke-width: 2; stroke-linejoin: round; }
+.grafico-vivo .cruz { stroke: var(--tinta-3); }
+.grafico-vivo .p-bajada { fill: var(--bajada); stroke: var(--hoja); stroke-width: 2; }
+.grafico-vivo .p-subida { fill: var(--subida); stroke: var(--hoja); stroke-width: 2; }
+.globo b.bajada { color: var(--bajada); } .globo b.subida { color: var(--subida); }
+
+.lista-if { list-style: none; margin: 0; padding: 0; }
+.lista-if li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 2px; border-top: 1px solid var(--linea); cursor: pointer; }
+.lista-if li:first-child { border-top: 0; }
+.lista-if li:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.lista-if li.sel strong { color: var(--senal); }
+.lista-if strong { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-if small { grid-column: 2; font-size: 12px; color: var(--tinta-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-if .tasas { grid-row: 1 / 3; grid-column: 3; text-align: right; font-size: 12.5px; line-height: 1.45; white-space: nowrap; }
+.tasas .b { color: var(--bajada); } .tasas .s { color: var(--subida); }
+.mini { width: 110px; height: 26px; display: block; }
+.mini .l-bajada { fill: none; stroke: var(--bajada); stroke-width: 1.4; }
+.mini .l-subida { fill: none; stroke: var(--subida); stroke-width: 1.4; }
+.mini .a-bajada { fill: color-mix(in srgb, var(--bajada) 18%, transparent); }
+
+.tabla-rt td, .tabla-rt th { padding: 10px 14px; font-size: 14px; }
+.tabla-rt tbody tr.clic { cursor: pointer; }
+.tabla-rt td.num, .tabla-rt th.num { text-align: right; }
+.etq { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; background: var(--linea); color: var(--tinta-2); }
+.etq.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: #7ee07e; }
+.etq.mal { background: color-mix(in srgb, var(--alerta) 20%, transparent); color: var(--alerta-tinta); }
+.etq.aviso { background: color-mix(in srgb, var(--aviso) 20%, transparent); color: #ffd27a; }
+.senal { display: inline-flex; align-items: center; gap: 8px; }
+.senal .carril { width: 60px; }
+.registro-rt { font-size: 13.5px; }
+.registro-rt td:first-child { color: var(--tinta-3); font-variant-numeric: tabular-nums; width: 90px; }
+.registro-rt td { white-space: normal; vertical-align: top; }
+.registro-rt tr.error td:last-child { color: var(--alerta-tinta); }
+.sub-cab { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 22px 0 10px; }
+.sub-cab:first-child { margin-top: 0; }
+.sub-cab h3 { margin: 0 auto 0 0; font-size: 16px; font-weight: 600; }
+.sub-cab h3 span { color: var(--tinta-3); font-weight: 400; font-size: 14px; margin-left: 6px; }
+
+/* Routers en la página del cliente */
+.fila.rt, .tablero-cab.rt {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(120px, .9fr) minmax(120px, .9fr) minmax(170px, 1.3fr) minmax(110px, .8fr) minmax(80px, .55fr) 14px;
+}
+.f-wan { display: flex; flex-direction: column; font-size: 13.5px; line-height: 1.45; }
+.f-wan small { font-size: 12.5px; color: var(--tinta-3); }
+.f-wan .b { color: #1b8fa3; } .f-wan .s { color: #b86a1d; }
+:root[data-tema="oscuro"] .f-wan .b { color: #4cc3d9; } :root[data-tema="oscuro"] .f-wan .s { color: #f2a65a; }
+@media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) .f-wan .b { color: #4cc3d9; } :root:not([data-tema="claro"]) .f-wan .s { color: #f2a65a; } }
+.f-wan.caida { color: var(--alerta-tinta); }
+.pasos-cmd { display: block; white-space: pre-wrap; }
+
+@media (max-width: 1150px) {
+  .rejilla-rt { grid-template-columns: 1fr; }
+  .fila.rt, .tablero-cab.rt { grid-template-columns: minmax(200px, 1.4fr) minmax(110px, .9fr) minmax(110px, .9fr) minmax(160px, 1.2fr) 14px; }
+  .fila.rt .f-extra, .tablero-cab.rt .c-extra, .fila.rt .f-up, .tablero-cab.rt .c-up { display: none; }
+}
+@media (max-width: 860px) {
+  .fila.rt { grid-template-columns: 1fr 1fr; }
+  .tv-cifras { margin-left: 0; width: 100%; justify-content: flex-start; }
+  .tv-cifras div { align-items: flex-start; }
+  .grafico-vivo { height: 190px; }
+}
