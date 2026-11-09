@@ -76,6 +76,16 @@ function conexion(id) {
     lista: true,
     cerrar() { },
     async ejecutar(palabras) {
+      if (palabras[0] === '/ping') {
+        const ip = palabras.find(w => w.startsWith('=address=')).slice(9);
+        const base = { '1.1.1.1': 9, '8.8.8.8': 14, '200.44.1.1': 2 }[ip] || 31;
+        const carga = jornada(Date.now()) * (perfil === 'hapax2' ? 25 : 6);
+        const t = [0, 1, 2].map(() => rnd() < (perfil === 'hapax2' ? 0.06 : 0.01) ? null : base + carga * rnd() + rnd() * 4);
+        const ok = t.filter(v => v != null);
+        const f = t.map((v, i) => v == null ? { seq: String(i), host: ip, status: 'timeout', sent: String(i + 1), received: String(t.slice(0, i + 1).filter(x => x != null).length) } : { seq: String(i), host: ip, time: `${Math.floor(v)}ms${Math.round(v % 1 * 1000)}us`, sent: String(i + 1), received: String(t.slice(0, i + 1).filter(x => x != null).length) });
+        if (ok.length) f[f.length - 1]['avg-rtt'] = `${Math.floor(ok.reduce((a, b) => a + b, 0) / ok.length)}ms`;
+        return { filas: f, done: {} };
+      }
       if (palabras[0] === '/ip/firewall/connection/print') return { filas: [], done: { ret: String(Math.round(300 + 2400 * jornada(Date.now()) * (0.8 + rnd() * 0.4))) } };
       return { filas: await this.imprimir(palabras[0]), done: {} };
     },

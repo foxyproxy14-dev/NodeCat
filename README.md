@@ -24,7 +24,7 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
 - **Resumen por cliente.** De un vistazo, qué clientes necesitan atención, cuántos servidores tienen en línea y cuál está peor de CPU, memoria o disco.
 - **Página de cada cliente** con sus servidores, sus problemas y sus últimos sucesos (caídas, vueltas, reinicios).
 - **Página de cada servidor** con gráficos de CPU y memoria de 1 hora a 30 días, discos, disponibilidad, caídas y sesiones.
-- **Routers MikroTik al estilo MikroDash**, en solo lectura: tráfico en vivo de cada interfaz, enlace WAN, CPU, memoria, temperatura, concesiones DHCP, clientes Wi‑Fi, WireGuard y VPN, reglas del firewall con sus contadores y el registro del router. Funciona con RouterOS 6 y 7.
+- **Routers MikroTik al estilo MikroDash**, en solo lectura: tráfico en vivo de cada interfaz, enlace WAN, latencia a Cloudflare, Google y la puerta de enlace, CPU, memoria, temperatura, concesiones DHCP, clientes Wi‑Fi, WireGuard y VPN, reglas del firewall con sus contadores y el registro del router. Funciona con RouterOS 6 y 7.
 - **Sesiones de Escritorio remoto** en vivo de todos los clientes, e **historial** de quién entró, cuándo y desde qué equipo, exportable a Excel.
 - **Avisos por Telegram** cuando un servidor o un router deja de responder, se cae el enlace WAN o se queda sin CPU, memoria o disco, y cuando se resuelve. Resumen diario por cliente. Cada cliente puede tener además su propio chat.
 - **Cuentas** de administrador o de solo lectura, que se pueden limitar a algunos clientes (por ejemplo, para que un cliente vea solo lo suyo).

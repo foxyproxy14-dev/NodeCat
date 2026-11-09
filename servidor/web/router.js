@@ -99,6 +99,7 @@ function pintarCuerpoRt(montar) {
   if (rt.pestana === 'resumen') {
     if (montar || !$('#rtLosas')) {
       cuerpo.innerHTML = `<div class="losas" id="rtLosas"></div>
+        <div class="latencias" id="rtLat"></div>
         <div class="rejilla-rt">
           <section class="tablero-vivo"><div class="tv-cab"><h3 id="tvTitulo"></h3><div class="tv-cifras" id="tvCifras"></div></div><div class="grafico-vivo" id="grafVivo"></div></section>
           <section class="tablero-vivo"><div class="tv-cab"><h3>Interfaces<small>Pulsa una para verla en el gráfico</small></h3></div><ul class="lista-if" id="rtIfs"></ul></section>
@@ -147,6 +148,17 @@ function resumenRouter(e) {
     losa('DHCP', red.dhcp == null ? '—' : miles(red.dhcp), 'equipos con IP'),
     losa('VPN', red.vpnTotal ? `${red.vpn}<i>de ${red.vpnTotal}</i>` : '0', red.vpnTotal ? 'túneles activos' : 'sin túneles')
   ].join('');
+
+  // Latencia medida desde el router
+  const lat = red.latencia || [];
+  const nivelMs = (v, p) => v == null || p === 100 ? 'mal' : p > 0 || v >= 150 ? 'aviso' : v >= 60 ? 'medio' : 'ok';
+  $('#rtLat').innerHTML = !vivo || !lat.length ? '' : lat.map(x => {
+    const serie = rt.vivo && rt.vivo.latencia ? (rt.vivo.latencia[x.ip] || []) : [];
+    const n = nivelMs(x.ms, x.perdida);
+    return `<div class="losa lat ${n}"><h4>${esc(x.nombre)}${x.nombre !== x.ip ? ` <span class="tenue">${esc(x.ip)}</span>` : ''}</h4>
+      <div class="v">${x.error ? '—' : x.ms == null ? 'Sin respuesta' : `${nf.format(x.ms < 10 ? x.ms : Math.round(x.ms))}<i>ms</i>`}</div>
+      <small>${x.error ? esc(x.error) : x.perdida ? `${x.perdida} % de paquetes perdidos` : 'Sin pérdidas'}</small>${miniLat(serie)}</div>`;
+  }).join('');
 
   // Gráfico en vivo
   const sel = interfazSel(e), it = (red.interfaces || []).find(i => i.nombre === sel);
@@ -260,6 +272,19 @@ function mini(serie) {
   return `<svg class="mini" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="a-bajada" d="${d(1)}L${W},${H}L0,${H}Z"/><path class="l-bajada" d="${d(1)}" vector-effect="non-scaling-stroke"/><path class="l-subida" d="${d(2)}" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+// Minigráfico de latencia de la última hora (los huecos son pings sin respuesta)
+function miniLat(serie) {
+  const pts = serie.filter(p => p[1] != null);
+  if (pts.length < 2) return '<svg class="mini-lat" aria-hidden="true"></svg>';
+  const W = 160, H = 30, t0 = serie[0][0], t1 = serie[serie.length - 1][0];
+  const top = Math.max(20, ...pts.map(p => p[1])) * 1.15;
+  const x = t => (t - t0) / Math.max(1, t1 - t0) * W, y = v => H - 2 - v / top * (H - 4);
+  let d = '';
+  serie.forEach((p, i) => { if (p[1] == null) return; d += `${d && serie[i - 1] && serie[i - 1][1] != null ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`; });
+  const caidas = serie.filter(p => p[1] == null || p[2] > 0).map(p => `<line x1="${x(p[0]).toFixed(1)}" x2="${x(p[0]).toFixed(1)}" y1="0" y2="${H}" class="perdida"/>`).join('');
+  return `<svg class="mini-lat" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${caidas}<path d="${d}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
 function tablaInterfaces(e) {
   const red = e.red || {}, l = red.interfaces || [], wan = red.wan && red.wan.interfaz;
   const t = $('#rtTablaIf');
@@ -356,13 +381,14 @@ function pintarSeccion() {
 }
 
 /* ---------------- Routers en la página del cliente ---------------- */
+const latCf = red => { const c = (red.latencia || [])[0]; return c && c.ms != null ? `, ${Math.round(c.ms)} ms a ${esc(c.nombre)}` : c && c.ip && !c.error ? ', sin respuesta a Internet' : ''; };
 function filaRouter(e) {
   const red = e.red || {}, vivo = e.estado === 'ok' || e.estado === 'sinMetricas', w = red.wan;
   let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, RouterOS ${red.version}` : e.so);
   return `<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
     <span class="f-nombre"><span class="punto ${esc(e.estado)}" aria-hidden="true"></span><span><strong>${esc(e.nombre)}</strong><small>${esc(sub)}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : '<span></span><span></span>'}
-    <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
+    <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
     <span class="f-extra f-ses" data-etq="Equipos y VPN">${vivo ? `<span class="valor">${red.dhcp == null ? '—' : red.dhcp}</span><small>con IP${red.vpnTotal ? `, VPN ${red.vpn}/${red.vpnTotal}` : ''}</small>` : ''}</span>
     <span class="f-up">${vivo ? esc(duracion(e.arranque)) : ''}</span>
     ${ICO.flecha}</button>`;
@@ -395,7 +421,10 @@ async function dialogoRouter(clienteId, id) {
     </div>
     <label class="campo">Contraseña<input name="clave" type="password" autocomplete="new-password" placeholder="${cfg && cfg.claveGuardada ? 'Guardada. Déjala vacía para conservarla.' : ''}"></label>
     <label class="interruptor" style="margin-bottom:14px"><input type="checkbox" name="ssl" ${cfg && cfg.ssl ? 'checked' : ''}><span><b>Usar API‑SSL (cifrado)</b><small>Obligatorio si te conectas por Internet. El puerto pasa a 8729.</small></span></label>
-    <label class="campo">Interfaz WAN <span class="ayuda-campo">Opcional. Si la dejas vacía, Atalaya usa la de la ruta por defecto.</span><input name="wan" spellcheck="false" value="${esc(cfg ? cfg.wan : '')}" placeholder="ether1, pppoe-out1…"></label>`}
+    <div class="dos">
+      <label class="campo">Interfaz WAN <span class="ayuda-campo">Opcional. Vacía: la de la ruta por defecto.</span><input name="wan" spellcheck="false" value="${esc(cfg ? cfg.wan : '')}" placeholder="ether1, pppoe-out1…"></label>
+      <label class="campo">Ping adicional <span class="ayuda-campo">Opcional. Además de Cloudflare, Google y la puerta de enlace.</span><input name="ping" spellcheck="false" value="${esc(cfg ? cfg.ping : '')}" placeholder="10.0.0.1, oficina.ejemplo.com"></label>
+    </div>`}
     <div class="msg" role="status" hidden></div>
     <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de Atalaya</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar router'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
@@ -403,7 +432,7 @@ async function dialogoRouter(clienteId, id) {
     if (!t || tipo !== 'bien') return gatoDice(m, t);
     m.className = 'msg bien'; m.textContent = t; m.hidden = false; caraDeGato('reparando', 1);
   };
-  const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, id };
+  const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, ping: f.ping.value, id };
   if (!demo) f.ssl.onchange = () => { if (f.ssl.checked && +f.puerto.value === 8728) f.puerto.value = 8729; if (!f.ssl.checked && +f.puerto.value === 8729) f.puerto.value = 8728; };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');

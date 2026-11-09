@@ -775,3 +775,17 @@ body.iniciando .inicio-carga { display: grid; }
 .gato-carga { opacity: 0; animation: g-tarde .3s ease .7s forwards; }
 @keyframes g-tarde { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .gato-carga { opacity: 1; } }
+
+/* Latencia medida desde el router */
+.latencias { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.latencias:empty { display: none; }
+.losa.lat h4 .tenue { font-size: 12px; margin-left: 4px; }
+.losa.lat .v { font-size: 24px; }
+.losa.lat.ok .v { color: #7ee07e; }
+.losa.lat.medio .v { color: var(--tinta); }
+.losa.lat.aviso .v { color: #ffd27a; }
+.losa.lat.mal { border-color: color-mix(in srgb, var(--alerta) 55%, var(--linea)); }
+.losa.lat.mal .v { color: var(--alerta-tinta); font-size: 20px; }
+.mini-lat { display: block; width: 100%; height: 30px; margin-top: 8px; }
+.mini-lat path { fill: none; stroke: var(--senal); stroke-width: 1.5; stroke-linejoin: round; }
+.mini-lat .perdida { stroke: var(--alerta); stroke-width: 1.5; opacity: .55; vector-effect: non-scaling-stroke; }

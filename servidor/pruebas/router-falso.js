@@ -20,6 +20,7 @@ function respuestas(cmd, attrs) {
         re({ name: 'bridge', type: 'bridge', running: 'true', disabled: 'false', 'rx-byte': Math.round(tx), 'tx-byte': Math.round(rx) })];
     case '/ip/route/print': return [re({ 'dst-address': '0.0.0.0/0', gateway: '200.1.1.1', 'immediate-gw': '200.1.1.1%ether1', active: 'true' })];
     case '/ip/firewall/connection/print': return [['!done', '=ret=321']];
+    case '/ping': return [re({ seq: 0, host: attrs.address, time: '11ms204us', sent: 1, received: 1 }), re({ seq: 1, host: attrs.address, status: 'timeout', sent: 2, received: 1 }), re({ seq: 2, host: attrs.address, time: '13ms', sent: 3, received: 2, 'avg-rtt': '12ms102us', 'packet-loss': 33 })];
     case '/interface/wifi/registration-table/print': return [['!trap', '=message=no such command prefix']];
     default: return [];
   }

@@ -26,10 +26,12 @@ function validar(c, previa) {
   if (!usuario) throw new Error('Escribe el usuario de la API.');
   const clave = c.clave ? String(c.clave) : (previa ? descifrar(previa.clave) : '');
   const wan = String(c.wan || '').trim().slice(0, 64);
-  return { host, puerto, ssl, usuario, clave, wan };
+  const ping = String(c.ping || '').trim().slice(0, 253);
+  if (ping && !/^[A-Za-z0-9.\-:]+$/.test(ping)) throw new Error('El destino del ping debe ser una IP o un nombre.');
+  return { host, puerto, ssl, usuario, clave, wan, ping };
 }
-const guardable = c => ({ host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, clave: cifrar(c.clave), wan: c.wan, demo: c.demo });
-function publica(c) { return c ? { host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, wan: c.wan || '', claveGuardada: !!c.clave, demo: !!c.demo } : null; }
+const guardable = c => ({ host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, clave: cifrar(c.clave), wan: c.wan, ping: c.ping, demo: c.demo, perfil: c.perfil });
+function publica(c) { return c ? { host: c.host, puerto: c.puerto, ssl: c.ssl, usuario: c.usuario, wan: c.wan || '', ping: c.ping || '', claveGuardada: !!c.clave, demo: !!c.demo } : null; }
 
 async function probar(datos, id) {
   const c = validar(datos, id ? leerConfig(id) : null);
@@ -51,7 +53,9 @@ function crear(clienteId, nombre, datos) {
 function editar(id, nombre, datos) {
   const previa = leerConfig(id); if (!previa) throw new Error('Ese router no existe.');
   if (nombre) flota.renombrarRouter(id, nombre);
-  if (!previa.demo) {
+  if (previa.demo) {
+    q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify({ ...previa, ping: String(datos.ping || '').trim().slice(0, 253) }), id);
+  } else {
     const c = validar(datos, previa);
     q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify(guardable(c)), id);
   }
@@ -66,7 +70,7 @@ function quitar(id) {
 // ---------------------------------------------------------------- bucle de consulta
 function iniciar(id) {
   const c = leerConfig(id); if (!c) return;
-  const r = { id, c, con: null, observado: 0, prev: new Map(), serie: new Map(), acum: new Map(), minuto: 0, lento: {}, cache: new Map(), ocupado: false, ultimoError: null };
+  const r = { id, c, con: null, observado: 0, lat: new Map(), latT: 0, prev: new Map(), serie: new Map(), acum: new Map(), minuto: 0, lento: {}, cache: new Map(), ocupado: false, ultimoError: null };
   if (c.clave) c.clave = descifrar(c.clave);
   routers.set(id, r);
   r.temporizador = setTimeout(() => ciclo(r), 500 + Math.random() * 2000);
@@ -117,7 +121,7 @@ async function sondear(r) {
     const leases = await opcional(con.imprimir('/ip/dhcp-server/lease/print', { proplist: ['status'] }));
     const wg = await opcional(con.imprimir('/interface/wireguard/peers/print', { proplist: ['last-handshake', 'disabled'] }));
     const ppp = await opcional(con.imprimir('/ppp/active/print', { proplist: ['name'] }));
-    Object.assign(L, { t: ahora, identidad: ide && ide.name, salud: leerSalud(salud), wanAuto: wanDeRutas(rutas), conexiones: conex ? num(conex.done.ret) : null,
+    Object.assign(L, { t: ahora, identidad: ide && ide.name, salud: leerSalud(salud), wanAuto: wanDeRutas(rutas), gw: puertaDeEnlace(rutas), conexiones: conex ? num(conex.done.ret) : null,
       dhcp: leases ? leases.filter(x => x.status === 'bound').length : null, vpn: (wg ? wg.filter(p => !si(p.disabled) && segundos(p['last-handshake']) != null && segundos(p['last-handshake']) < 180).length : 0) + (ppp ? ppp.length : 0),
       vpnTotal: (wg ? wg.filter(p => !si(p.disabled)).length : 0) + (ppp ? ppp.length : 0) });
   }
@@ -158,6 +162,9 @@ async function sondear(r) {
   }
   r.minuto = min;
 
+  if (ahora - r.latT > (ahora - r.observado < 20000 ? 10000 : 30000)) { r.latT = ahora; await medirLatencia(r, con, L.gw); }
+  const latencia = [...r.lat.values()].map(x => ({ nombre: x.nombre, ip: x.ip, ms: x.ms, perdida: x.perdida, error: x.error || null }));
+
   const wanNombre = r.c.wan || L.wanAuto || '';
   const w = interfaces.find(x => x.nombre === wanNombre);
   const total = num(res['total-memory']), libre = num(res['free-memory']);
@@ -173,12 +180,58 @@ async function sondear(r) {
     red: {
       identidad: L.identidad || '', modelo: res['board-name'] || '', arquitectura: res['architecture-name'] || '', version,
       temperatura: L.salud ? L.salud.temperatura : null, voltaje: L.salud ? L.salud.voltaje : null,
-      conexiones: L.conexiones, dhcp: L.dhcp, vpn: L.vpn, vpnTotal: L.vpnTotal,
+      conexiones: L.conexiones, dhcp: L.dhcp, vpn: L.vpn, vpnTotal: L.vpnTotal, latencia,
       wan: w ? { interfaz: w.nombre, activa: w.activa && !w.deshabilitada, rx: w.rx, tx: w.tx } : null,
       interfaces
     }
   };
   flota.actualizarRouter(r.id, d, r.c.demo ? '' : r.c.host, version);
+}
+
+// Ping desde el propio router (permiso "test" de la API): 3 paquetes a cada destino, en paralelo
+const DESTINOS = [['Cloudflare', '1.1.1.1'], ['Google', '8.8.8.8']];
+function ms(t) {
+  if (!t) return null;
+  let v = 0, ok = false;
+  for (const [, n, u] of String(t).matchAll(/(\d+(?:\.\d+)?)(ms|us|s)/g)) { ok = true; v += Number(n) * ({ s: 1000, ms: 1, us: .001 })[u]; }
+  return ok ? Math.round(v * 10) / 10 : null;
+}
+async function medirLatencia(r, con, gw) {
+  const lista = [...DESTINOS];
+  if (gw) lista.push(['Puerta de enlace', gw]);
+  if (r.c.ping) lista.push([r.c.ping, r.c.ping]);
+  const ahora = Date.now();
+  await Promise.all(lista.map(async ([nombre, ip]) => {
+    let x = r.lat.get(ip);
+    if (!x) r.lat.set(ip, x = { nombre, ip, serie: [] });
+    x.nombre = nombre;
+    try {
+      const { filas } = await con.ejecutar(['/ping', `=address=${ip}`, '=count=3', '=interval=0.3']);
+      const tiempos = filas.map(f => ms(f.time)).filter(v => v != null);
+      const ultima = filas[filas.length - 1] || {};
+      const enviados = Number(ultima.sent) || filas.filter(f => f.seq != null).length || 3;
+      const recibidos = ultima.received != null ? Number(ultima.received) : tiempos.length;
+      x.ms = ms(ultima['avg-rtt']) ?? (tiempos.length ? Math.round(tiempos.reduce((a, b) => a + b, 0) / tiempos.length * 10) / 10 : null);
+      x.perdida = enviados ? Math.round((enviados - recibidos) / enviados * 100) : null;
+      x.error = null;
+    } catch (e) {
+      if (e.tipo !== 'trap') throw e;
+      x.ms = null; x.perdida = null;
+      x.error = /permission|not enough/i.test(e.message) ? 'El usuario no tiene el permiso "test" para hacer ping.' : e.message;
+    }
+    x.serie.push([ahora, x.ms, x.perdida]);
+    while (x.serie.length && x.serie[0][0] < ahora - 3600e3) x.serie.shift();
+  }));
+  for (const k of [...r.lat.keys()]) if (!lista.some(l => l[1] === k)) r.lat.delete(k);
+}
+function puertaDeEnlace(rutas) {
+  if (!rutas) return null;
+  for (const x of rutas.filter(y => si(y.active))) {
+    const ig = x['immediate-gw'] || x['gateway-status'] || x.gateway || '';
+    const m = ig.match(/^(\d+\.\d+\.\d+\.\d+)/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 function leerSalud(filas) {
@@ -220,7 +273,9 @@ function vivo(id) {
   if (Date.now() - antes > 20000 && !r.ocupado) { clearTimeout(r.temporizador); r.temporizador = setTimeout(() => ciclo(r), 200); }
   const serie = {};
   for (const [k, s] of r.serie) serie[k] = s;
-  return { serie, rapido: RAPIDO, config: publica(leerConfig(id)) };
+  const latencia = {};
+  for (const [k, x] of r.lat) latencia[k] = x.serie;
+  return { serie, latencia, rapido: RAPIDO, config: publica(leerConfig(id)) };
 }
 
 const SECCIONES = {
