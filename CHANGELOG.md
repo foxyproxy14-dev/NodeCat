@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.7.0 (noviembre de 2026)
+
+- Instalador de un solo `.exe` por cliente, con la configuración dentro: doble clic e instalado.
+- Agente 1.3.0: aparece en Panel de control > Programas y se desinstala desde ahí sin dejar servicio, proceso ni archivos. Al reinstalar quita bien la versión anterior (y el antiguo Atalaya Agente); se acabó el error "No se pudo crear el servicio".
+- Quitar un servidor del panel desinstala su agente en el servidor; ya no vuelve a aparecer solo.
+- Mover un servidor a otro cliente o sede: su agente se pasa solo al cliente nuevo.
+- Servidores con el agente desinstalado se muestran como tal y no generan avisos de caída.
+- Telegram: varios bots, cada uno asignado a clientes o grupos. NodeCat detecta solo los grupos de Telegram donde está cada bot y envía por ahí las alertas y el resumen de esos clientes.
+
 ## 0.6.0 (noviembre de 2026)
 
 - Sonda: un servidor del cliente con el agente de NodeCat puede leer sus MikroTik y FortiGate y pasárselos a NodeCat. No hace falta VPN ni abrir puertos en el cliente; todo sale del agente hacia NodeCat.

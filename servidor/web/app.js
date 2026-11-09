@@ -17,7 +17,7 @@ const hora = t => new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute
 const nivel = v => v == null ? '' : v >= ALTO ? 'alerta' : v >= MEDIO ? 'aviso' : 'ok';
 const ROLES = { admin: 'Administrador', lector: 'Solo lectura' };
 const esAdmin = () => !!SESION && SESION.rol === 'admin';
-const ESTADOS = { ok: 'En línea', sinMetricas: 'En línea, sin métricas', caido: 'Sin respuesta', pendiente: 'Esperando el primer informe' };
+const ESTADOS = { ok: 'En línea', sinMetricas: 'En línea, sin métricas', caido: 'Sin respuesta', pendiente: 'Esperando el primer informe', desinstalado: 'Agente desinstalado' };
 
 const ICO = {
   lupa: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.6 10.6 3.6 3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
@@ -593,10 +593,11 @@ function medidor(v, sub, etq) {
 function filaEquipo(s) {
   const act = s.sesiones.filter(x => x.estado === 'activa').length, dsc = s.sesiones.filter(x => x.estado === 'desconectada').length;
   const dm = s.discos.reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
-  const sinDatos = s.estado === 'caido' || s.estado === 'pendiente';
+  const sinDatos = s.estado === 'caido' || s.estado === 'pendiente' || s.estado === 'desinstalado';
   let sub = s.alias ? `${s.nombre}, ${s.so || ''}`.replace(/, $/, '') : (s.so || ESTADOS[s.estado]);
   if (s.estado === 'caido') sub = `Sin respuesta desde ${cuando(s.ultimo)}`;
   if (s.estado === 'pendiente') sub = ESTADOS.pendiente;
+  if (s.estado === 'desinstalado') sub = 'Agente desinstalado. Quítalo de la lista o vuelve a instalarlo.';
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
@@ -904,15 +905,16 @@ async function gestionClientes(abrirId, crear) {
       ${l.length ? `<div class="lista-cli">${l.map(c => `<div>
         <span><strong>${esc(c.nombre)}</strong><small>${c.grupo ? `${esc(c.grupo)}, ` : ''}${plural(eqDe(c.id), 'equipo', 'equipos')}</small></span>
         <span class="acciones">
-          <a class="btn prim" href="/api/clientes/${c.id}/agente?t=${encodeURIComponent(CSRF)}">Descargar agente</a>
+          <a class="btn prim" href="/api/clientes/${c.id}/instalador?t=${encodeURIComponent(CSRF)}">Descargar instalador</a>
           <button class="btn" type="button" data-ver="${c.id}" aria-expanded="${abierto === c.id}">${abierto === c.id ? 'Ocultar' : 'Más'}</button>
         </span>
         ${abierto === c.id ? `<div class="detalle">
-          <ol class="pasos"><li>Descarga el agente de <b>${esc(c.nombre)}</b>. Ya va configurado para enviar a <b>${esc(datos.url)}</b>.</li>
-            <li>Copia la carpeta a cada servidor del cliente y haz doble clic en <b>Instalar agente.bat</b>.</li>
-            <li>En unos segundos el servidor aparecerá dentro de ${esc(c.nombre)}.</li></ol>
+          <ol class="pasos"><li>Descarga el instalador de <b>${esc(c.nombre)}</b>. Es un solo .exe y ya va configurado para enviar a <b>${esc(datos.url)}</b>.</li>
+            <li>Cópialo a cada servidor del cliente y ábrelo con doble clic. Si Windows avisa de que es una aplicación desconocida, pulsa <b>Más información</b> y <b>Ejecutar de todas formas</b>.</li>
+            <li>En unos segundos el servidor aparecerá dentro de ${esc(c.nombre)}. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
+          <p class="tenue" style="margin:0 0 12px">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${encodeURIComponent(CSRF)}">Paquete .zip</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>
           <details class="clave"><summary>Clave del agente</summary>
-            <p>Va incluida en la descarga. Si generas una nueva, los agentes ya instalados de este cliente dejarán de enviar datos hasta que actualices su agente.json.</p>
+            <p>Va incluida en el instalador. Si generas una nueva, los agentes ya instalados de este cliente dejarán de enviar datos hasta que los reinstales con el instalador nuevo.</p>
             <code class="codigo">${esc(c.clave)}</code>
             <button class="btn ${confirmar === 'clave' + c.id ? 'peligro' : ''}" type="button" data-clave="${c.id}">${confirmar === 'clave' + c.id ? '¿Seguro? Generar una clave nueva' : 'Generar una clave nueva'}</button>
           </details>
@@ -1006,7 +1008,7 @@ function editarEquipo(id) {
   const dlg = libre(`<form><h3>Editar ${esc(s.nombre)}</h3>
     <label class="campo">Nombre visible<input name="alias" maxlength="60" value="${esc(s.alias)}" placeholder="${esc(s.nombre)}"><span class="ayuda-campo">Opcional. Por ejemplo “Servidor de facturación”. Vacío para usar el nombre del equipo.</span></label>
     <label class="campo">Cliente<select name="cliente">${estado.clientes.map(c => `<option value="${c.id}" ${c.id === s.cliente ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select>
-      <span class="ayuda-campo">Si lo cambias de cliente, recuerda que su agente sigue usando la clave del cliente original y volvería a aparecer allí. Lo correcto es reinstalarlo con el agente del cliente nuevo.</span></label>
+      <span class="ayuda-campo">Si lo cambias de cliente, su agente se pasa solo al cliente nuevo en su próximo informe (agente 1.3 o superior). Los agentes más antiguos hay que reinstalarlos con el instalador del cliente nuevo.</span></label>
     <div class="msg error" role="alert" hidden></div>
     <div class="pie"><button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
   const f = dlg.querySelector('form'), e = f.querySelector('.msg');
@@ -1017,8 +1019,8 @@ function editarEquipo(id) {
   };
   const bq = f.querySelector('[data-quitar]');
   bq.onclick = async () => {
-    if (!confirmar) { confirmar = true; bq.className = 'btn peligro'; bq.textContent = '¿Seguro? Se borra su historial'; return; }
-    try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso(`${s.nombre} quitado. Si su agente sigue instalado, volverá a aparecer; desinstálalo en el servidor.`); location.hash = '#/c/' + s.cliente; await cargar(true); }
+    if (!confirmar) { confirmar = true; bq.className = 'btn peligro'; bq.textContent = s.estado === 'desinstalado' ? '¿Seguro? Se borra su historial' : '¿Seguro? Se borra su historial y el agente se desinstala en el servidor'; return; }
+    try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso(s.estado === 'desinstalado' ? `${s.nombre} quitado.` : `${s.nombre} quitado. Su agente se desinstalará solo en el servidor en unos segundos y no volverá a aparecer.`); location.hash = '#/c/' + s.cliente; await cargar(true); }
     catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
@@ -1124,7 +1126,8 @@ async function notificaciones() {
     <h3>Notificaciones por Telegram</h3>
     <p>NodeCat te avisa en Telegram cuando algo va mal y también cuando se resuelve.</p>
     <label class="interruptor">${marca('activo', n.activo)}<span><b>Enviar avisos por Telegram</b><small>Puedes dejarlo configurado y desactivarlo cuando quieras.</small></span></label>
-    <h4>1. Crea el bot</h4>
+    <h4>1. Bot general</h4>
+    <p class="tenue">Recibe todos los avisos (por ejemplo, en tu grupo de soporte). Opcional si usas bots por cliente.</p>
     <ol class="pasos"><li>En Telegram abre <b>@BotFather</b>, escribe <b>/newbot</b> y elige un nombre, por ejemplo “NodeCat Soporte”.</li>
       <li>Te dará un token. Cópialo y pégalo aquí.</li></ol>
     <label class="campo">Token del bot<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="${n.tokenGuardado ? 'Guardado, termina en …' + esc(n.tokenFin) + '. Déjalo vacío para conservarlo.' : '123456789:AAF…'}"></label>
@@ -1140,6 +1143,9 @@ async function notificaciones() {
       ${estado.clientes.map(c => `<label class="campo" style="font-weight:400">${esc(c.nombre)}<input name="pc-${c.id}" spellcheck="false" value="${esc(arr(pc[c.id]).join(', '))}" placeholder="Ninguno"></label>`).join('') || '<p class="tenue">Todavía no hay clientes.</p>'}
     </details>
     <p><button class="btn" type="button" data-probar>Enviar mensaje de prueba</button></p>
+    <h4 class="separado">Bots por cliente o grupo</h4>
+    <p>Para que cada cliente reciba solo sus avisos en su propio grupo de Telegram: crea un bot con <b>@BotFather</b> para ese cliente (o para un grupo de sedes), agrégalo aquí y añádelo al grupo de Telegram del cliente. NodeCat detecta solo los grupos donde está el bot y saluda en el chat para confirmarlo.</p>
+    <div id="bots"></div>
     <h4 class="separado">3. Qué avisar</h4>
     <div class="reglas">
       <div class="regla"><label>${marca('caidas', n.caidas)} Un servidor deja de responder durante</label> ${num('caidaMin', n.caidaMin, 0, 120, 'Minutos sin responder')} min más, y cuando vuelve</div>
@@ -1156,6 +1162,56 @@ async function notificaciones() {
     <div class="pie"><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`, true);
   const f = dlg.querySelector('form'), e = f.querySelector('.msg.error');
   const error = m => { gatoDice(e, m); if (m) e.scrollIntoView({ block: 'nearest' }); };
+  // ---- bots por cliente o grupo (se guardan al momento, sin pulsar Guardar)
+  let bots = arr(n.bots), editandoBot = null, quitandoBot = null;
+  const gruposTodos = arr(estado.grupos);
+  const marcas = (sel, selG, pre) => `${gruposTodos.length ? `<div class="marcas-cli">${gruposTodos.map(g => `<label class="grupo"><input type="checkbox" name="${pre}grp" value="${g.id}" ${arr(selG).includes(g.id) ? 'checked' : ''}> ${esc(g.nombre)}</label>`).join('')}</div>` : ''}
+    <div class="marcas-cli">${estado.clientes.map(c => `<label><input type="checkbox" name="${pre}cli" value="${c.id}" ${arr(sel).includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>`;
+  const leer = (raiz, pre) => ({ clientes: [...raiz.querySelectorAll(`[name=${pre}cli]:checked`)].map(x => +x.value), grupos: [...raiz.querySelectorAll(`[name=${pre}grp]:checked`)].map(x => +x.value) });
+  const pintarBots = () => {
+    const h = dlg.querySelector('#bots');
+    h.innerHTML = `${bots.length ? `<div class="lista-bots">${bots.map(b => `<div class="bot" data-bot="${esc(b.id)}">
+        <div class="bot-cab"><span><strong>${esc(b.usuario)}</strong><small>${b.alcance.length ? 'Avisos de ' + esc(b.alcance.join(', ')) : 'Sin clientes asignados'}</small></span>
+          <span class="acciones"><button class="btn" type="button" data-b-probar>Probar</button><button class="btn" type="button" data-b-editar>${editandoBot === b.id ? 'Cerrar' : 'Editar'}</button><button class="btn ${quitandoBot === b.id ? 'peligro' : ''}" type="button" data-b-quitar>${quitandoBot === b.id ? '¿Seguro?' : 'Quitar'}</button></span></div>
+        <p class="bot-chats">${b.chats.length ? b.chats.map(c => `<span class="chip">${esc(c.nombre)} <small>${esc(c.tipo)}</small></span>`).join('') : `<span class="tenue">Todavía no está en ningún chat: añade ${esc(b.usuario)} al grupo de Telegram del cliente. Aparecerá aquí solo en un minuto, o pulsa Probar.</span>`}${b.error ? `<span class="mal">${esc(b.error)}</span>` : ''}</p>
+        ${editandoBot === b.id ? `<div class="bot-editar">
+          <p class="tenue" style="margin:0 0 8px">Clientes y grupos que avisa este bot. Si eliges un grupo, incluye también las sedes que agregues después.</p>
+          ${marcas(b.clientes, b.grupos, 'e')}
+          ${b.chats.length ? `<p class="tenue" style="margin:10px 0 6px">Chats donde envía (desmarca uno para dejar de usarlo):</p><div class="marcas-cli">${b.chats.map(c => `<label><input type="checkbox" name="echat" value="${esc(c.id)}" checked> ${esc(c.nombre)}</label>`).join('')}</div>` : ''}
+          <p style="margin:10px 0 0"><button class="btn prim" type="button" data-b-guardar>Guardar bot</button></p></div>` : ''}
+      </div>`).join('')}</div>` : ''}
+      <details class="clave" ${bots.length ? '' : 'open'}><summary>Agregar un bot</summary>
+        <label class="campo">Token del bot<input name="nuevoBot" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AAF…"></label>
+        <p class="tenue" style="margin:0 0 8px">¿A quién avisa?</p>
+        ${marcas([], [], 'n')}
+        <p style="margin:10px 0 0"><button class="btn" type="button" data-b-agregar>Agregar bot</button></p>
+      </details>`;
+    h.querySelector('[data-b-agregar]').onclick = ev => ocupado(ev.currentTarget, 'Agregando…', async () => {
+      error('');
+      try { const r = await enviar('/api/notificaciones/bots', 'POST', { token: h.querySelector('[name=nuevoBot]').value, ...leer(h, 'n') }); bots.push(r); pintarBots(); aviso(r.chats.length ? `${r.usuario} agregado. Ya está en ${plural(r.chats.length, 'chat', 'chats')}.` : `${r.usuario} agregado. Ahora añádelo al grupo de Telegram del cliente.`); }
+      catch (x) { if (!x.login) error(x.message); }
+    });
+    h.querySelectorAll('[data-bot]').forEach(el => {
+      const id = el.dataset.bot, i = bots.findIndex(b => b.id === id);
+      el.querySelector('[data-b-editar]').onclick = () => { editandoBot = editandoBot === id ? null : id; quitandoBot = null; pintarBots(); };
+      el.querySelector('[data-b-probar]').onclick = ev => ocupado(ev.currentTarget, 'Enviando…', async () => {
+        error('');
+        try { bots[i] = await enviar(`/api/notificaciones/bots/${id}/probar`, 'POST'); pintarBots(); aviso(`Mensaje de prueba enviado por ${bots[i].usuario}. Revisa Telegram.`); }
+        catch (x) { if (!x.login) error(x.message); }
+      });
+      el.querySelector('[data-b-quitar]').onclick = async () => {
+        if (quitandoBot !== id) { quitandoBot = id; pintarBots(); return; }
+        try { await enviar(`/api/notificaciones/bots/${id}`, 'DELETE'); bots.splice(i, 1); quitandoBot = null; pintarBots(); aviso('Bot quitado.'); }
+        catch (x) { if (!x.login) error(x.message); }
+      };
+      const g = el.querySelector('[data-b-guardar]');
+      if (g) g.onclick = ev => ocupado(ev.currentTarget, 'Guardando…', async () => {
+        try { bots[i] = await enviar(`/api/notificaciones/bots/${id}`, 'PUT', { ...leer(el, 'e'), chats: [...el.querySelectorAll('[name=echat]:checked')].map(x => x.value) }); editandoBot = null; pintarBots(); aviso('Bot guardado.'); }
+        catch (x) { if (!x.login) error(x.message); }
+      });
+    });
+  };
+  pintarBots();
   f.querySelector('[data-buscar]').onclick = ev => ocupado(ev.currentTarget, 'Buscando…', async () => {
     error('');
     try {

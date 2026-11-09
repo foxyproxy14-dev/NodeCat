@@ -70,11 +70,24 @@ function editarEquipo(id, { alias, cliente_id }) {
     if (q('SELECT id FROM equipos WHERE cliente_id = ? AND tipo = ? AND nombre = ?').get(cliente_id, e.tipo, e.nombre))
       throw new Error(`Ese cliente ya tiene un equipo llamado ${e.nombre}.`);
     q('UPDATE equipos SET cliente_id = ? WHERE id = ?').run(cliente_id, id);
+    // El agente sigue usando la clave del cliente anterior: en su próximo informe recibe la del nuevo
+    if (e.tipo === 'windows') {
+      q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
+      q('INSERT OR REPLACE INTO traslados (cliente_origen, nombre, equipo_id, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, id, Date.now());
+      q('DELETE FROM bajas WHERE cliente_id = ? AND nombre = ?').run(cliente_id, e.nombre);
+    }
   }
   if (alias != null) q('UPDATE equipos SET alias = ? WHERE id = ?').run(String(alias).trim().slice(0, 60), id);
   cargarVivo(id);
 }
-function borrarEquipo(id) { q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id); }
+function borrarEquipo(id) {
+  const e = equipo(id);
+  // Un servidor quitado del panel no vuelve a aparecer solo: su agente recibe la orden de desinstalarse.
+  // Si se vuelve a instalar (instalación nueva), aparece otra vez.
+  if (e && e.tipo === 'windows' && !e.desinstalado) q('INSERT OR REPLACE INTO bajas (cliente_id, nombre, instalacion, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, e.instalacion || '', Date.now());
+  q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
+  q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id);
+}
 
 // ---------------------------------------------------------------- estado en memoria
 // Por equipo: la fila de la base, el último informe y la última hora de CPU y memoria (para las miniaturas)
@@ -98,6 +111,7 @@ function arrancar() {
 }
 
 function estadoDe(v, ahora = Date.now()) {
+  if (v.desinstalado) return 'desinstalado';
   if (v.sinRespuesta && v.ultimo_contacto) return 'caido';
   if (!v.ultimo_contacto) return 'pendiente';
   if (ahora - v.ultimo_contacto > limite(v)) return 'caido';
@@ -143,8 +157,32 @@ function recibir(clave, c, ip) {
     return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre, atrasado: true };
   }
   const intervalo = Math.round(num(c.intervalo, 5, 3600) || INTERVALO_AGENTE);
+  const instalacion = txt(c.instalacion, 40).trim();
 
-  let fila = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, nombre);
+  let fila = q("SELECT id, cliente_id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, nombre);
+  let claveNueva = null, clienteNuevo = null;
+  // El traslado se conserva: un agente antiguo (sin cambio automático de clave) sigue informando con la clave vieja
+  if (!fila) {
+    // ¿Se movió a otro cliente? Se le da la clave del cliente nuevo
+    const t = q('SELECT t.equipo_id, c.clave, c.nombre FROM traslados t JOIN equipos e ON e.id = t.equipo_id JOIN clientes c ON c.id = e.cliente_id WHERE t.cliente_origen = ? AND t.nombre = ?').get(cli.id, nombre);
+    if (t) { fila = { id: t.equipo_id }; claveNueva = t.clave; clienteNuevo = t.nombre; }
+  }
+  if (!fila) {
+    // ¿Se quitó del panel? Solo vuelve si es una instalación nueva
+    const b = q('SELECT instalacion FROM bajas WHERE cliente_id = ? AND nombre = ?').get(cli.id, nombre);
+    if (b && (!instalacion || instalacion === b.instalacion)) { const e = new Error('Este servidor se quitó de NodeCat. El agente se desinstala.'); e.status = 410; throw e; }
+    if (b) q('DELETE FROM bajas WHERE cliente_id = ? AND nombre = ?').run(cli.id, nombre);
+  }
+  // Desinstalado desde el propio servidor: se anota y deja de vigilarse (sin avisos de caída)
+  if (c.evento === 'desinstalado') {
+    if (fila) {
+      q('UPDATE equipos SET desinstalado = ? WHERE id = ?').run(ahora, fila.id);
+      evento(fila.id, 'desinstalado', 'Se desinstaló el agente en el servidor.', ahora);
+      cargarVivo(fila.id);
+      log(`${nombre} (${cli.nombre}): se desinstaló el agente.`);
+    }
+    return { ok: true };
+  }
   let nuevo = false;
   if (!fila) {
     const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado) VALUES (?, 'windows', ?, ?)").run(cli.id, nombre, ahora);
@@ -156,8 +194,9 @@ function recibir(clave, c, ip) {
   const antes = previo && previo.datos;
 
   transaccion(() => {
-    q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ? WHERE id = ?')
-      .run(ahora, txt(c.version, 20), txt(ip, 60), intervalo, JSON.stringify(d), id);
+    q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ?, desinstalado = NULL, instalacion = COALESCE(NULLIF(?, \'\'), instalacion) WHERE id = ?')
+      .run(ahora, txt(c.version, 20), txt(ip, 60), intervalo, JSON.stringify(d), instalacion, id);
+    if (previo && previo.desinstalado) evento(id, 'nuevo', 'El agente se volvió a instalar.', ahora);
     if (nuevo) evento(id, 'nuevo', `El agente empezó a informar desde ${ip}.`, ahora);
     if (antes && d.arranque && antes.arranque && Math.abs(d.arranque - antes.arranque) > 120000 && d.arranque > antes.arranque)
       evento(id, 'reinicio', 'El equipo se reinició.', d.arranque);
@@ -174,14 +213,16 @@ function recibir(clave, c, ip) {
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
   if (v.caido) volvio(v, ahora);
-  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre, sonda: require('./sonda').enUso(id) };
+  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(claveNueva ? { clave: claveNueva } : {}) };
 }
 
 /** La sonda: identifica al agente por su clave y su nombre de equipo. */
 function agenteDe(clave, nombre) {
   const cli = clave && q('SELECT id FROM clientes WHERE clave = ?').get(String(clave));
   if (!cli) { const e = new Error('La clave del agente no es válida.'); e.status = 403; throw e; }
-  const f = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, txt(nombre, 63).trim().toUpperCase());
+  const n = txt(nombre, 63).trim().toUpperCase();
+  const f = q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' AND nombre = ?").get(cli.id, n)
+    || q('SELECT equipo_id AS id FROM traslados WHERE cliente_origen = ? AND nombre = ?').get(cli.id, n);
   if (!f) { const e = new Error('Este equipo todavía no ha enviado su primer informe.'); e.status = 404; throw e; }
   return f.id;
 }

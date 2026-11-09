@@ -76,6 +76,13 @@ const columnas = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.nam
 if (!columnas('equipos').includes('config')) db.exec('ALTER TABLE equipos ADD COLUMN config TEXT');
 if (!columnas('clientes').includes('grupo_id')) db.exec('ALTER TABLE clientes ADD COLUMN grupo_id INTEGER REFERENCES grupos(id) ON DELETE SET NULL');
 if (!columnas('usuarios').includes('grupos')) db.exec('ALTER TABLE usuarios ADD COLUMN grupos TEXT');
+if (!columnas('equipos').includes('instalacion')) db.exec('ALTER TABLE equipos ADD COLUMN instalacion TEXT');
+if (!columnas('equipos').includes('desinstalado')) db.exec('ALTER TABLE equipos ADD COLUMN desinstalado INTEGER');
+// Agentes: servidores movidos a otro cliente (el agente aún usa la clave vieja) y servidores quitados del panel
+db.exec(`
+  CREATE TABLE IF NOT EXISTS traslados (cliente_origen INTEGER, nombre TEXT, equipo_id INTEGER, desde INTEGER, PRIMARY KEY (cliente_origen, nombre));
+  CREATE TABLE IF NOT EXISTS bajas (cliente_id INTEGER, nombre TEXT, instalacion TEXT, desde INTEGER, PRIMARY KEY (cliente_id, nombre));
+`);
 
 const cache = new Map();
 function q(sql) {

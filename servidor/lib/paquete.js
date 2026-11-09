@@ -26,6 +26,7 @@ INSTALAR
 
 INSTALAR EN MUCHOS SERVIDORES A LA VEZ (GPO o script)
   NodeCatAgente.exe instalar /silencioso
+  (o el instalador de un solo archivo de NodeCat:  "NodeCat-Agente-....exe" /silencioso)
   (agente.json debe estar junto a NodeCatAgente.exe)
 
 CONFIGURACIÓN (agente.json)
@@ -48,7 +49,9 @@ COMPROBAR
   "C:\\Program Files\\NodeCat Agente\\NodeCatAgente.exe" probar
 
 DESINSTALAR
-  "Desinstalar agente.bat", o:  "C:\\Program Files\\NodeCat Agente\\NodeCatAgente.exe" desinstalar
+  Panel de control > Programas y características > NodeCat Agente > Desinstalar.
+  También: "Desinstalar agente.bat". Quita el servicio, el proceso y los archivos.
+  Si quitas el servidor en NodeCat, el agente se desinstala solo.
 `;
   return zip.crear([
     { nombre: carpeta + 'NodeCatAgente.exe', datos: fs.readFileSync(EXE) },
@@ -59,4 +62,13 @@ DESINSTALAR
   ]);
 }
 
-module.exports = { crear, disponible };
+/** Instalador de un solo archivo: el .exe del agente con su configuración pegada al final. Doble clic = instalar. */
+function instalador(cliente, url) {
+  if (!disponible()) throw new Error('Esta instalación de NodeCat no incluye el agente (falta agente/NodeCatAgente.exe).');
+  const cfg = Buffer.from(JSON.stringify({ servidor: url, clave: cliente.clave }), 'utf8');
+  const cola = Buffer.alloc(12); cola.writeInt32LE(cfg.length, 0); cola.write('NODECAT1', 4, 'ascii');
+  return Buffer.concat([fs.readFileSync(EXE), cfg, cola]);
+}
+const nombreArchivo = c => c.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+module.exports = { crear, instalador, nombreArchivo, disponible };

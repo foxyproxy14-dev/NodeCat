@@ -9,7 +9,7 @@ const { cifrar, descifrar } = require('./secreto');
 
 // ---------------------------------------------------------------- ajustes
 const DEFECTO = {
-  activo: false, token: '', chats: [], porCliente: {},
+  activo: false, token: '', chats: [], porCliente: {}, bots: [],
   caidas: true, caidaMin: 0,
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
@@ -19,14 +19,15 @@ const DEFECTO = {
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
 let A = { ...DEFECTO, ...ajustes.leer(CLAVE, {}) };
+if (!Array.isArray(A.bots)) A.bots = [];
 const token = () => descifrar(A.token);
 const guardar = () => ajustes.guardar(CLAVE, A);
 
 function info() {
   const tk = token();
-  const { token: _, ultimoResumen, ...resto } = A;
+  const { token: _, ultimoResumen, bots, ...resto } = A;
   return {
-    ...resto, tokenGuardado: tk.length > 0, tokenFin: tk.length > 6 ? tk.slice(-4) : '',
+    ...resto, bots: bots.map(infoBot), tokenGuardado: tk.length > 0, tokenFin: tk.length > 6 ? tk.slice(-4) : '',
     recientes, activas: [...estados.values()].filter(e => e.activa).map(e => e.texto.replace(/<[^>]+>/g, '').split('\n')[0])
   };
 }
@@ -50,13 +51,14 @@ function guardarDesdeWeb(o, quien) {
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
     disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
-    recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen
+    recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
   for (const [id, t] of Object.entries(o.porCliente || {})) { const l = listaChats(t); if (l.length) n.porCliente[id] = l; }
   const nuevoToken = String(o.token || '').trim();
   n.token = nuevoToken ? cifrar(nuevoToken) : A.token;
-  if (n.activo && !descifrar(n.token)) throw new Error('Escribe el token del bot de Telegram.');
-  if (n.activo && !n.chats.length && !Object.keys(n.porCliente).length) throw new Error('Elige al menos un chat donde enviar los avisos.');
+  const conBots = n.bots.some(b => b.chats.length);
+  if (n.activo && !descifrar(n.token) && !conBots) throw new Error('Escribe el token del bot general o agrega un bot por cliente.');
+  if (n.activo && descifrar(n.token) && !n.chats.length && !Object.keys(n.porCliente).length && !conBots) throw new Error('Elige al menos un chat donde enviar los avisos.');
   const activando = n.activo && !A.activo;
   A = n; guardar();
   if (activando || !A.activo) { estados.clear(); guardarEstado(); }
@@ -123,12 +125,113 @@ async function probar(t, chatsTexto) {
   return '@' + yo.username;
 }
 
+// ---------------------------------------------------------------- bots por cliente o grupo
+// Cada bot se asigna a clientes y/o grupos. NodeCat detecta solo los chats donde está el bot (al añadirlo a un grupo
+// de Telegram o al escribirle) y le manda las alertas de sus clientes. Así cada cliente recibe solo lo suyo, por su bot.
+const tokenBot = b => descifrar(b.token);
+const ids = l => [...new Set((Array.isArray(l) ? l : []).map(Number).filter(Number.isInteger))];
+function clientesDeBot(b) {
+  const g = new Set(b.grupos || []);
+  return new Set([...(b.clientes || []), ...flota.clientes().filter(c => c.grupo_id && g.has(c.grupo_id)).map(c => c.id)]);
+}
+function infoBot(b) {
+  const cs = flota.clientes(), gs = flota.grupos();
+  return {
+    id: b.id, usuario: b.usuario, nombre: b.nombre, chats: b.chats, error: b.error || null,
+    clientes: b.clientes || [], grupos: b.grupos || [],
+    alcance: [...(b.grupos || []).map(id => { const g = gs.find(x => x.id === id); return g ? g.nombre + ' (grupo)' : null; }),
+      ...(b.clientes || []).map(id => { const c = cs.find(x => x.id === id); return c ? c.nombre : null; })].filter(Boolean)
+  };
+}
+const tipoChat = ch => ch.type === 'private' ? 'Chat personal' : ch.type === 'channel' ? 'Canal' : 'Grupo';
+const nombreChat = ch => ch.title || `${ch.first_name || ''} ${ch.last_name || ''}`.trim() || ch.username || String(ch.id);
+
+/** Lee lo nuevo del bot: grupos donde lo añadieron o lo quitaron, y chats que le escribieron. */
+async function leerBot(b, aviso) {
+  const ups = await llamar(tokenBot(b), `getUpdates?timeout=0&limit=100${b.offset ? '&offset=' + b.offset : ''}&allowed_updates=${encodeURIComponent('["message","channel_post","my_chat_member"]')}`);
+  const nuevos = [];
+  for (const u of ups || []) {
+    b.offset = u.update_id + 1;
+    const mc = u.my_chat_member;
+    if (mc && mc.chat) {
+      const dentro = ['member', 'administrator', 'creator'].includes(mc.new_chat_member && mc.new_chat_member.status);
+      const i = b.chats.findIndex(c => c.id === String(mc.chat.id));
+      if (!dentro && i >= 0) { const c = b.chats.splice(i, 1)[0]; log(`Telegram: sacaron al bot ${b.usuario} de "${c.nombre}".`); }
+      if (dentro && i < 0) { const c = { id: String(mc.chat.id), nombre: nombreChat(mc.chat), tipo: tipoChat(mc.chat) }; b.chats.push(c); nuevos.push(c); }
+      continue;
+    }
+    const ch = (u.message || u.channel_post || {}).chat;
+    if (ch && !b.chats.some(c => c.id === String(ch.id))) { const c = { id: String(ch.id), nombre: nombreChat(ch), tipo: tipoChat(ch) }; b.chats.push(c); nuevos.push(c); }
+    // Si migran el grupo a supergrupo, Telegram cambia su número
+    const m = u.message;
+    if (m && m.migrate_to_chat_id) { const c = b.chats.find(x => x.id === String(m.chat.id)); if (c) c.id = String(m.migrate_to_chat_id); }
+  }
+  b.error = null;
+  for (const c of nuevos) {
+    log(`Telegram: el bot ${b.usuario} ahora envía los avisos a "${c.nombre}".`);
+    if (aviso) {
+      const quien = infoBot(b).alcance;
+      try { await llamar(tokenBot(b), 'sendMessage', { chat_id: c.id, parse_mode: 'HTML', text: `🐱 <b>NodeCat</b>\nDesde ahora en este chat llegarán los avisos de: <b>${H(quien.join(', ') || 'ningún cliente todavía')}</b>.` + (config.DEMO ? '\n<i>(modo demo)</i>' : '') }); } catch { }
+    }
+  }
+  return nuevos;
+}
+
+async function agregarBot(o, quien) {
+  const tk = String(o.token || '').trim();
+  if (!/^\d{5,15}:[A-Za-z0-9_-]{20,80}$/.test(tk)) throw new Error('Pega el token completo que te dio @BotFather (números, dos puntos y letras).');
+  const yo = await llamar(tk, 'getMe');
+  if (A.bots.some(b => b.botId === yo.id)) throw new Error(`El bot @${yo.username} ya está agregado. Edita sus clientes en la lista.`);
+  if (descifrar(A.token) === tk) throw new Error(`@${yo.username} ya es el bot general. Usa otro bot para cada cliente.`);
+  const b = { id: 'b' + yo.id, botId: yo.id, usuario: '@' + yo.username, nombre: yo.first_name || yo.username, token: cifrar(tk), chats: [], clientes: ids(o.clientes), grupos: ids(o.grupos), offset: 0 };
+  try { await llamar(tk, 'deleteWebhook'); } catch { }
+  await leerBot(b, true);
+  A.bots.push(b); guardar();
+  log(`${quien} agregó el bot de Telegram ${b.usuario}.`);
+  return infoBot(b);
+}
+function editarBot(id, o, quien) {
+  const b = A.bots.find(x => x.id === id); if (!b) throw new Error('Ese bot ya no está.');
+  if (o.clientes) b.clientes = ids(o.clientes);
+  if (o.grupos) b.grupos = ids(o.grupos);
+  if (Array.isArray(o.chats)) { const quedan = new Set(o.chats.map(String)); b.chats = b.chats.filter(c => quedan.has(c.id)); }
+  guardar(); log(`${quien} cambió el bot de Telegram ${b.usuario}.`);
+  return infoBot(b);
+}
+function quitarBot(id, quien) {
+  const b = A.bots.find(x => x.id === id); if (!b) return;
+  A.bots = A.bots.filter(x => x !== b); guardar();
+  log(`${quien} quitó el bot de Telegram ${b.usuario}.`);
+}
+async function probarBot(id) {
+  const b = A.bots.find(x => x.id === id); if (!b) throw new Error('Ese bot ya no está.');
+  await leerBot(b, false); guardar();
+  if (!b.chats.length) throw new Error(`${b.usuario} todavía no está en ningún chat. Añádelo al grupo de Telegram del cliente (o escríbele) y vuelve a probar.`);
+  const quien = infoBot(b).alcance.join(', ') || 'ningún cliente todavía';
+  for (const c of b.chats) await llamar(tokenBot(b), 'sendMessage', { chat_id: c.id, parse_mode: 'HTML', text: `✅ <b>NodeCat</b>\nLas notificaciones funcionan. Aquí llegarán los avisos de: <b>${H(quien)}</b>.` + (config.DEMO ? '\n<i>(modo demo)</i>' : '') });
+  return infoBot(b);
+}
+// Cada minuto: ¿añadieron algún bot a un grupo nuevo?
+let leyendoBots = false;
+async function vigilarBots() {
+  if (leyendoBots || !A.bots.length) return;
+  leyendoBots = true;
+  let cambio = false;
+  try {
+    for (const b of A.bots) {
+      const antes = JSON.stringify(b.chats) + b.offset;
+      try { await leerBot(b, true); } catch (e) { if (!e.sinRed) b.error = e.message; }
+      if (antes !== JSON.stringify(b.chats) + b.offset) cambio = true;
+    }
+  } finally { leyendoBots = false; if (cambio) guardar(); }
+}
+
 // ---------------------------------------------------------------- cola de envío
 const cola = [], recientes = [];
 let enviando = false;
-function encolar(texto, clienteId) {
+function encolar(texto, clienteId, soloBot) {
   if (config.DEMO) texto = '<i>[demo]</i> ' + texto;
-  cola.push({ texto, clienteId });
+  cola.push({ texto, clienteId, soloBot });
   if (cola.length > 300) cola.shift();
   enviar();
 }
@@ -142,15 +245,17 @@ async function enviar() {
   enviando = true;
   try {
     while (cola.length) {
-      const m = cola[0], tk = token();
-      const chats = [...new Set([...A.chats, ...((m.clienteId && A.porCliente[m.clienteId]) || [])])];
+      const m = cola[0];
+      const destinos = m.enviados ? m.pendientes : destinosDe(m);
+      m.enviados = true; m.pendientes = destinos;
       let error = null, reintentar = false;
-      for (const c of chats) {
-        try { await llamar(tk, 'sendMessage', { chat_id: c, text: m.texto, parse_mode: 'HTML', disable_web_page_preview: true }); }
+      while (m.pendientes.length) {
+        const [tk, c] = m.pendientes[0];
+        try { await llamar(tk, 'sendMessage', { chat_id: c, text: m.texto, parse_mode: 'HTML', disable_web_page_preview: true }); m.pendientes.shift(); }
         catch (e) {
           if (e.codigo === 429) { await dormir(Math.max(1, e.esperar || 1) * 1000); reintentar = true; break; }
           if (e.sinRed) { log('Telegram: ' + e.message); await dormir(60000); reintentar = true; break; }
-          error = e.message;
+          error = e.message; m.pendientes.shift();
         }
       }
       if (reintentar) continue;
@@ -160,6 +265,17 @@ async function enviar() {
       await dormir(400);
     }
   } finally { enviando = false; }
+}
+
+/** A quién va cada aviso: el bot general (sus chats y los chats extra del cliente) y los bots asignados a ese cliente. */
+function destinosDe(m) {
+  const l = [], visto = new Set();
+  const poner = (tk, c) => { const k = tk + '|' + c; if (tk && !visto.has(k)) { visto.add(k); l.push([tk, c]); } };
+  if (m.soloBot) { const b = A.bots.find(x => x.id === m.soloBot); if (b) for (const c of b.chats) poner(tokenBot(b), c.id); return l; }
+  const tk = token();
+  for (const c of [...A.chats, ...((m.clienteId && A.porCliente[m.clienteId]) || [])]) poner(tk, c);
+  if (m.clienteId) for (const b of A.bots) if (clientesDeBot(b).has(Number(m.clienteId))) for (const c of b.chats) poner(tokenBot(b), c.id);
+  return l;
 }
 
 // ---------------------------------------------------------------- reglas
@@ -258,12 +374,12 @@ function resumenDiario() {
   const { dia, hora } = partesHoy();
   if (A.ultimoResumen === dia || hora < A.resumenHora) return;
   A.ultimoResumen = dia; guardar();
-  encolar(textoResumen());
+  enviarResumen();
 }
-function textoResumen() {
+function textoResumen(soloClientes) {
   const ahora = Date.now(), desde = ahora - 864e5;
   const fecha = new Date().toLocaleDateString('es', { timeZone: config.ZONA_HORARIA, weekday: 'long', day: 'numeric', month: 'long' });
-  const todos = flota.estado({ clientes: null });
+  const todos = flota.estado({ clientes: soloClientes ? [...soloClientes] : null });
   let total = 0, enLinea = 0, act = 0, dsc = 0;
   const lineas = [], revisar = [];
   for (const c of todos.clientes) {
@@ -284,7 +400,10 @@ function textoResumen() {
   return `📋 <b>Resumen de NodeCat</b>, ${fecha}\n\n<b>Equipos:</b> ${enLinea} de ${total} en línea.\n<b>Ahora:</b> ${act} ${act === 1 ? 'sesión activa' : 'sesiones activas'} y ${dsc} ${dsc === 1 ? 'desconectada' : 'desconectadas'}.\n\n` +
     (lineas.join('\n') || 'Todavía no hay equipos.') + (revisar.length ? `\n\n<b>Para revisar:</b>\n• ${revisar.join('\n• ')}` : '\n\nNada pendiente de revisar.');
 }
-const enviarResumen = () => encolar(textoResumen());
+function enviarResumen() {
+  if (token() && A.chats.length) encolar(textoResumen());
+  for (const b of A.bots) if (b.chats.length) { const cs = clientesDeBot(b); if (cs.size) encolar(textoResumen(cs), null, b.id); }
+}
 
 function arrancar() {
   cargarEstado();
@@ -292,6 +411,8 @@ function arrancar() {
   if (A.activo) silenciar = 'callar';
   setInterval(() => evaluar(), 15000).unref();
   setInterval(() => enviar(), 30000).unref();
+  setInterval(() => vigilarBots(), 60000).unref();
+  setTimeout(() => vigilarBots(), 5000).unref();
 }
 
-module.exports = { info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar };
+module.exports = { info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };

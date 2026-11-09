@@ -111,10 +111,15 @@ Los clientes que sí tienen VPN pueden usar la IP interna (`http://10.x.x.x:8080
 ## Agregar un cliente y sus servidores
 
 1. Menú con tu nombre > **Clientes y agentes** > escribe el nombre > **Crear cliente**.
-2. **Descargar agente**: es un ZIP ya configurado con la dirección de NodeCat y la clave de ese cliente.
-3. Copia la carpeta a cada servidor del cliente y haz doble clic en **Instalar agente.bat**.
+2. **Descargar instalador**: es un solo `.exe` ya configurado con la dirección de NodeCat y la clave de ese cliente.
+3. Cópialo a cada servidor del cliente y ábrelo con doble clic. Como no está firmado, Windows puede avisar: *Más información* > *Ejecutar de todas formas*.
 
-En unos segundos el servidor aparece dentro de su cliente. Para muchos servidores a la vez (GPO o script): `NodeCatAgente.exe instalar /silencioso`.
+En unos segundos el servidor aparece dentro de su cliente. Para muchos servidores a la vez (GPO o script): `NodeCat-Agente-CLIENTE.exe /silencioso`, o el **paquete .zip** con `NodeCatAgente.exe instalar /silencioso`.
+
+- **Desinstalar:** Panel de control > Programas y características > **NodeCat Agente**. Quita el servicio, el proceso, los archivos y el registro; en NodeCat el servidor queda como *Agente desinstalado* (sin avisos de caída) hasta que lo quites de la lista.
+- **Quitar un servidor del panel:** su agente se desinstala solo en ese servidor y no vuelve a aparecer. Si más adelante lo instalas otra vez, aparece de nuevo.
+- **Moverlo a otro cliente o sede:** en la página del servidor > Editar > Cliente. El agente se pasa solo al cliente nuevo en su siguiente informe; no hay que reinstalarlo.
+- **Reinstalar encima** sirve para actualizar: el instalador quita antes la versión anterior (y el antiguo *Atalaya Agente*, si lo hay).
 
 El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *NodeCat Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
 
@@ -190,7 +195,10 @@ El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, la
 
 ## Avisos por Telegram
 
-Menú con tu nombre > **Notificaciones por Telegram**. Crea un bot con @BotFather, pega el token, escribe algo al bot, pulsa *Buscar chats* y elige el tuyo o el de tu grupo. Puedes decidir los umbrales (por ejemplo, CPU por encima del 90 % durante 5 minutos), recibir un resumen diario y recordar los avisos que sigan sin resolverse.
+Menú con tu nombre > **Notificaciones por Telegram**. Puedes decidir los umbrales (por ejemplo, CPU por encima del 90 % durante 5 minutos), recibir un resumen diario y recordar los avisos que sigan sin resolverse.
+
+- **Bot general:** recibe todos los avisos, por ejemplo en tu grupo de soporte. Crea un bot con @BotFather, pega el token, escribe algo al bot, pulsa *Buscar chats* y elige el chat.
+- **Bots por cliente o grupo:** para que cada cliente reciba solo lo suyo en su propio grupo de Telegram. Crea un bot por cliente (o por grupo de sedes), pulsa **Agregar un bot**, pega el token y marca a quién avisa. Luego añade el bot al grupo de Telegram del cliente: NodeCat lo detecta solo en menos de un minuto, saluda en el chat para confirmarlo y desde ahí envía las alertas y el resumen diario de esos clientes. Si asignas un grupo, las sedes que agregues después también quedan cubiertas. Si sacan al bot de un chat, NodeCat deja de usarlo.
 
 ## Probarlo sin servidores reales
 

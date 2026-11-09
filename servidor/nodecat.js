@@ -189,6 +189,12 @@ ruta('GET', '/api/clientes/:id/agente', { ...soloAdmin, token: true }, ({ p, req
   res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${nombre}"`, 'Content-Length': b.length, 'Cache-Control': 'no-store' });
   res.end(b);
 });
+ruta('GET', '/api/clientes/:id/instalador', { ...soloAdmin, token: true }, ({ p, req, res }) => {
+  const c = flota.cliente(Number(p.id)); if (!c) throw error(404, 'Ese cliente no existe.');
+  const b = paquete.instalador(c, urlPublica(req));
+  res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/vnd.microsoft.portable-executable', 'Content-Disposition': `attachment; filename="NodeCat-Agente-${paquete.nombreArchivo(c)}.exe"`, 'Content-Length': b.length, 'Cache-Control': 'no-store' });
+  res.end(b);
+});
 ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   const u = String(cuerpo.url || '').trim().replace(/\/+$/, '');
   if (u && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw error(400, 'Escribe una dirección completa, por ejemplo https://nodecat.miempresa.com');
@@ -214,6 +220,11 @@ ruta('GET', '/api/notificaciones', soloAdmin, () => avisos.info());
 ruta('PUT', '/api/notificaciones', soloAdmin, ({ cuerpo, sesion }) => { avisos.guardarDesdeWeb(cuerpo, sesion.usuario); return avisos.info(); });
 ruta('POST', '/api/notificaciones/probar', soloAdmin, async ({ cuerpo }) => ({ bot: await avisos.probar(cuerpo.token, cuerpo.chats) }));
 ruta('POST', '/api/notificaciones/chats', soloAdmin, async ({ cuerpo }) => avisos.buscarChats(cuerpo.token));
+ruta('POST', '/api/notificaciones/bots', soloAdmin, async ({ cuerpo, sesion }) => avisos.agregarBot(cuerpo, sesion.usuario));
+ruta('PUT', '/api/notificaciones/bots/:id', soloAdmin, ({ p, cuerpo, sesion }) => avisos.editarBot(p.id, cuerpo, sesion.usuario));
+ruta('DELETE', '/api/notificaciones/bots/:id', soloAdmin, ({ p, sesion }) => { avisos.quitarBot(p.id, sesion.usuario); return { ok: true }; });
+ruta('POST', '/api/notificaciones/bots/:id/probar', soloAdmin, async ({ p }) => avisos.probarBot(p.id));
+ruta('POST', '/api/notificaciones/bots/:id/buscar', soloAdmin, async () => { await avisos.vigilarBots(); return avisos.info(); });
 ruta('POST', '/api/notificaciones/resumen', soloAdmin, () => { avisos.enviarResumen(); return { ok: true }; });
 
 // Agentes

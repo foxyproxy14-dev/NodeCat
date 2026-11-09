@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Win32;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -13,8 +14,8 @@ using System.Threading;
 [assembly: AssemblyTitle("NodeCat Agente")]
 [assembly: AssemblyDescription("Agente de NodeCat: envía las sesiones, la CPU, la memoria y los discos de este servidor a NodeCat.")]
 [assembly: AssemblyProduct("NodeCat")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 
 namespace NodeCat
 {
@@ -55,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.2.0";
+        public const string Version = "1.3.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -87,6 +88,11 @@ namespace NodeCat
                     case "desinstalar": return Desinstalar(silencioso);
                     case "probar": return Probar();
                     case "sonda": return SoloSonda();
+                    case "":
+                    case "silencioso":
+                        // Instalador descargado de NodeCat (lleva la configuración dentro): doble clic = instalar
+                        if (ConfigIncluida() != null) return Instalar(silencioso);
+                        Ayuda(); Pausa(silencioso); return 0;
                     default: Ayuda(); Pausa(silencioso); return 0;
                 }
             }
@@ -120,17 +126,51 @@ namespace NodeCat
         }
 
         // ------------------------------------------------------------ configuración
+        static string instalacion = "";
+
+        // El instalador que genera NodeCat lleva agente.json pegado al final del .exe:
+        // [json UTF-8][longitud int32][NODECAT1]
+        static string ConfigIncluida()
+        {
+            try
+            {
+                using (var f = new FileStream(Exe, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (f.Length < 12) return null;
+                    var cola = new byte[12];
+                    f.Seek(-12, SeekOrigin.End); f.Read(cola, 0, 12);
+                    if (Encoding.ASCII.GetString(cola, 4, 8) != "NODECAT1") return null;
+                    int n = BitConverter.ToInt32(cola, 0);
+                    if (n <= 0 || n > 64 * 1024 || n > f.Length - 12) return null;
+                    var b = new byte[n];
+                    f.Seek(-12 - n, SeekOrigin.End); f.Read(b, 0, n);
+                    return Encoding.UTF8.GetString(b);
+                }
+            }
+            catch { return null; }
+        }
+
         static void CargarConfig(string carpeta)
         {
             string f = Path.Combine(carpeta, "agente.json");
-            if (!File.Exists(f)) throw new Exception("No se encuentra agente.json en " + carpeta + ". Descarga el agente de este cliente desde NodeCat (menú con tu nombre > Clientes y agentes).");
-            var o = Json.LeerObjeto(File.ReadAllText(f, Encoding.UTF8).TrimStart('﻿'));
+            string texto = File.Exists(f) ? File.ReadAllText(f, Encoding.UTF8) : ConfigIncluida();
+            if (texto == null) throw new Exception("No se encuentra agente.json en " + carpeta + ". Descarga el instalador de este cliente desde NodeCat (menú con tu nombre > Clientes y agentes).");
+            var o = Json.LeerObjeto(texto.TrimStart('\uFEFF'));
             servidor = Json.Txt(o, "servidor").Trim().TrimEnd('/');
             clave = Json.Txt(o, "clave").Trim();
             proxy = Json.Txt(o, "proxy").Trim();   // opcional: "http://proxy.cliente.local:8080" si el servidor solo sale a Internet por un proxy
+            instalacion = Json.Txt(o, "instalacion").Trim();
             if (!servidor.StartsWith("http://") && !servidor.StartsWith("https://")) throw new Exception("En agente.json, \"servidor\" debe ser la dirección de NodeCat, por ejemplo https://nodecat.miempresa.com");
             if (clave.Length < 16) throw new Exception("En agente.json falta la clave de los agentes.");
             Sonda.Servidor = servidor; Sonda.Clave = clave; Sonda.Proxy = proxy;
+        }
+
+        static void GuardarConfig(string carpeta)
+        {
+            var o = new Dictionary<string, object> { { "servidor", servidor }, { "clave", clave } };
+            if (!string.IsNullOrEmpty(proxy)) o["proxy"] = proxy;
+            if (!string.IsNullOrEmpty(instalacion)) o["instalacion"] = instalacion;
+            File.WriteAllText(Path.Combine(carpeta, "agente.json"), Json.Escribir(o), Utiles.Utf8);
         }
 
         // ------------------------------------------------------------ recogida y envío
@@ -143,7 +183,7 @@ namespace NodeCat
         {
             var o = new Dictionary<string, object>
             {
-                { "nombre", NombreEquipo() }, { "version", Version }, { "intervalo", intervalo }, { "evento", porQue }, { "hora", Utiles.Ms(DateTime.UtcNow) }
+                { "nombre", NombreEquipo() }, { "version", Version }, { "intervalo", intervalo }, { "evento", porQue }, { "hora", Utiles.Ms(DateTime.UtcNow) }, { "instalacion", instalacion }
             };
             try
             {
@@ -189,6 +229,14 @@ namespace NodeCat
                     if (i >= 5 && i <= 600) intervalo = i;
                     // NodeCat pide que este servidor lea equipos de red de su red (sonda)
                     if (ComoServicio || modoSonda) Sonda.Ajustar(Json.Txt(o, "sonda") == "True" || Json.Txt(o, "sonda") == "true");
+                    // El servidor se movió a otro cliente en NodeCat: desde ahora usa la clave del cliente nuevo
+                    string nueva = Json.Txt(o, "clave").Trim();
+                    if (ComoServicio && nueva.Length >= 16 && nueva != clave)
+                    {
+                        clave = nueva; Sonda.Clave = nueva;
+                        try { GuardarConfig(CarpetaExe); } catch (Exception ex) { Utiles.Log("No se pudo guardar la clave nueva: " + ex.Message, ConsoleColor.Yellow); }
+                        Utiles.Log("Este servidor ahora pertenece a " + Json.Txt(o, "cliente") + " en NodeCat.", ConsoleColor.Green);
+                    }
                 }
                 return true;
             }
@@ -201,6 +249,8 @@ namespace NodeCat
                     try { using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8)) cuerpo = Json.Txt(Json.LeerObjeto(r.ReadToEnd()), "error"); } catch { }
                     error = "NodeCat respondió " + (int)res.StatusCode + (cuerpo.Length > 0 ? ": " + cuerpo : "");
                     if ((int)res.StatusCode == 403) error += " Revisa la clave en agente.json.";
+                    // Quitado de NodeCat: el agente se desinstala solo para no quedar funcionando en segundo plano
+                    if ((int)res.StatusCode == 410 && ComoServicio) AutoDesinstalar();
                 }
                 else error = "No se pudo conectar con " + servidor + ": " + ex.Message;
                 return false;
@@ -316,22 +366,79 @@ namespace NodeCat
             catch { return -1; }
         }
 
-        static bool ServicioExiste()
+        const string ClaveDesinstalar = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\NodeCatAgente";
+        // Nombres anteriores del agente (Atalaya): se limpian al instalar o desinstalar
+        static readonly string[] ServiciosViejos = { "AtalayaAgente" };
+        static string CarpetaVieja { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Atalaya Agente"); } }
+
+        static bool ServicioExiste(string nombre)
         {
-            try { return ServiceController.GetServices().Any(s => s.ServiceName.Equals(NombreServicio, StringComparison.OrdinalIgnoreCase)); } catch { return false; }
+            try { return ServiceController.GetServices().Any(s => s.ServiceName.Equals(nombre, StringComparison.OrdinalIgnoreCase)); } catch { return false; }
         }
 
-        static void QuitarServicio()
+        /// Detiene y borra un servicio de verdad: si no se detiene a tiempo, mata su proceso; espera a que Windows lo borre del todo.
+        static void QuitarServicio(string nombre, string proceso)
         {
-            if (!ServicioExiste()) return;
+            if (!ServicioExiste(nombre)) return;
             try
             {
-                using (var sc = new ServiceController(NombreServicio))
-                    if (sc.Status != ServiceControllerStatus.Stopped) { sc.Stop(); sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20)); }
+                using (var sc = new ServiceController(nombre))
+                    if (sc.Status != ServiceControllerStatus.Stopped)
+                    {
+                        try { sc.Stop(); } catch { }
+                        try { sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15)); } catch { }
+                    }
             }
             catch { }
-            Ejecutar("sc.exe", "delete " + NombreServicio);
-            Thread.Sleep(1500);
+            MatarProcesos(proceso);
+            Ejecutar("sc.exe", "delete " + nombre);
+            // Hasta que Windows no lo borra, no se puede crear otro con el mismo nombre
+            for (int i = 0; i < 30 && ServicioExiste(nombre); i++) { Thread.Sleep(500); if (i == 10) MatarProcesos(proceso); }
+        }
+
+        static void MatarProcesos(string nombre)
+        {
+            int yo = Process.GetCurrentProcess().Id;
+            foreach (var p in Process.GetProcessesByName(nombre))
+            {
+                try { if (p.Id != yo) { p.Kill(); p.WaitForExit(5000); } } catch { }
+            }
+        }
+
+        static void QuitarTodosLosServicios()
+        {
+            QuitarServicio(NombreServicio, "NodeCatAgente");
+            foreach (var v in ServiciosViejos) QuitarServicio(v, "AtalayaAgente");
+        }
+
+        static void RegistrarEnPanelDeControl(string exe)
+        {
+            using (var k = Registry.LocalMachine.CreateSubKey(ClaveDesinstalar))
+            {
+                k.SetValue("DisplayName", "NodeCat Agente");
+                k.SetValue("DisplayVersion", Version);
+                k.SetValue("Publisher", "NodeCat");
+                k.SetValue("DisplayIcon", exe + ",0");
+                k.SetValue("InstallLocation", CarpetaInstalacion);
+                k.SetValue("UninstallString", "\"" + exe + "\" desinstalar");
+                k.SetValue("QuietUninstallString", "\"" + exe + "\" desinstalar /silencioso");
+                k.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                k.SetValue("EstimatedSize", 200, RegistryValueKind.DWord);
+                k.SetValue("InstallDate", DateTime.Now.ToString("yyyyMMdd"));
+                k.SetValue("Comments", "Envía a NodeCat las sesiones, la CPU, la memoria y los discos de este servidor.");
+            }
+        }
+
+        static string Explicar(int codigo)
+        {
+            switch (codigo)
+            {
+                case 1072: return "Windows todavía está borrando el servicio anterior. Cierra la consola de Servicios (services.msc) y el Administrador de tareas si están abiertos, y vuelve a ejecutar el instalador.";
+                case 1073: return "Ya existe un servicio con ese nombre y no se pudo quitar. Reinicia el servidor y vuelve a ejecutar el instalador.";
+                case 5: return "Acceso denegado. Ejecuta el instalador como administrador.";
+                default: return "Código " + codigo + ".";
+            }
         }
 
         static int Instalar(bool silencioso)
@@ -340,6 +447,7 @@ namespace NodeCat
             Console.WriteLine();
             Console.WriteLine("  Instalando el agente de NodeCat " + Version);
             CargarConfig(CarpetaExe);
+            instalacion = Guid.NewGuid().ToString("N");   // identifica esta instalación (si antes se quitó de NodeCat, vuelve a aparecer)
 
             Console.WriteLine("  > Comprobando la conexión con " + servidor);
             string error;
@@ -353,21 +461,23 @@ namespace NodeCat
                 }
             }
 
+            Console.WriteLine("  > Quitando la versión anterior, si la hay");
+            QuitarTodosLosServicios();
+            try { if (Directory.Exists(CarpetaVieja)) Directory.Delete(CarpetaVieja, true); } catch { }
+
             Console.WriteLine("  > Copiando a " + CarpetaInstalacion);
-            QuitarServicio();
             Directory.CreateDirectory(CarpetaInstalacion);
             string destino = Path.Combine(CarpetaInstalacion, "NodeCatAgente.exe");
-            if (!Exe.Equals(destino, StringComparison.OrdinalIgnoreCase))
-            {
-                File.Copy(Exe, destino, true);
-                File.Copy(Path.Combine(CarpetaExe, "agente.json"), Path.Combine(CarpetaInstalacion, "agente.json"), true);
-            }
+            if (!Exe.Equals(destino, StringComparison.OrdinalIgnoreCase)) File.Copy(Exe, destino, true);
+            GuardarConfig(CarpetaInstalacion);
 
             Console.WriteLine("  > Creando el servicio");
             int r = Ejecutar("sc.exe", "create " + NombreServicio + " binPath= \"\\\"" + destino + "\\\" servicio\" start= auto DisplayName= \"NodeCat Agente\"");
-            if (r != 0) throw new Exception("No se pudo crear el servicio (código " + r + ").");
+            if (r == 1072 || r == 1073) { QuitarServicio(NombreServicio, "NodeCatAgente"); Thread.Sleep(2000); r = Ejecutar("sc.exe", "create " + NombreServicio + " binPath= \"\\\"" + destino + "\\\" servicio\" start= auto DisplayName= \"NodeCat Agente\""); }
+            if (r != 0) throw new Exception("No se pudo crear el servicio. " + Explicar(r));
             Ejecutar("sc.exe", "description " + NombreServicio + " \"Envía a NodeCat las sesiones, la CPU, la memoria y los discos de este servidor.\"");
             Ejecutar("sc.exe", "failure " + NombreServicio + " reset= 86400 actions= restart/30000/restart/60000/restart/300000");
+            try { RegistrarEnPanelDeControl(destino); } catch (Exception ex) { Utiles.Log("No se pudo registrar en Programas y características: " + ex.Message, ConsoleColor.Yellow); }
             using (var sc = new ServiceController(NombreServicio))
             {
                 sc.Start();
@@ -375,7 +485,7 @@ namespace NodeCat
             }
             Utiles.Log("Agente instalado y en marcha. Envía los datos a " + servidor + ".", ConsoleColor.Green);
             Console.WriteLine("  En unos segundos este servidor aparecerá en NodeCat con sus datos.");
-            Console.WriteLine("  Registro: " + Path.Combine(Utiles.CarpetaDatos, "agente.log"));
+            Console.WriteLine("  Para quitarlo: Panel de control > Programas > NodeCat Agente > Desinstalar.");
             Pausa(silencioso);
             return 0;
         }
@@ -384,22 +494,45 @@ namespace NodeCat
         {
             if (Elevar("desinstalar" + (silencioso ? " /silencioso" : ""))) return 0;
             Console.WriteLine();
-            Console.WriteLine("  > Quitando el servicio del agente");
-            QuitarServicio();
-            // la carpeta se borra cuando este programa termine
-            if (Directory.Exists(CarpetaInstalacion))
+            // Se avisa a NodeCat para que no lo dé por caído
+            try
             {
-                try
-                {
-                    Process.Start(new ProcessStartInfo("cmd.exe", "/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"" + CarpetaInstalacion + "\"")
-                    { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
-                }
-                catch { }
+                CargarConfig(File.Exists(Path.Combine(CarpetaInstalacion, "agente.json")) ? CarpetaInstalacion : CarpetaExe);
+                Console.WriteLine("  > Avisando a NodeCat");
+                string error;
+                Enviar(Json.Escribir(new Dictionary<string, object> { { "nombre", NombreEquipo() }, { "version", Version }, { "evento", "desinstalado" }, { "instalacion", instalacion }, { "hora", Utiles.Ms(DateTime.UtcNow) } }), out error);
             }
-            Utiles.Log("Agente desinstalado.", ConsoleColor.Green);
-            Console.WriteLine("  Si quieres quitarlo también de la lista, hazlo en NodeCat (página del servidor > Editar).");
+            catch { }
+            Console.WriteLine("  > Deteniendo y quitando el servicio");
+            QuitarTodosLosServicios();
+            try { Registry.LocalMachine.DeleteSubKeyTree(ClaveDesinstalar, false); } catch { }
+            Console.WriteLine("  > Borrando los archivos");
+            BorrarArchivos(false);
+            Utiles.Log("Agente desinstalado: no queda ningún servicio ni proceso.", ConsoleColor.Green);
             Pausa(silencioso);
             return 0;
+        }
+
+        // Las carpetas se borran cuando este programa termina (no se puede borrar el .exe en uso)
+        static void BorrarArchivos(bool despuesDeParar)
+        {
+            string datos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NodeCat Agente");
+            string cmd = "/c ping 127.0.0.1 -n 4 >nul"
+                + (despuesDeParar ? " & sc stop " + NombreServicio + " & ping 127.0.0.1 -n 8 >nul & taskkill /f /im NodeCatAgente.exe & sc delete " + NombreServicio + " & reg delete \"HKLM\\" + ClaveDesinstalar + "\" /f" : "")
+                + " & rmdir /s /q \"" + CarpetaInstalacion + "\" & rmdir /s /q \"" + datos + "\" & rmdir /s /q \"" + CarpetaVieja + "\"";
+            try { Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden }); } catch { }
+        }
+
+        static bool autoDesinstalando;
+        /// NodeCat respondió que este servidor se quitó del panel: el servicio se quita a sí mismo.
+        static void AutoDesinstalar()
+        {
+            if (autoDesinstalando) return;
+            autoDesinstalando = true;
+            Utiles.Log("Este servidor se quitó de NodeCat. El agente se desinstala solo.", ConsoleColor.Yellow);
+            Sonda.Parar();
+            BorrarArchivos(true);
+            detener = true; despertar.Set();
         }
     }
 
