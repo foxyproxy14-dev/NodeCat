@@ -76,6 +76,7 @@ function arrancar() {
 }
 
 function estadoDe(v, ahora = Date.now()) {
+  if (v.sinRespuesta && v.ultimo_contacto) return 'caido';
   if (!v.ultimo_contacto) return 'pendiente';
   if (ahora - v.ultimo_contacto > limite(v)) return 'caido';
   if (v.datos && v.datos.errorMetricas) return 'sinMetricas';
@@ -195,6 +196,19 @@ function actualizarRouter(id, d, ip, version) {
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
   if (v.caido) volvio(v, ahora);
+}
+
+// El recolector de MikroTik confirma que el router no responde (dos intentos seguidos): se marca al momento
+function routerSinRespuesta(id, mensaje) {
+  const v = vivo.get(id); if (!v) return;
+  v.errorConexion = mensaje;
+  if (!v.ultimo_contacto) return;          // nunca conectó: queda como pendiente, con el error a la vista
+  v.sinRespuesta = true;
+  if (v.caido) return;
+  v.caido = true;
+  evento(id, 'caida', mensaje ? `Dejó de responder: ${mensaje}` : 'Dejó de responder.');
+  log(`${v.nombre} dejó de responder.`);
+  avisar('caida', v);
 }
 
 function evento(equipoId, tipo, detalle, t = Date.now()) {
@@ -356,5 +370,5 @@ module.exports = {
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, trafico, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, metricas, trafico, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, eventosRecientes, mantenimiento, evento
 };

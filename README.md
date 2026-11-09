@@ -105,7 +105,7 @@ En la página del cliente: **Agregar router MikroTik**. Atalaya se conecta a la 
    ```
 3. Escribe la IP, el usuario y la contraseña, pulsa **Probar conexión** y luego **Agregar router**.
 
-Mientras miras la página de un router, Atalaya lo consulta cada 3 segundos; el resto del tiempo, cada 30. Guarda el tráfico de cada interfaz minuto a minuto y la contraseña cifrada en disco.
+Mientras miras la página de un router, Atalaya lo consulta cada 3 segundos; el resto del tiempo, cada 15. Guarda el tráfico de cada interfaz minuto a minuto y la contraseña cifrada en disco.
 
 ## Avisos por Telegram
 

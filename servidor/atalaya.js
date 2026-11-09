@@ -258,6 +258,7 @@ if (demo) demo.preparar();
 flota.arrancar();
 avisos.arrancar();
 flota.alBorrarEquipo = id => mikrotik.quitar(id);
+flota.alCambiar(() => avisos.evaluar(true));   // caídas y vueltas: aviso por Telegram sin esperar al siguiente repaso
 mikrotik.arrancar(demo ? require('./lib/mikrotik-demo') : null);
 if (demo) demo.arrancar();
 auth.prepararInicio();

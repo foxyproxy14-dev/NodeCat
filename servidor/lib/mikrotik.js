@@ -6,7 +6,7 @@ const { Conexion, segundos } = require('./routeros');
 const { cifrar, descifrar } = require('./secreto');
 const { log } = require('./util');
 
-const RAPIDO = 3000, LENTO = 30000;      // cada 3 s mientras alguien mira el router; si no, cada 30 s
+const RAPIDO = 3000, LENTO = 15000, REINTENTO = 5000, CAIDO = 10000;      // cada 3 s mientras alguien mira el router; si no, cada 15 s
 const VENTANA = 6 * 60 * 1000;           // serie en vivo: últimos 6 minutos
 const routers = new Map();
 let simulador = null;                    // modo demo: genera respuestas en lugar de conectar
@@ -73,16 +73,20 @@ function iniciar(id) {
 }
 function programar(r) {
   if (!routers.has(r.id)) return;
-  r.temporizador = setTimeout(() => ciclo(r), Date.now() - r.observado < 20000 ? RAPIDO : LENTO);
+  // Tras un fallo se reintenta enseguida para confirmar la caída sin esperar al siguiente ciclo
+  const espera = r.fallos === 1 ? REINTENTO : r.fallos > 1 ? CAIDO : Date.now() - r.observado < 20000 ? RAPIDO : LENTO;
+  r.temporizador = setTimeout(() => ciclo(r), espera);
 }
 async function ciclo(r) {
   if (r.ocupado) return programar(r);
   r.ocupado = true;
-  try { await sondear(r); }
+  try { await sondear(r); r.fallos = 0; }
   catch (e) {
     if (r.con) { r.con.cerrar(); r.con = null; }
+    r.fallos = (r.fallos || 0) + 1;
     const v = flota.vivo.get(r.id);
     if (v) v.errorConexion = e.message;
+    if (r.fallos >= 2) flota.routerSinRespuesta(r.id, e.message);
     if (r.ultimoError !== e.message) { log(`Router ${v ? v.nombre : r.id}: ${e.message}`); r.ultimoError = e.message; }
   } finally { r.ocupado = false; programar(r); }
 }
@@ -90,7 +94,7 @@ async function conexion(r) {
   if (r.c.demo) return simulador.conexion(r.id);
   if (r.con && r.con.lista) return r.con;
   if (r.con) r.con.cerrar();
-  r.con = new Conexion(r.c);
+  r.con = new Conexion({ ...r.c, tiempo: 6000 });
   await r.con.conectar();
   if (r.ultimoError) { log(`Router ${r.c.host}: conectado de nuevo.`); r.ultimoError = null; }
   return r.con;
