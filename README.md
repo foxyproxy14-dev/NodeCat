@@ -27,7 +27,8 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
 - **Routers MikroTik al estilo MikroDash**, en solo lectura: tráfico en vivo de cada interfaz, enlace WAN, latencia a Cloudflare, Google y la puerta de enlace, CPU, memoria y temperatura, con un menú lateral como el de MikroDash: red (IP, rutas, ARP, DNS, bridges y VLAN, vecinos), inalámbrico (clientes por red, redes, CAPsMAN), servicios IP, túneles y VPN, tráfico (ancho de banda, colas, conexiones con los destinos más usados), seguridad (filtro, NAT, mangle, listas), sistema (registro, paquetes y firmware, servicios, scripts, tareas, NTP, SNMP, archivos, contenedores, usuarios), ping y traceroute desde el router, y el historial de caídas. Funciona con RouterOS 6 y 7.
 - **Sesiones de Escritorio remoto** en vivo de todos los clientes, e **historial** de quién entró, cuándo y desde qué equipo, exportable a Excel.
 - **Avisos por Telegram** cuando un servidor o un router deja de responder, se cae el enlace WAN o se queda sin CPU, memoria o disco, y cuando se resuelve. Resumen diario por cliente. Cada cliente puede tener además su propio chat.
-- **Cuentas** de administrador o de solo lectura, que se pueden limitar a algunos clientes (por ejemplo, para que un cliente vea solo lo suyo).
+- **Grupos** para juntar las sedes de una misma empresa.
+- **Cuentas** de administrador o de solo lectura, que se pueden limitar a grupos o a clientes sueltos (por ejemplo, para que un cliente vea solo sus sedes, también las que se agreguen después).
 
 <p align="center"><img src="docs/img/router.png" alt="Router MikroTik en vivo" width="900"></p>
 

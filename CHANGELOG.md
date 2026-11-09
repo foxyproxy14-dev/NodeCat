@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.3.1 (noviembre de 2026)
+
+- Grupos de clientes: junta las sedes de una misma empresa. El resumen las muestra juntas.
+- Las cuentas se pueden limitar a grupos: ven todas sus sedes, también las que se agreguen después.
+
 ## 0.3.0 (noviembre de 2026)
 
 - Página del router con menú lateral por grupos, como MikroDash, y más de 30 secciones de solo lectura: red, inalámbrico, servicios IP, túneles, tráfico, seguridad, sistema y herramientas.

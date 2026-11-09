@@ -2,7 +2,7 @@
 // Configuración por variables de entorno (docker-compose.yml)
 const env = process.env;
 module.exports = {
-  VERSION: '0.3.0',
+  VERSION: '0.3.1',
   PUERTO: parseInt(env.PUERTO || '8080', 10),
   DATA_DIR: env.DATA_DIR || require('node:path').join(__dirname, '..', 'datos'),
   DEMO: env.ATALAYA_DEMO === '1',

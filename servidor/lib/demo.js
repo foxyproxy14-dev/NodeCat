@@ -14,8 +14,9 @@ const ROUTERS = {
 const CLIENTES = [
   { nombre: 'Clínica San Rafael', notas: 'Soporte 24/7. Contacto: Dra. Paredes.', equipos: [
     { nombre: 'SRV-DC01', perfil: 'dc' }, { nombre: 'SRV-RDS01', perfil: 'rds', alto: 'cpu' }, { nombre: 'SRV-RDS02', perfil: 'rds' }, { nombre: 'SRV-SQL01', perfil: 'sql' }] },
-  { nombre: 'Transportes Andes', notas: 'Sede Valencia y almacén de Puerto Cabello.', equipos: [
+  { nombre: 'Transportes Andes', grupo: 'Grupo Andes', notas: 'Sede Valencia y almacén de Puerto Cabello.', equipos: [
     { nombre: 'TA-DC01', perfil: 'dc' }, { nombre: 'TA-TS01', perfil: 'rds' }, { nombre: 'TA-TS02', perfil: 'rds', caido: true }, { nombre: 'TA-ERP', perfil: 'sql', alto: 'disco' }] },
+  { nombre: 'Andes Logística Barquisimeto', grupo: 'Grupo Andes', notas: 'Sede nueva.', equipos: [{ nombre: 'ALB-SRV01', perfil: 'rds' }] },
   { nombre: 'Estudio Contable Mérida', notas: '', equipos: [{ nombre: 'ECM-SRV01', perfil: 'rds' }, { nombre: 'ECM-BACKUP', perfil: 'archivo' }] },
   { nombre: 'Ferretería El Tornillo', notas: 'Horario: lunes a sábado.', equipos: [{ nombre: 'FT-SERVIDOR', perfil: 'rds' }] }
 ];
@@ -47,7 +48,8 @@ function preparar() {
   if (!q('SELECT COUNT(*) n FROM clientes').get().n) { sembrar(); transaccion(sembrarRouters); }
   if (!auth.hayCuentas()) {
     auth.guardarCuenta({ usuario: 'demo', clave: 'atalaya-demo', rol: 'admin', clientes: null }, true);
-    auth.guardarCuenta({ usuario: 'andes', clave: 'atalaya-demo', rol: 'lector', clientes: [q("SELECT id FROM clientes WHERE nombre = 'Transportes Andes'").get().id] }, true);
+    const g = q("SELECT grupo_id FROM clientes WHERE nombre = 'Transportes Andes'").get().grupo_id;
+    auth.guardarCuenta({ usuario: 'andes', clave: 'atalaya-demo', rol: 'lector', clientes: null, grupos: [g] }, true);
   }
   for (const c of CLIENTES) {
     const cli = q('SELECT id, clave FROM clientes WHERE nombre = ?').get(c.nombre); if (!cli) continue;
@@ -69,7 +71,7 @@ function sembrar() {
   const ahora = Date.now();
   transaccion(() => {
     for (const c of CLIENTES) {
-      const cid = flota.crearCliente(c.nombre, c.notas);
+      const cid = flota.crearCliente(c.nombre, c.notas, c.grupo || null);
       for (const e of c.equipos) {
         const p = PERFILES[e.perfil];
         const creado = ahora - 32 * 864e5;

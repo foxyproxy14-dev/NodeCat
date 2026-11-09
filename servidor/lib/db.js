@@ -23,6 +23,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS sesiones_web (
     id TEXT PRIMARY KEY, usuario TEXT NOT NULL COLLATE NOCASE, csrf TEXT NOT NULL, creada INTEGER, ultimo INTEGER
   );
+  CREATE TABLE IF NOT EXISTS grupos (
+    id INTEGER PRIMARY KEY, nombre TEXT NOT NULL UNIQUE COLLATE NOCASE, creado INTEGER
+  );
   CREATE TABLE IF NOT EXISTS clientes (
     id INTEGER PRIMARY KEY,
     nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -71,6 +74,8 @@ db.exec(`
 // Cambios de esquema de versiones anteriores
 const columnas = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
 if (!columnas('equipos').includes('config')) db.exec('ALTER TABLE equipos ADD COLUMN config TEXT');
+if (!columnas('clientes').includes('grupo_id')) db.exec('ALTER TABLE clientes ADD COLUMN grupo_id INTEGER REFERENCES grupos(id) ON DELETE SET NULL');
+if (!columnas('usuarios').includes('grupos')) db.exec('ALTER TABLE usuarios ADD COLUMN grupos TEXT');
 
 const cache = new Map();
 function q(sql) {

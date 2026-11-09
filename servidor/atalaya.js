@@ -101,7 +101,7 @@ const soloAdmin = { admin: true };
 ruta('GET', '/api/sesion', { publica: true }, ({ sesion }) => {
   if (!auth.hayCuentas()) return { configurar: true };
   if (!sesion) throw Object.assign(error(401, 'Inicia sesión.'), { login: true });
-  return { usuario: sesion.usuario, rol: sesion.rol, csrf: sesion.csrf, clientes: sesion.clientes, version: config.VERSION, demo: config.DEMO };
+  return { usuario: sesion.usuario, rol: sesion.rol, csrf: sesion.csrf, clientes: sesion.clientes, grupos: sesion.grupos, version: config.VERSION, demo: config.DEMO };
 });
 ruta('POST', '/api/configurar', { publica: true }, ({ cuerpo, res, req }) => {
   auth.crearPrimera(cuerpo.codigo, String(cuerpo.usuario || '').trim(), cuerpo.clave);
@@ -164,10 +164,13 @@ ruta('GET', '/api/equipos/:id/rdp', {}, ({ sesion, p, res }) => {
 
 // Administración: clientes y equipos
 ruta('GET', '/api/clientes', soloAdmin, ({ req }) => ({
-  clientes: flota.clientes().map(c => ({ ...c, clave: flota.cliente(c.id).clave })), url: urlPublica(req), urlGuardada: ajustes.leer('urlAgentes', ''), agente: paquete.disponible()
+  clientes: flota.clientes().map(c => ({ ...c, clave: flota.cliente(c.id).clave })), grupos: flota.grupos(), url: urlPublica(req), urlGuardada: ajustes.leer('urlAgentes', ''), agente: paquete.disponible()
 }));
-ruta('POST', '/api/clientes', soloAdmin, ({ cuerpo, sesion }) => { const id = flota.crearCliente(cuerpo.nombre, cuerpo.notas); log(`${sesion.usuario} creó el cliente ${cuerpo.nombre}.`); return { id }; });
-ruta('PUT', '/api/clientes/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarCliente(Number(p.id), cuerpo.nombre, cuerpo.notas); return { ok: true }; });
+ruta('POST', '/api/clientes', soloAdmin, ({ cuerpo, sesion }) => { const id = flota.crearCliente(cuerpo.nombre, cuerpo.notas, cuerpo.grupo); log(`${sesion.usuario} creó el cliente ${cuerpo.nombre}.`); return { id }; });
+ruta('PUT', '/api/clientes/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarCliente(Number(p.id), cuerpo.nombre, cuerpo.notas, cuerpo.grupo); return { ok: true }; });
+ruta('GET', '/api/grupos', soloAdmin, () => ({ grupos: flota.grupos() }));
+ruta('PUT', '/api/grupos/:id', soloAdmin, ({ p, cuerpo }) => { flota.renombrarGrupo(Number(p.id), cuerpo.nombre); return { ok: true }; });
+ruta('DELETE', '/api/grupos/:id', soloAdmin, ({ p }) => { flota.borrarGrupo(Number(p.id)); return { ok: true }; });
 ruta('DELETE', '/api/clientes/:id', soloAdmin, ({ p }) => { flota.borrarCliente(Number(p.id)); return { ok: true }; });
 ruta('POST', '/api/clientes/:id/clave', soloAdmin, ({ p, sesion }) => {
   const c = flota.cliente(Number(p.id)); if (!c) throw error(404, 'Ese cliente no existe.');
@@ -191,7 +194,7 @@ ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flo
 // Cuentas
 ruta('GET', '/api/cuentas', soloAdmin, () => ({ cuentas: auth.cuentas() }));
 ruta('POST', '/api/cuentas', soloAdmin, ({ cuerpo, sesion }) => {
-  auth.guardarCuenta({ usuario: String(cuerpo.usuario || '').trim(), clave: cuerpo.clave, rol: cuerpo.rol, clientes: cuerpo.clientes }, !!cuerpo.nueva);
+  auth.guardarCuenta({ usuario: String(cuerpo.usuario || '').trim(), clave: cuerpo.clave, rol: cuerpo.rol, clientes: cuerpo.clientes, grupos: cuerpo.grupos }, !!cuerpo.nueva);
   log(`${sesion.usuario} ${cuerpo.nueva ? 'creó' : 'modificó'} la cuenta ${cuerpo.usuario}.`); return { ok: true };
 });
 ruta('DELETE', '/api/cuentas/:usuario', soloAdmin, ({ p, sesion }) => {

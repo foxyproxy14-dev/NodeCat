@@ -15,18 +15,39 @@ function validarNombre(n) {
   if (n.length > 60) throw new Error('El nombre es demasiado largo (máximo 60).');
   return n;
 }
-function crearCliente(nombre, notas = '') {
+// ---------------------------------------------------------------- grupos (una empresa con varias sedes)
+const grupos = () => q('SELECT id, nombre FROM grupos ORDER BY nombre').all();
+function grupoId(g) {
+  if (g == null || g === '') return null;
+  if (typeof g === 'number' || /^\d+$/.test(String(g))) { if (!q('SELECT id FROM grupos WHERE id = ?').get(Number(g))) throw new Error('Ese grupo no existe.'); return Number(g); }
+  // Un nombre nuevo crea el grupo
+  const nombre = String(g).trim().replace(/\s+/g, ' ').slice(0, 60);
+  if (!nombre) return null;
+  const ya = q('SELECT id FROM grupos WHERE nombre = ?').get(nombre);
+  if (ya) return ya.id;
+  return Number(q('INSERT INTO grupos (nombre, creado) VALUES (?, ?)').run(nombre, Date.now()).lastInsertRowid);
+}
+function renombrarGrupo(id, nombre) {
+  nombre = String(nombre || '').trim().replace(/\s+/g, ' ');
+  if (!nombre || nombre.length > 60) throw new Error('Escribe un nombre de hasta 60 caracteres.');
+  const otro = q('SELECT id FROM grupos WHERE nombre = ?').get(nombre);
+  if (otro && otro.id !== id) throw new Error(`Ya existe el grupo ${nombre}.`);
+  q('UPDATE grupos SET nombre = ? WHERE id = ?').run(nombre, id);
+}
+function borrarGrupo(id) { q('DELETE FROM grupos WHERE id = ?').run(id); }   // sus clientes quedan sin grupo
+
+function crearCliente(nombre, notas = '', grupo = null) {
   nombre = validarNombre(nombre);
   if (q('SELECT id FROM clientes WHERE nombre = ?').get(nombre)) throw new Error(`Ya existe el cliente ${nombre}.`);
-  const r = q('INSERT INTO clientes (nombre, notas, clave, creado) VALUES (?, ?, ?, ?)').run(nombre, String(notas || '').slice(0, 500), aleatorio(24), Date.now());
+  const r = q('INSERT INTO clientes (nombre, notas, clave, creado, grupo_id) VALUES (?, ?, ?, ?, ?)').run(nombre, String(notas || '').slice(0, 500), aleatorio(24), Date.now(), grupoId(grupo));
   log(`Cliente creado: ${nombre}.`);
   return Number(r.lastInsertRowid);
 }
-function editarCliente(id, nombre, notas) {
+function editarCliente(id, nombre, notas, grupo) {
   nombre = validarNombre(nombre);
   const otro = q('SELECT id FROM clientes WHERE nombre = ?').get(nombre);
   if (otro && otro.id !== id) throw new Error(`Ya existe el cliente ${nombre}.`);
-  q('UPDATE clientes SET nombre = ?, notas = ? WHERE id = ?').run(nombre, String(notas || '').slice(0, 500), id);
+  q('UPDATE clientes SET nombre = ?, notas = ?, grupo_id = ? WHERE id = ?').run(nombre, String(notas || '').slice(0, 500), grupoId(grupo), id);
 }
 let alBorrarEquipo = () => { };
 function borrarCliente(id) {
@@ -38,7 +59,7 @@ function borrarCliente(id) {
 }
 function nuevaClave(id) { q('UPDATE clientes SET clave = ? WHERE id = ?').run(aleatorio(24), id); }
 const cliente = id => q('SELECT * FROM clientes WHERE id = ?').get(id);
-const clientes = () => q('SELECT id, nombre, notas, creado FROM clientes ORDER BY nombre').all();
+const clientes = () => q('SELECT c.id, c.nombre, c.notas, c.creado, c.grupo_id, g.nombre AS grupo FROM clientes c LEFT JOIN grupos g ON g.id = c.grupo_id ORDER BY c.nombre').all();
 
 // ---------------------------------------------------------------- equipos
 const equipo = id => q('SELECT * FROM equipos WHERE id = ?').get(id);
@@ -290,7 +311,8 @@ function estado(sesion) {
     if (v.ultimo_contacto > actualizado) actualizado = v.ultimo_contacto;
   }
   for (const c of porCliente.values()) c.equipos.sort((a, b) => a.nombre.localeCompare(b.nombre));
-  return { ahora, actualizado, version: config.VERSION, demo: config.DEMO, clientes: [...porCliente.values()] };
+  const usados = new Set(cs.map(c => c.grupo_id).filter(Boolean));
+  return { ahora, actualizado, version: config.VERSION, demo: config.DEMO, grupos: grupos().filter(g => !sesion.clientes || usados.has(g.id)), clientes: [...porCliente.values()] };
 }
 
 const RANGOS = { '1h': HORA, '24h': DIA, '7d': 7 * DIA, '30d': 30 * DIA };
@@ -387,7 +409,7 @@ function mantenimiento() {
 
 module.exports = {
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
-  INTERVALO_AGENTE, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
+  INTERVALO_AGENTE, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
   visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, eventosRecientes, mantenimiento, evento
 };

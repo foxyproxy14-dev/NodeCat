@@ -475,7 +475,7 @@ function vistaResumen() {
   $('#tituloTablero').innerHTML = `Clientes <span>${cs.length}</span>`;
 
   const f = filtroCli.trim().toLowerCase();
-  const lista = cs.filter(c => !f || c.nombre.toLowerCase().includes(f) || c.equipos.some(e => (e.nombre + ' ' + e.alias).toLowerCase().includes(f)));
+  const lista = cs.filter(c => !f || c.nombre.toLowerCase().includes(f) || String(c.grupo || '').toLowerCase().includes(f) || c.equipos.some(e => (e.nombre + ' ' + e.alias).toLowerCase().includes(f)));
   // Primero los que tienen problemas
   const peso = c => ({ alerta: 0, aviso: 1, ok: 2 })[nivelCliente(c)] + (c.equipos.length ? 0 : 3);
   lista.sort((a, b) => peso(a) - peso(b) || a.nombre.localeCompare(b.nombre));
@@ -486,9 +486,21 @@ function vistaResumen() {
     return;
   }
   if (!lista.length) { t.innerHTML = `<div class="hoja vacio"><strong>Nada coincide con “${esc(filtroCli)}”</strong>Busca por el nombre del cliente o de uno de sus servidores.</div>`; return; }
+  // Con grupos: cada empresa con sus sedes juntas; los clientes sin grupo, al final
+  const gs = arr(estado.grupos).filter(g => lista.some(c => c.grupo_id === g.id));
+  let filasH;
+  if (!gs.length) filasH = lista.map(filaCliente).join('');
+  else {
+    const orden = [...gs.map(g => ({ g, l: lista.filter(c => c.grupo_id === g.id) })), { g: null, l: lista.filter(c => !c.grupo_id) }]
+      .filter(x => x.l.length).sort((a, b) => (a.g ? 0 : 1) - (b.g ? 0 : 1) || Math.min(...a.l.map(peso)) - Math.min(...b.l.map(peso)) || (a.g ? a.g.nombre : '').localeCompare(b.g ? b.g.nombre : ''));
+    filasH = orden.map(({ g, l }) => {
+      const nv = l.some(c => nivelCliente(c) === 'alerta') ? 'alerta' : l.some(c => nivelCliente(c) === 'aviso') ? 'aviso' : 'ok';
+      return `<div class="fila-grupo"><span class="marcador-grupo ${nv}" aria-hidden="true"></span><b>${g ? esc(g.nombre) : 'Sin grupo'}</b><span>${g ? plural(l.length, 'sede', 'sedes') : plural(l.length, 'cliente', 'clientes')}</span></div>` + l.map(filaCliente).join('');
+    }).join('');
+  }
   t.innerHTML = `<div class="tablero">
     <div class="tablero-cab cli" aria-hidden="true"><span>Cliente</span><span>Equipos</span><span>CPU más alta</span><span>Memoria más alta</span><span class="c-disco">Disco más lleno</span><span>Sesiones</span><span></span></div>
-    ${lista.map(filaCliente).join('')}</div>`;
+    ${filasH}</div>`;
   if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
 }
 
@@ -883,11 +895,12 @@ async function gestionClientes(abrirId, crear) {
       ${!datos.agente ? '<div class="msg atencion">Esta instalación no incluye el ejecutable del agente (agente/AtalayaAgente.exe), así que la descarga no funcionará.</div>' : ''}
       ${msg ? `<div class="msg bien" role="status">${esc(msg)}</div>` : ''}
       <form id="fNuevo" class="en-linea" style="margin-bottom:14px">
-        <label class="campo">Nuevo cliente<input name="nombre" maxlength="60" placeholder="Nombre de la empresa" autocomplete="off"></label>
+        <label class="campo">Nuevo cliente o sede<input name="nombre" maxlength="60" placeholder="Nombre de la empresa o la sede" autocomplete="off"></label>
+        <label class="campo">Grupo <span class="ayuda-campo">opcional</span><input name="grupo" list="listaGruposN" maxlength="60" placeholder="Sin grupo" autocomplete="off"><datalist id="listaGruposN">${arr(datos.grupos).map(g => `<option value="${esc(g.nombre)}">`).join('')}</datalist></label>
         <button class="btn prim" type="submit">Crear cliente</button>
       </form>
       ${l.length ? `<div class="lista-cli">${l.map(c => `<div>
-        <span><strong>${esc(c.nombre)}</strong><small>${plural(eqDe(c.id), 'servidor', 'servidores')}</small></span>
+        <span><strong>${esc(c.nombre)}</strong><small>${c.grupo ? `${esc(c.grupo)}, ` : ''}${plural(eqDe(c.id), 'equipo', 'equipos')}</small></span>
         <span class="acciones">
           <a class="btn prim" href="/api/clientes/${c.id}/agente?t=${encodeURIComponent(CSRF)}">Descargar agente</a>
           <button class="btn" type="button" data-ver="${c.id}" aria-expanded="${abierto === c.id}">${abierto === c.id ? 'Ocultar' : 'Más'}</button>
@@ -905,6 +918,11 @@ async function gestionClientes(abrirId, crear) {
             <button class="btn ${confirmar === 'borrar' + c.id ? 'peligro' : ''}" type="button" data-borrar="${c.id}">${confirmar === 'borrar' + c.id ? `¿Seguro? Se borra con sus ${eqDe(c.id)} servidores y su historial` : 'Borrar cliente'}</button></p>
         </div>` : ''}
       </div>`).join('')}</div>` : '<p class="tenue">Todavía no hay clientes.</p>'}
+      ${arr(datos.grupos).length ? `<details class="clave separado"><summary>Grupos (${datos.grupos.length})</summary>
+        <p>Un grupo junta las sedes de una misma empresa. Al dar acceso a una cuenta sobre un grupo, ve todas sus sedes, también las que agregues después.</p>
+        <div class="lista-cli">${datos.grupos.map(g => `<div><span><strong>${esc(g.nombre)}</strong><small>${plural(datos.clientes.filter(c => c.grupo_id === g.id).length, 'sede', 'sedes')}</small></span>
+          <span class="acciones"><button class="btn" type="button" data-renombrar-grupo="${g.id}">Cambiar nombre</button><button class="btn ${confirmar === 'grupo' + g.id ? 'peligro' : ''}" type="button" data-borrar-grupo="${g.id}">${confirmar === 'grupo' + g.id ? '¿Seguro? Las sedes quedan sin grupo' : 'Borrar grupo'}</button></span></div>`).join('')}</div>
+      </details>` : ''}
       <details class="clave separado" ${datos.urlGuardada ? '' : ''}><summary>Dirección de Atalaya para los agentes</summary>
         <p>Los agentes envían sus datos a esta dirección. Debe ser accesible desde los servidores de tus clientes, idealmente con HTTPS (por ejemplo, con Cloudflare Tunnel). Si la dejas vacía se usa la dirección con la que abriste esta página.</p>
         <form id="fUrl" class="en-linea"><label class="campo"><span class="sr">Dirección</span><input name="url" placeholder="${esc(datos.url)}" value="${esc(datos.urlGuardada)}" spellcheck="false"></label><button class="btn" type="submit" style="margin-top:0">Guardar</button></form>
@@ -916,7 +934,7 @@ async function gestionClientes(abrirId, crear) {
     if (crear) { fn.nombre.focus(); crear = false; }
     fn.onsubmit = async ev => {
       ev.preventDefault();
-      try { const r = await enviar('/api/clientes', 'POST', { nombre: fn.nombre.value }); await recargar(); abierto = r.id; msg = `Cliente ${fn.nombre.value.trim()} creado. Descarga su agente e instálalo en sus servidores.`; confirmar = null; pintar(); cargar(true); }
+      try { const r = await enviar('/api/clientes', 'POST', { nombre: fn.nombre.value, grupo: fn.grupo.value.trim() || null }); await recargar(); abierto = r.id; msg = `Cliente ${fn.nombre.value.trim()} creado. Descarga su agente e instálalo en sus servidores.`; confirmar = null; pintar(); cargar(true); }
       catch (x) { if (!x.login) err(x.message); }
     };
     dlg.querySelector('#fUrl').onsubmit = async ev => {
@@ -924,6 +942,16 @@ async function gestionClientes(abrirId, crear) {
       try { await enviar('/api/ajustes/url', 'PUT', { url: ev.currentTarget.url.value }); await recargar(); msg = 'Dirección guardada. Las próximas descargas del agente ya la incluyen.'; pintar(); }
       catch (x) { if (!x.login) err(x.message); }
     };
+    dlg.querySelectorAll('[data-renombrar-grupo]').forEach(b => b.onclick = async () => {
+      const g = datos.grupos.find(x => x.id === +b.dataset.renombrarGrupo);
+      const nombre = prompt('Nuevo nombre del grupo', g.nombre); if (!nombre || nombre.trim() === g.nombre) return;
+      try { await enviar(`/api/grupos/${g.id}`, 'PUT', { nombre }); await recargar(); msg = 'Grupo renombrado.'; pintar(); cargar(true); } catch (x) { if (!x.login) err(x.message); }
+    });
+    dlg.querySelectorAll('[data-borrar-grupo]').forEach(b => b.onclick = async () => {
+      const id = +b.dataset.borrarGrupo;
+      if (confirmar !== 'grupo' + id) { confirmar = 'grupo' + id; pintar(); return; }
+      try { await enviar(`/api/grupos/${id}`, 'DELETE'); await recargar(); confirmar = null; msg = 'Grupo borrado. Sus sedes siguen ahí, sin grupo.'; pintar(); cargar(true); } catch (x) { if (!x.login) err(x.message); }
+    });
     dlg.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => { const id = +b.dataset.ver; abierto = abierto === id ? null : id; confirmar = null; msg = ''; pintar(); });
     dlg.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => editarCliente(+b.dataset.editar, () => gestionClientes(+b.dataset.editar)));
     dlg.querySelectorAll('[data-clave]').forEach(b => b.onclick = async () => {
@@ -943,11 +971,13 @@ async function gestionClientes(abrirId, crear) {
 }
 
 async function editarCliente(id, despues) {
-  let c;
-  try { c = (await api('/api/clientes')).clientes.find(x => x.id === id); } catch (x) { if (!x.login) aviso(x.message, true); return; }
+  let c, gs = [];
+  try { const d = await api('/api/clientes'); c = d.clientes.find(x => x.id === id); gs = arr(d.grupos); } catch (x) { if (!x.login) aviso(x.message, true); return; }
   if (!c) return;
   const dlg = libre(`<form><h3>Editar cliente</h3>
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(c.nombre)}" required></label>
+    <label class="campo">Grupo o empresa <span class="ayuda-campo">Opcional. Para juntar las sedes de una misma empresa. Escribe uno nuevo o elige uno existente.</span>
+      <input name="grupo" list="listaGrupos" maxlength="60" value="${esc(c.grupo || '')}" placeholder="Sin grupo" autocomplete="off"><datalist id="listaGrupos">${gs.map(g => `<option value="${esc(g.nombre)}">`).join('')}</datalist></label>
     <label class="campo">Notas<textarea name="notas" maxlength="500" placeholder="Contacto, horario, contrato…">${esc(c.notas)}</textarea><span class="ayuda-campo">Las ve todo el que tenga acceso a este cliente.</span></label>
     <div class="msg error" role="alert" hidden></div>
     <div class="pie"><button class="btn" type="button" data-borrar style="margin-right:auto">Borrar cliente</button><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
@@ -963,7 +993,7 @@ async function editarCliente(id, despues) {
   };
   f.onsubmit = async ev => {
     ev.preventDefault();
-    try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value }); dlg.close(); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
+    try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value, grupo: f.grupo.value.trim() || null }); dlg.close(); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
     catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
@@ -1026,10 +1056,11 @@ async function cuentas() {
   const recargar = async () => { lista = arr((await api('/api/cuentas')).cuentas); };
   try { await recargar(); } catch (x) { if (!x.login) aviso(x.message, true); return; }
   let editando = null, borrando = null;
-  const alcance = c => !c.clientes ? 'Todos' : c.clientes.map(id => (cliente(id) || { nombre: '?' }).nombre).join(', ');
+  const gruposTodos = arr((await api('/api/clientes').catch(() => ({}))).grupos);
+  const alcance = c => !c.clientes && !c.grupos ? 'Todos' : [...arr(c.grupos).map(id => ((gruposTodos.find(g => g.id === id) || { nombre: '?' }).nombre) + ' (grupo)'), ...arr(c.clientes).map(id => (cliente(id) || { nombre: '?' }).nombre)].join(', ') || 'Ninguno';
   const pintar = (msg, bien) => {
     const yo = c => c.usuario.toLowerCase() === SESION.usuario.toLowerCase();
-    const sel = editando && editando.clientes ? editando.clientes : [];
+    const sel = editando && editando.clientes ? editando.clientes : [], selG = editando && editando.grupos ? editando.grupos : [];
     const dlg = libre(`<h3>Cuentas de acceso</h3>
       <p>Los administradores gestionan clientes, cuentas y notificaciones. Las cuentas de solo lectura únicamente miran. Puedes limitar cualquier cuenta a algunos clientes, por ejemplo para que un cliente vea solo lo suyo.</p>
       <div class="tabla-dlg desliza"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Clientes</th><th>Último acceso</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>
@@ -1044,14 +1075,17 @@ async function cuentas() {
           <label class="campo">Rol<select name="rol"><option value="lector" ${!editando || editando.rol === 'lector' ? 'selected' : ''}>Solo lectura</option><option value="admin" ${editando && editando.rol === 'admin' ? 'selected' : ''}>Administrador</option></select></label>
         </div>
         <div class="campo" style="margin-top:6px">Clientes que puede ver
-          <div class="marcas-cli"><label><input type="radio" name="alcance" value="todos" ${!sel.length ? 'checked' : ''}> Todos</label><label><input type="radio" name="alcance" value="algunos" ${sel.length ? 'checked' : ''}> Solo estos:</label>
-          ${estado.clientes.map(c => `<label><input type="checkbox" name="cli" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
+          <div class="marcas-cli"><label><input type="radio" name="alcance" value="todos" ${!sel.length && !selG.length ? 'checked' : ''}> Todos</label><label><input type="radio" name="alcance" value="algunos" ${sel.length || selG.length ? 'checked' : ''}> Solo estos:</label></div>
+          ${gruposTodos.length ? `<span class="ayuda-campo" style="margin-top:6px">Grupos: ve todas sus sedes, también las que agregues después.</span>
+          <div class="marcas-cli">${gruposTodos.map(g => `<label class="grupo"><input type="checkbox" name="grp" value="${g.id}" ${selG.includes(g.id) ? 'checked' : ''}> ${esc(g.nombre)}</label>`).join('')}</div>
+          <span class="ayuda-campo" style="margin-top:6px">Clientes sueltos:</span>` : ''}
+          <div class="marcas-cli">${estado.clientes.map(c => `<label><input type="checkbox" name="cli" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
         </div>
         ${msg ? (bien ? `<div class="msg bien" role="status" style="margin-top:12px">${esc(msg)}</div>` : `<div style="margin-top:12px">${gatoError(esc(msg))}</div>`) : ''}
         <div class="pie">${editando ? '<button class="btn" type="button" data-nuevo>Cancelar edición</button>' : ''}<button class="btn" type="button" data-cerrar>Cerrar</button><button class="btn prim" type="submit">${editando ? 'Guardar cambios' : 'Crear cuenta'}</button></div>
       </form>`, true);
     const f = dlg.querySelector('form');
-    f.querySelectorAll('[name=cli]').forEach(x => x.onchange = () => { if (x.checked) f.alcance.value = 'algunos'; });
+    f.querySelectorAll('[name=cli], [name=grp]').forEach(x => x.onchange = () => { if (x.checked) f.alcance.value = 'algunos'; });
     dlg.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => { editando = lista.find(c => c.usuario === b.dataset.editar); borrando = null; pintar(); });
     const nv = dlg.querySelector('[data-nuevo]'); if (nv) nv.onclick = () => { editando = null; pintar(); };
     dlg.querySelectorAll('[data-borrar]').forEach(b => b.onclick = async () => {
@@ -1062,9 +1096,11 @@ async function cuentas() {
     });
     f.onsubmit = async ev => {
       ev.preventDefault();
-      const clientes = f.alcance.value === 'algunos' ? [...f.querySelectorAll('[name=cli]:checked')].map(x => +x.value) : null;
-      if (clientes && !clientes.length) { pintar('Marca al menos un cliente, o elige “Todos”.'); return; }
-      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes, nueva: !editando };
+      const algunos = f.alcance.value === 'algunos';
+      const clientes = algunos ? [...f.querySelectorAll('[name=cli]:checked')].map(x => +x.value) : null;
+      const grupos = algunos ? [...f.querySelectorAll('[name=grp]:checked')].map(x => +x.value) : null;
+      if (algunos && !clientes.length && !grupos.length) { pintar('Marca al menos un grupo o un cliente, o elige “Todos”.'); return; }
+      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes: clientes && clientes.length ? clientes : null, grupos: grupos && grupos.length ? grupos : null, nueva: !editando };
       try {
         await enviar('/api/cuentas', 'POST', d); await recargar();
         const m = editando ? `Cuenta de ${d.usuario} actualizada.` : `Cuenta de ${d.usuario} creada.`;
