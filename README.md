@@ -49,6 +49,19 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
 
 ## Actualizar
 
+```bash
+git pull && docker compose up -d --build
+```
+
+Tus ajustes propios (por ejemplo `CONFIAR_PROXY`) ponlos en un archivo `docker-compose.override.yml` junto a `docker-compose.yml`. Docker lo combina solo y `git pull` no lo toca, así que actualizar nunca choca con tus cambios:
+
+```yaml
+services:
+  nodecat:
+    environment:
+      CONFIAR_PROXY: "1"
+```
+
 Los datos y los agentes instalados se conservan. Si vienes de una versión anterior a la 0.4, actualiza así la primera vez:
 
 ```bash
