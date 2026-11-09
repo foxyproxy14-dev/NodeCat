@@ -771,3 +771,7 @@ body.iniciando .inicio-carga { display: grid; }
 #barraGato.salta { animation: g-salta .6s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes g-bocadillo { from { opacity: 0; transform: scale(.6); } }
 @keyframes g-salta { 0% { transform: translateY(0); } 35% { transform: translateY(-7px) scale(1.12); } 100% { transform: translateY(0); } }
+/* Los avisos de "cargando" dentro de la página solo aparecen si la carga tarda más de 0,7 s */
+.gato-carga { opacity: 0; animation: g-tarde .3s ease .7s forwards; }
+@keyframes g-tarde { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gato-carga { opacity: 1; } }

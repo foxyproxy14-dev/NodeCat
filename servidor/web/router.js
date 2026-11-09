@@ -79,11 +79,11 @@ function vistaRouter(id) {
   $('#rtVivo').classList.toggle('pausa', !vivo);
   $('#rtVivo').lastChild.textContent = vivo ? 'En vivo' : 'Sin conexión';
   let av = '';
-  if (e.errorConexion && (e.estado === 'caido' || e.estado === 'pendiente')) av = `<div class="msg error"><b>${e.estado === 'pendiente' ? 'Todavía no se pudo conectar.' : 'No responde.'}</b> ${esc(e.errorConexion)}</div>`;
-  else if (e.estado === 'caido') av = `<div class="msg error"><b>No responde.</b> La última respuesta fue ${cuando(e.ultimo)}. Los datos de abajo son los últimos que llegaron.</div>`;
+  if (e.errorConexion && (e.estado === 'caido' || e.estado === 'pendiente')) av = gatoError(`<b>${e.estado === 'pendiente' ? 'Todavía no pude conectar.' : 'No responde.'}</b> ${esc(e.errorConexion)}`);
+  else if (e.estado === 'caido') av = gatoError(`<b>No responde.</b> La última respuesta fue ${cuando(e.ultimo)}. Los datos de abajo son los últimos que llegaron.`);
   else if (e.estado === 'pendiente') av = '<div class="msg atencion">Conectando con el router…</div>';
   if (vivo && red.wan && !red.wan.activa) av += `<div class="msg error"><b>El enlace WAN (${esc(red.wan.interfaz)}) está caído.</b> El router sigue respondiendo, quizá por una conexión de respaldo.</div>`;
-  $('#rtAvisos').innerHTML = av;
+  const ra = $('#rtAvisos'); if (ra.dataset.v !== av) { ra.innerHTML = av; ra.dataset.v = av; }
   const n = red.interfaces ? red.interfaces.filter(i => !i.deshabilitada).length : 0;
   $('#rtPestanas').innerHTML = PESTANAS_RT.map(([k, t]) => {
     const cnt = k === 'interfaces' ? n : k === 'dhcp' ? red.dhcp : k === 'vpn' ? red.vpnTotal : null;
@@ -388,7 +388,10 @@ async function dialogoRouter(clienteId, id) {
     <div class="msg" role="status" hidden></div>
     <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de Atalaya</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar router'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
-  const msg = (t, tipo) => { m.className = 'msg ' + (tipo || 'error'); m.textContent = t; m.hidden = !t; };
+  const msg = (t, tipo) => {
+    if (!t || tipo !== 'bien') return gatoDice(m, t);
+    m.className = 'msg bien'; m.textContent = t; m.hidden = false; caraDeGato('reparando', 1);
+  };
   const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, id };
   if (!demo) f.ssl.onchange = () => { if (f.ssl.checked && +f.puerto.value === 8728) f.puerto.value = 8729; if (!f.ssl.checked && +f.puerto.value === 8729) f.puerto.value = 8728; };
   f.nombre.focus();

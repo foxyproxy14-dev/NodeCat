@@ -178,6 +178,22 @@ async function cargar(forzar) {
   }
 }
 
+// Errores dentro de las ventanas: los dice el gato, y el de la barra pone cara de vergüenza
+function gatoDice(el, texto) {
+  if (!el) return;
+  el.className = '';
+  el.innerHTML = texto ? gatoError(esc(texto)) : '';
+  el.hidden = !texto;
+  if (texto) caraDeGato('avergonzado', 5000);
+}
+function caraDeGato(pose, ms) {
+  const g = $('#barraGato'); if (!g) return;
+  g.innerHTML = gatoSVG(pose); g.classList.remove('salta'); void g.offsetWidth; g.classList.add('salta');
+  clearTimeout(caraGato);
+  caraGato = setTimeout(() => { g.innerHTML = gatoSVG('reparando'); }, ms);
+}
+
+let caraGato = null;
 /* ---------------- El gato avisa de los cambios ---------------- */
 let previos = null;
 function vigilarCambios(e) {
@@ -197,7 +213,6 @@ function vigilarCambios(e) {
   previos = ahora;
 }
 // El gato de la barra lo cuenta en un bocadillo y pone la cara de la noticia
-let caraGato = null;
 function avisoGato(pose, titulo, texto, idEquipo, malo) {
   const cont = $('#bocadillos'), g = $('#barraGato');
   const r = g.getBoundingClientRect();
@@ -211,10 +226,7 @@ function avisoGato(pose, titulo, texto, idEquipo, malo) {
   d.onclick = ev => { if (!ev.target.closest('.cerrar-aviso') && idEquipo) ir('#/e/' + idEquipo); quitar(); };
   cont.prepend(d);
   while (cont.children.length > 4) cont.lastChild.remove();
-  // La cara del gato de la barra cambia unos segundos
-  g.innerHTML = gatoSVG(pose); g.classList.remove('salta'); void g.offsetWidth; g.classList.add('salta');
-  clearTimeout(caraGato);
-  caraGato = setTimeout(() => { g.innerHTML = gatoSVG('reparando'); }, malo ? 12000 : 6000);
+  caraDeGato(pose, malo ? 12000 : 6000);
   const quitar = () => { d.classList.add('fuera'); setTimeout(() => d.remove(), 350); };
   setTimeout(quitar, malo ? 15000 : 8000);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -664,11 +676,11 @@ function vistaEquipo(id) {
   $('#srvMeta').textContent = meta.join(', ') + '.';
 
   let av = '';
-  if (s.estado === 'caido') av += `<div class="msg error"><b>No responde.</b> El agente no envía datos desde ${cuando(s.ultimo)}. Puede que el servidor esté apagado, sin conexión a Internet o que el servicio “Atalaya Agente” esté detenido. Los datos de abajo son los últimos que llegaron.</div>`;
+  if (s.estado === 'caido') av += gatoError(`<b>No responde.</b> El agente no envía datos desde ${cuando(s.ultimo)}. Puede que el servidor esté apagado, sin conexión a Internet o que el servicio “Atalaya Agente” esté detenido. Los datos de abajo son los últimos que llegaron.`);
   if (s.estado === 'pendiente') av += `<div class="msg atencion">Este servidor está en la lista pero su agente todavía no ha enviado ningún informe.</div>`;
   if (s.estado === 'sinMetricas') av += `<div class="msg atencion"><b>El agente no puede leer la CPU, la memoria ni los discos.</b> ${esc(s.errorMetricas || '')}</div>`;
   if (s.errorSesiones) av += `<div class="msg atencion"><b>El agente no puede leer las sesiones.</b> ${esc(s.errorSesiones)}</div>`;
-  $('#srvAvisos').innerHTML = av;
+  const sa = $('#srvAvisos'); if (sa.dataset.v !== av) { sa.innerHTML = av; sa.dataset.v = av; }
 
   $('#ficha').innerHTML = [
     ['Cliente', esc(s.clienteNombre)], s.alias ? ['Nombre del equipo', esc(s.nombre)] : null,
@@ -841,7 +853,7 @@ function aviso(texto, error) {
   const d = document.createElement('div');
   d.className = 'toast' + (error ? ' error con-gato' : '');
   d.setAttribute('role', error ? 'alert' : 'status');
-  if (error) { d.innerHTML = gatoSVG('avergonzado'); d.append(texto); } else d.textContent = texto;
+  if (error) { d.innerHTML = gatoSVG('avergonzado'); d.append(texto); caraDeGato('avergonzado', 5000); } else d.textContent = texto;
   $('#avisos').appendChild(d);
   setTimeout(() => d.remove(), error ? 9000 : 4500);
 }
@@ -947,12 +959,12 @@ async function editarCliente(id, despues) {
   bb.onclick = async () => {
     if (!confirmar) { confirmar = true; bb.className = 'btn peligro'; bb.textContent = n ? `¿Seguro? Se borra con sus ${n} equipos y su historial` : '¿Seguro? Borrar cliente'; return; }
     try { await enviar(`/api/clientes/${id}`, 'DELETE'); dlg.close(); aviso(`Cliente ${c.nombre} borrado.`); location.hash = '#/'; await cargar(true); }
-    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+    catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
   f.onsubmit = async ev => {
     ev.preventDefault();
     try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value }); dlg.close(); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
-    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+    catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
 
@@ -969,13 +981,13 @@ function editarEquipo(id) {
   f.onsubmit = async ev => {
     ev.preventDefault();
     try { await enviar(`/api/equipos/${id}`, 'PUT', { alias: f.alias.value, cliente: +f.cliente.value }); dlg.close(); aviso('Cambios guardados.'); montada = null; await cargar(true); }
-    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+    catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
   const bq = f.querySelector('[data-quitar]');
   bq.onclick = async () => {
     if (!confirmar) { confirmar = true; bq.className = 'btn peligro'; bq.textContent = '¿Seguro? Se borra su historial'; return; }
     try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso(`${s.nombre} quitado. Si su agente sigue instalado, volverá a aparecer; desinstálalo en el servidor.`); location.hash = '#/c/' + s.cliente; await cargar(true); }
-    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+    catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
 
@@ -1003,9 +1015,9 @@ function cambiarClave() {
   f.actual.focus();
   f.onsubmit = async ev => {
     ev.preventDefault();
-    if (f.nueva.value !== f.repite.value) { e.textContent = 'Las contraseñas nuevas no coinciden.'; e.hidden = false; return; }
+    if (f.nueva.value !== f.repite.value) { gatoDice(e, 'Las contraseñas nuevas no coinciden.'); return; }
     try { await enviar('/api/clave', 'POST', { actual: f.actual.value, nueva: f.nueva.value }); dlg.close(); aviso('Contraseña cambiada.'); }
-    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+    catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
 
@@ -1035,7 +1047,7 @@ async function cuentas() {
           <div class="marcas-cli"><label><input type="radio" name="alcance" value="todos" ${!sel.length ? 'checked' : ''}> Todos</label><label><input type="radio" name="alcance" value="algunos" ${sel.length ? 'checked' : ''}> Solo estos:</label>
           ${estado.clientes.map(c => `<label><input type="checkbox" name="cli" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
         </div>
-        ${msg ? `<div class="msg ${bien ? 'bien' : 'error'}" role="status" style="margin-top:12px">${esc(msg)}</div>` : ''}
+        ${msg ? (bien ? `<div class="msg bien" role="status" style="margin-top:12px">${esc(msg)}</div>` : `<div style="margin-top:12px">${gatoError(esc(msg))}</div>`) : ''}
         <div class="pie">${editando ? '<button class="btn" type="button" data-nuevo>Cancelar edición</button>' : ''}<button class="btn" type="button" data-cerrar>Cerrar</button><button class="btn prim" type="submit">${editando ? 'Guardar cambios' : 'Crear cuenta'}</button></div>
       </form>`, true);
     const f = dlg.querySelector('form');
@@ -1105,7 +1117,7 @@ async function notificaciones() {
     <div class="msg error" role="alert" hidden style="margin-top:16px"></div>
     <div class="pie"><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`, true);
   const f = dlg.querySelector('form'), e = f.querySelector('.msg.error');
-  const error = m => { e.textContent = m; e.hidden = !m; if (m) e.scrollIntoView({ block: 'nearest' }); };
+  const error = m => { gatoDice(e, m); if (m) e.scrollIntoView({ block: 'nearest' }); };
   f.querySelector('[data-buscar]').onclick = ev => ocupado(ev.currentTarget, 'Buscando…', async () => {
     error('');
     try {
