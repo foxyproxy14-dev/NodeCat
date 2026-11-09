@@ -126,12 +126,14 @@ function equipoVisible(sesion, id) {
   return e;
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
+ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.sucesosEquipo(e.id, Math.min(400, Number(url.searchParams.get('dias')) || 90)); });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
 // Routers MikroTik
 function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik') throw error(404, 'Ese equipo no es un router.'); return e; }
 ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = mikrotik.vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
 ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await mikrotik.seccion(e.id, p.nombre) }; });
+ruta('POST', '/api/routers/:id/herramienta', {}, async ({ sesion, p, cuerpo }) => { const e = routerVisible(sesion, p.id); return { resultado: await mikrotik.herramienta(e.id, cuerpo.tipo, cuerpo.destino) }; });
 ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => mikrotik.probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
 ruta('POST', '/api/clientes/:id/routers', soloAdmin, ({ p, cuerpo, sesion }) => {
   const id = mikrotik.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el router ${cuerpo.nombre}.`); return { id };

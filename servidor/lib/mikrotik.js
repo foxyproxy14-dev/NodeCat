@@ -326,17 +326,108 @@ const SECCIONES = {
     return l.slice(-150).reverse().map(x => ({ hora: x.time || '', temas: x.topics || '', mensaje: x.message || '' }));
   }
 };
+// Secciones de solo lectura que se muestran tal cual: [clave, comando, campos, opciones]
+// Si un comando no existe en esa versión de RouterOS, esa tabla queda vacía (no es un error).
+const P = (...c) => c;
+const GENERICAS = {
+  ip: [['direcciones', '/ip/address/print', P('address', 'network', 'interface', 'disabled', 'dynamic', 'invalid', 'comment')]],
+  rutas: [['rutas', '/ip/route/print', P('dst-address', 'gateway', 'immediate-gw', 'gateway-status', 'distance', 'active', 'dynamic', 'static', 'connect', 'disabled', 'routing-table', 'routing-mark', 'comment')]],
+  arp: [['arp', '/ip/arp/print', P('address', 'mac-address', 'interface', 'dynamic', 'complete', 'status', 'invalid', 'comment')]],
+  dns: [['dns', '/ip/dns/print', null], ['estaticos', '/ip/dns/static/print', P('name', 'address', 'type', 'cname', 'ttl', 'disabled', 'comment')]],
+  bridges: [['bridges', '/interface/bridge/print', P('name', 'protocol-mode', 'vlan-filtering', 'running', 'disabled', 'comment')],
+    ['puertos', '/interface/bridge/port/print', P('interface', 'bridge', 'pvid', 'status', 'inactive', 'disabled', 'hw', 'comment')],
+    ['vlans', '/interface/vlan/print', P('name', 'vlan-id', 'interface', 'running', 'disabled', 'comment')]],
+  vecinos: [['vecinos', '/ip/neighbor/print', P('identity', 'address', 'mac-address', 'interface', 'platform', 'board', 'version', 'uptime')]],
+  redeswifi: [['wifi', '/interface/wifi/print', P('name', 'configuration.ssid', 'configuration.mode', 'channel.band', 'channel.frequency', 'channel.width', 'security.authentication-types', 'running', 'disabled', 'master-interface', 'comment')],
+    ['wireless', '/interface/wireless/print', P('name', 'ssid', 'mode', 'band', 'frequency', 'channel-width', 'security-profile', 'running', 'disabled', 'master-interface', 'comment')]],
+  capsman: [['caps7', '/interface/wifi/capsman/remote-cap/print', P('name', 'identity', 'address', 'board', 'version', 'state')],
+    ['caps6', '/caps-man/remote-cap/print', P('name', 'identity', 'address', 'board', 'version', 'state')]],
+  dhcpserv: [['servidores', '/ip/dhcp-server/print', P('name', 'interface', 'address-pool', 'lease-time', 'disabled', 'invalid')],
+    ['redes', '/ip/dhcp-server/network/print', P('address', 'gateway', 'dns-server', 'domain', 'comment')]],
+  dhcpcli: [['clientes', '/ip/dhcp-client/print', P('interface', 'status', 'address', 'gateway', 'primary-dns', 'secondary-dns', 'expires-after', 'disabled', 'comment')]],
+  pools: [['pools', '/ip/pool/print', P('name', 'ranges', 'next-pool', 'comment')], ['usados', '/ip/pool/used/print', P('pool', 'address', 'owner', 'info')]],
+  wgif: [['interfaces', '/interface/wireguard/print', P('name', 'listen-port', 'mtu', 'running', 'disabled', 'comment')]],
+  tuneles: [['eoip', '/interface/eoip/print', P('name', 'local-address', 'remote-address', 'tunnel-id', 'running', 'disabled', 'comment')],
+    ['gre', '/interface/gre/print', P('name', 'local-address', 'remote-address', 'running', 'disabled', 'comment')],
+    ['ipip', '/interface/ipip/print', P('name', 'local-address', 'remote-address', 'running', 'disabled', 'comment')],
+    ['l2tp', '/interface/l2tp-client/print', P('name', 'connect-to', 'user', 'running', 'disabled', 'comment')],
+    ['sstp', '/interface/sstp-client/print', P('name', 'connect-to', 'user', 'running', 'disabled', 'comment')],
+    ['ovpn', '/interface/ovpn-client/print', P('name', 'connect-to', 'user', 'running', 'disabled', 'comment')]],
+  colas: [['simples', '/queue/simple/print', P('name', 'target', 'max-limit', 'limit-at', 'rate', 'bytes', 'packets', 'disabled', 'dynamic', 'comment'), ['=stats=']],
+    ['arbol', '/queue/tree/print', P('name', 'parent', 'packet-mark', 'max-limit', 'limit-at', 'rate', 'bytes', 'packets', 'disabled', 'comment'), ['=stats=']]],
+  nat: [['nat', '/ip/firewall/nat/print', P('chain', 'action', 'protocol', 'src-address', 'dst-address', 'dst-port', 'in-interface', 'in-interface-list', 'out-interface', 'out-interface-list', 'to-addresses', 'to-ports', 'bytes', 'packets', 'disabled', 'comment'), ['=stats=']]],
+  mangle: [['mangle', '/ip/firewall/mangle/print', P('chain', 'action', 'protocol', 'src-address', 'dst-address', 'dst-port', 'in-interface', 'new-routing-mark', 'new-connection-mark', 'new-packet-mark', 'passthrough', 'bytes', 'packets', 'disabled', 'comment'), ['=stats=']]],
+  listas: [['listas', '/ip/firewall/address-list/print', P('list', 'address', 'timeout', 'dynamic', 'disabled', 'creation-time', 'comment')]],
+  paquetes: [['paquetes', '/system/package/print', P('name', 'version', 'build-time', 'disabled', 'scheduled')],
+    ['placa', '/system/routerboard/print', P('model', 'serial-number', 'firmware-type', 'current-firmware', 'upgrade-firmware', 'factory-firmware')],
+    ['actualizacion', '/system/package/update/print', P('channel', 'installed-version', 'latest-version', 'status')]],
+  servicios: [['servicios', '/ip/service/print', P('name', 'port', 'address', 'disabled', 'certificate', 'tls-version')]],
+  scripts: [['scripts', '/system/script/print', P('name', 'owner', 'last-started', 'run-count', 'comment', 'source')]],
+  tareas: [['tareas', '/system/scheduler/print', P('name', 'start-date', 'start-time', 'interval', 'on-event', 'next-run', 'run-count', 'owner', 'disabled', 'comment')]],
+  reloj: [['reloj', '/system/clock/print', null], ['ntp', '/system/ntp/client/print', null], ['servidoresntp', '/system/ntp/client/servers/print', P('address', 'reachable', 'stratum', 'offset', 'disabled')]],
+  logging: [['reglas', '/system/logging/print', P('topics', 'action', 'prefix', 'disabled')], ['destinos', '/system/logging/action/print', P('name', 'target', 'remote', 'remote-port', 'disk-file-name')]],
+  snmp: [['snmp', '/snmp/print', null], ['comunidades', '/snmp/community/print', P('name', 'addresses', 'security', 'read-access', 'write-access', 'disabled')]],
+  archivos: [['archivos', '/file/print', P('name', 'type', 'size', 'creation-time', 'last-modified')]],
+  contenedores: [['contenedores', '/container/print', P('name', 'tag', 'os', 'arch', 'status', 'interface', 'root-dir', 'start-on-boot', 'comment')]],
+  usuarios: [['usuarios', '/user/print', P('name', 'group', 'address', 'last-logged-in', 'disabled', 'comment')], ['activos', '/user/active/print', P('name', 'address', 'via', 'when', 'group')]]
+};
+const MAX_FILAS = 3000;
+
+// Conexiones: se agrupan por destino y por origen (los "top destinos")
+async function conexiones(con) {
+  const l = await con.imprimir('/ip/firewall/connection/print', { proplist: ['src-address', 'dst-address', 'protocol', 'orig-bytes', 'repl-bytes', 'tcp-state', 'connection-type'], tiempo: 25000 });
+  const ip = a => String(a || '').replace(/:\d+$/, '');
+  const sumar = (m, k, b) => { const x = m.get(k) || { ip: k, conexiones: 0, bytes: 0 }; x.conexiones++; x.bytes += b; m.set(k, x); };
+  const dst = new Map(), src = new Map(), prot = {};
+  for (const c of l) {
+    const b = (Number(c['orig-bytes']) || 0) + (Number(c['repl-bytes']) || 0);
+    sumar(dst, ip(c['dst-address']), b); sumar(src, ip(c['src-address']), b);
+    prot[c.protocol || '?'] = (prot[c.protocol || '?'] || 0) + 1;
+  }
+  const top = m => [...m.values()].sort((a, b) => b.conexiones - a.conexiones).slice(0, 40);
+  return { total: l.length, destinos: top(dst), origenes: top(src), protocolos: prot };
+}
+
 async function seccion(id, nombre) {
   const r = routers.get(id);
   if (!r) throw new Error('Ese router no existe.');
-  if (!SECCIONES[nombre]) throw new Error('Sección desconocida.');
+  if (!SECCIONES[nombre] && !GENERICAS[nombre] && nombre !== 'conexiones') throw new Error('Sección desconocida.');
   r.observado = Date.now();
   const c = r.cache.get(nombre);
   if (c && Date.now() - c.t < 4000) return c.datos;
   const con = await conexion(r);
-  const datos = await SECCIONES[nombre](con);
+  let datos;
+  if (SECCIONES[nombre]) datos = await SECCIONES[nombre](con);
+  else if (nombre === 'conexiones') datos = await conexiones(con);
+  else {
+    datos = {};
+    await Promise.all(GENERICAS[nombre].map(async ([clave, comando, campos, extra]) => {
+      const filas = await opcional(con.imprimir(comando, { proplist: campos || undefined, extra, tiempo: 15000 }));
+      datos[clave] = filas ? filas.slice(0, MAX_FILAS) : null;
+    }));
+  }
   r.cache.set(nombre, { t: Date.now(), datos });
   return datos;
+}
+
+async function herramienta(id, tipo, destino) {
+  const r = routers.get(id);
+  if (!r) throw new Error('Ese router no existe.');
+  destino = String(destino || '').trim();
+  if (!/^[A-Za-z0-9.\-:]{1,253}$/.test(destino)) throw new Error('Escribe una IP o un nombre válido.');
+  const con = await conexion(r);
+  if (tipo === 'ping') {
+    const { filas } = await con.ejecutar(['/ping', `=address=${destino}`, '=count=5', '=interval=0.5'], 15000);
+    return filas.map(f => ({ seq: f.seq, host: f.host, tiempo: ms(f.time), ttl: f.ttl, estado: f.status || '', enviados: f.sent, recibidos: f.received, media: ms(f['avg-rtt']), perdida: f['packet-loss'] }));
+  }
+  if (tipo === 'traceroute') {
+    const { filas } = await con.ejecutar(['/tool/traceroute', `=address=${destino}`, '=count=1', '=max-hops=20', '=timeout=1'], 45000);
+    // RouterOS repite la tabla completa en cada vuelta (.section): me quedo con la última
+    const secciones = filas.map(f => Number(f['.section'])).filter(n => !isNaN(n));
+    const ultima = secciones.length ? filas.filter(f => Number(f['.section']) === Math.max(...secciones)) : filas;
+    return ultima.map((f, i) => ({ salto: f.hop || i + 1, direccion: f.address || '', ultimo: ms(f.last), media: ms(f.avg), mejor: ms(f.best), peor: ms(f.worst), perdida: f.loss || '', estado: f.status || '' }));
+  }
+  throw new Error('Herramienta desconocida.');
 }
 
 function arrancar(sim) {
@@ -344,4 +435,4 @@ function arrancar(sim) {
   for (const { id } of q("SELECT id FROM equipos WHERE tipo = 'mikrotik'").all()) iniciar(id);
 }
 
-module.exports = { arrancar, probar, crear, editar, quitar, vivo, seccion, leerConfig, publica, wanDeRutas, leerSalud };
+module.exports = { arrancar, herramienta, probar, crear, editar, quitar, vivo, seccion, leerConfig, publica, wanDeRutas, leerSalud };

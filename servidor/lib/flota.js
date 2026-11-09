@@ -321,6 +321,25 @@ function trafico(equipoId, rango, interfaz) {
   return { desde, paso, interfaz, interfaces, puntos };
 }
 
+// Sucesos de un equipo con la duración de cada caída (la emparejo con la vuelta siguiente)
+function sucesosEquipo(equipoId, dias = 90) {
+  const desde = Date.now() - dias * DIA;
+  const ev = q('SELECT t, tipo, detalle FROM eventos WHERE equipo_id = ? AND t >= ? ORDER BY t').all(equipoId, desde);
+  const salida = [];
+  for (let i = 0; i < ev.length; i++) {
+    const e = { ...ev[i] };
+    const par = { caida: 'vuelta', 'wan-caida': 'wan-vuelta' }[e.tipo];
+    if (par) {
+      const v = ev.slice(i + 1).find(x => x.tipo === par || x.tipo === e.tipo);
+      if (v && v.tipo === par) { e.hasta = v.t; e.duracion = v.t - e.t; } else e.sigue = !v;
+    }
+    salida.push(e);
+  }
+  const caidas = salida.filter(e => e.tipo === 'caida');
+  return { desde, sucesos: salida.reverse(), resumen: { caidas: caidas.length, sinRespuesta: caidas.reduce((a, e) => a + (e.duracion || (e.sigue ? Date.now() - e.t : 0)), 0),
+    wan: salida.filter(e => e.tipo === 'wan-caida').length, reinicios: salida.filter(e => e.tipo === 'reinicio').length } };
+}
+
 function historialSesiones(sesion, { cliente: cid, equipo: eid, desde, hasta, texto }) {
   desde = Number(desde) || Date.now() - 7 * DIA; hasta = Number(hasta) || Date.now();
   const params = [hasta, desde];
@@ -370,5 +389,5 @@ module.exports = {
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
   INTERVALO_AGENTE, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, trafico, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, eventosRecientes, mantenimiento, evento
 };

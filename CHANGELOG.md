@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.3.0 (noviembre de 2026)
+
+- Página del router con menú lateral por grupos, como MikroDash, y más de 30 secciones de solo lectura: red, inalámbrico, servicios IP, túneles, tráfico, seguridad, sistema y herramientas.
+- Ping y traceroute lanzados desde el router.
+- Conexiones agrupadas por destino y por equipo.
+- Ancho de banda en vivo de todas las interfaces.
+- Caídas y sucesos de cada router, con fecha, hora y duración; se llega desde el resumen.
+- Latencia y pérdida de paquetes a Cloudflare, Google, la puerta de enlace y un destino opcional.
+- Wi‑Fi agrupado por red. El gato avisa en un bocadillo y dice los errores. Las caídas de router se detectan en segundos.
+
 ## 0.2.1 (noviembre de 2026)
 
 - Nuevo logo y mascota: el gato de Atalaya. Repara el servidor, corre al cargar, programa en las listas vacías, se impacienta si algo tarda y se avergüenza con los errores.

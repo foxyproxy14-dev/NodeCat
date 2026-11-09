@@ -21,11 +21,25 @@ const miles = v => v == null ? '—' : Number(v).toLocaleString('es');
 const hace = s => s == null ? '—' : s < 60 ? `${s} s` : durTxt(s * 1000);
 
 const rt = { id: null, red: null, pestana: 'resumen', vivo: null, sel: null, temporizador: null, seccion: {}, cargandoSec: false, filtro: '', rango: '24h', histT: {} };
-const PESTANAS_RT = [['resumen', 'Resumen'], ['interfaces', 'Interfaces'], ['dhcp', 'DHCP'], ['wifi', 'Wi‑Fi'], ['vpn', 'VPN'], ['firewall', 'Firewall'], ['registro', 'Registro']];
+// Menú lateral del router, por grupos (como MikroDash). Todo es de solo lectura.
+const MENU_RT = [
+  ['Panel', [['resumen', 'Resumen'], ['sucesos', 'Caídas y sucesos']]],
+  ['Red', [['interfaces', 'Interfaces'], ['ip', 'Direcciones IP'], ['rutas', 'Rutas'], ['arp', 'ARP'], ['dns', 'DNS'], ['bridges', 'Bridges y VLAN'], ['vecinos', 'Vecinos']]],
+  ['Inalámbrico', [['wifi', 'Clientes Wi‑Fi'], ['redeswifi', 'Redes Wi‑Fi'], ['capsman', 'CAPsMAN']]],
+  ['Servicios IP', [['dhcp', 'Concesiones DHCP'], ['dhcpserv', 'Servidores DHCP'], ['dhcpcli', 'Cliente DHCP'], ['pools', 'Pools de IP']]],
+  ['Túneles', [['vpn', 'Conexiones VPN'], ['wgif', 'WireGuard'], ['tuneles', 'Otros túneles']]],
+  ['Tráfico', [['ancho', 'Ancho de banda'], ['colas', 'Colas'], ['conexiones', 'Conexiones']]],
+  ['Seguridad', [['firewall', 'Filtro'], ['nat', 'NAT'], ['mangle', 'Mangle'], ['listas', 'Listas de direcciones']]],
+  ['Sistema', [['registro', 'Registro'], ['paquetes', 'Paquetes y firmware'], ['servicios', 'Servicios'], ['scripts', 'Scripts'], ['tareas', 'Tareas programadas'], ['reloj', 'Reloj y NTP'], ['logging', 'Destinos del registro'], ['snmp', 'SNMP'], ['archivos', 'Archivos'], ['contenedores', 'Contenedores'], ['usuarios', 'Usuarios']]],
+  ['Herramientas', [['herramientas', 'Ping y traceroute']]]
+];
+const TITULO_RT = Object.fromEntries(MENU_RT.flatMap(([, l]) => l));
+const LOCALES_RT = ['resumen', 'interfaces', 'ancho', 'herramientas', 'sucesos'];   // no piden sección al router
+let gruposAbiertos = new Set(leer('gruposRt', ['Panel', 'Red']));
 
 function montarRouter(e, c) {
-  rt.id = e.id; rt.vivo = null; rt.seccion = {}; rt.filtro = ''; rt.red = null;
-  if (!PESTANAS_RT.some(([k]) => k === rt.pestana)) rt.pestana = 'resumen';
+  rt.id = e.id; rt.vivo = null; rt.seccion = {}; rt.filtro = ''; rt.red = null; rt.herr = null; rt.sucesos = null;
+  if (!TITULO_RT[rt.pestana]) rt.pestana = 'resumen';
   $('#vista').innerHTML = `
     <nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<a href="#/c/${c.id}">${esc(c.nombre)}</a>${ICO.miga}<span>${esc(e.nombre)}</span></nav>
     <section class="rt-cab">
@@ -33,12 +47,38 @@ function montarRouter(e, c) {
       <div class="acciones"><span class="en-vivo" id="rtVivo"><i aria-hidden="true"></i>En vivo</span>${esAdmin() ? '<button class="btn" type="button" id="btnEditarRt">Editar</button>' : ''}</div>
     </section>
     <div id="rtAvisos"></div>
-    <nav class="pestanas-rt" id="rtPestanas" role="tablist" aria-label="Secciones del router"></nav>
-    <div id="rtCuerpo"></div>`;
-  $('#rtPestanas').onclick = ev => { const b = ev.target.closest('[data-pest]'); if (b) { rt.pestana = b.dataset.pest; rt.filtro = ''; pintarCuerpoRt(true); } };
+    <div class="rt-marco">
+      <nav class="rt-lateral" id="rtMenu" aria-label="Secciones del router"></nav>
+      <label class="rt-menu-movil"><span class="sr">Sección</span><select class="selector" id="rtMenuMovil">${MENU_RT.map(([g, l]) => `<optgroup label="${g}">${l.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <div class="rt-contenido"><h2 class="rt-titulo" id="rtTitulo"></h2><div id="rtCuerpo"></div></div>
+    </div>`;
+  $('#rtMenu').onclick = ev => {
+    const g = ev.target.closest('[data-grupo]');
+    if (g) { const n = g.dataset.grupo; gruposAbiertos.has(n) ? gruposAbiertos.delete(n) : gruposAbiertos.add(n); guardar('gruposRt', [...gruposAbiertos]); pintarMenuRt(); return; }
+    const b = ev.target.closest('[data-pest]'); if (b) irSeccionRt(b.dataset.pest);
+  };
+  $('#rtMenuMovil').onchange = ev => irSeccionRt(ev.target.value);
   const be = $('#btnEditarRt'); if (be) be.onclick = () => dialogoRouter(c.id, e.id);
+  pintarMenuRt();
   pintarCuerpoRt(true);
   pedirVivo();
+}
+function irSeccionRt(k) {
+  rt.pestana = k; rt.filtro = ''; rt.red = null;
+  pintarMenuRt(); pintarCuerpoRt(true);
+  const c = document.querySelector('.rt-contenido'); if (c && c.getBoundingClientRect().top < 0) c.scrollIntoView({ behavior: 'smooth' });
+}
+function pintarMenuRt() {
+  const e = equipo(rt.id), red = (e && e.red) || {};
+  const cuentas = { interfaces: red.interfaces ? red.interfaces.filter(i => !i.deshabilitada).length : 0, dhcp: red.dhcp, vpn: red.vpnTotal };
+  const grupoActual = MENU_RT.find(([, l]) => l.some(([k]) => k === rt.pestana))[0];
+  $('#rtMenu').innerHTML = MENU_RT.map(([g, l]) => {
+    const abierto = gruposAbiertos.has(g) || g === grupoActual;
+    return `<div class="rt-grupo ${abierto ? 'abierto' : ''}"><button type="button" class="rt-grupo-cab" data-grupo="${g}" aria-expanded="${abierto}">${g}</button>
+      ${abierto ? `<ul>${l.map(([k, t]) => `<li><button type="button" data-pest="${k}" ${rt.pestana === k ? 'aria-current="page"' : ''}>${t}${cuentas[k] ? `<span class="cuenta">${cuentas[k]}</span>` : ''}</button></li>`).join('')}</ul>` : ''}</div>`;
+  }).join('');
+  $('#rtMenuMovil').value = rt.pestana;
+  $('#rtTitulo').textContent = TITULO_RT[rt.pestana];
 }
 
 // Sondeo propio de la página: datos en vivo cada 3 s y la sección abierta cada 5 s
@@ -50,11 +90,13 @@ async function pedirVivo() {
     try {
       rt.vivo = await api(`/api/routers/${id}/vivo`);
       await cargar();          // estado general: CPU, interfaces, WAN…
-      if (rutaActual().id === id) { vistaRouter(id); if (rt.pestana !== 'resumen' && rt.pestana !== 'interfaces') cargarSeccion(); }
+      if (rutaActual().id === id) { vistaRouter(id); if (!LOCALES_RT.includes(rt.pestana) && !ESTATICAS_RT.includes(rt.pestana)) cargarSeccion(); }
     } catch (e) { if (e.login) return; }
   }
   rt.temporizador = setTimeout(pedirVivo, 3000);
 }
+// Secciones que casi no cambian: se piden al abrirlas y cada minuto
+const ESTATICAS_RT = ['ip', 'dns', 'bridges', 'redeswifi', 'dhcpserv', 'pools', 'wgif', 'tuneles', 'nat', 'mangle', 'paquetes', 'servicios', 'scripts', 'tareas', 'reloj', 'logging', 'snmp', 'archivos', 'contenedores', 'usuarios'];
 async function cargarSeccion(forzar) {
   const nombre = rt.pestana, id = rt.id;
   const s = rt.seccion[nombre];
@@ -84,17 +126,13 @@ function vistaRouter(id) {
   else if (e.estado === 'pendiente') av = '<div class="msg atencion">Conectando con el router…</div>';
   if (vivo && red.wan && !red.wan.activa) av += `<div class="msg error"><b>El enlace WAN (${esc(red.wan.interfaz)}) está caído.</b> El router sigue respondiendo, quizá por una conexión de respaldo.</div>`;
   const ra = $('#rtAvisos'); if (ra.dataset.v !== av) { ra.innerHTML = av; ra.dataset.v = av; }
-  const n = red.interfaces ? red.interfaces.filter(i => !i.deshabilitada).length : 0;
-  $('#rtPestanas').innerHTML = PESTANAS_RT.map(([k, t]) => {
-    const cnt = k === 'interfaces' ? n : k === 'dhcp' ? red.dhcp : k === 'vpn' ? red.vpnTotal : null;
-    return `<button type="button" role="tab" data-pest="${k}" aria-selected="${rt.pestana === k}">${t}${cnt ? `<span class="cuenta">${cnt}</span>` : ''}</button>`;
-  }).join('');
+  const cm = `${red.interfaces ? red.interfaces.length : 0}|${red.dhcp}|${red.vpnTotal}`;
+  if (rt.cuentasMenu !== cm) { rt.cuentasMenu = cm; pintarMenuRt(); }
   pintarCuerpoRt(false);
 }
 
 function pintarCuerpoRt(montar) {
   const cuerpo = $('#rtCuerpo'); if (!cuerpo) return;
-  document.querySelectorAll('#rtPestanas [data-pest]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.pest === rt.pestana)));
   const e = equipo(rt.id); if (!e) return;
   if (rt.pestana === 'resumen') {
     if (montar || !$('#rtLosas')) {
@@ -114,17 +152,22 @@ function pintarCuerpoRt(montar) {
         <p class="disponibilidad" id="disponibilidad"></p>`;
       $('#rtIfs').onclick = ev => { const li = ev.target.closest('[data-if]'); if (li) { rt.sel = li.dataset.if; pintarCuerpoRt(false); } };
       $('#rtRangos').onclick = ev => { const b = ev.target.closest('[data-rango]'); if (b) { rt.rango = b.dataset.rango; pintarCuerpoRt(false); } };
+      $('#disponibilidad').onclick = ev => { if (ev.target.closest('[data-ver-sucesos]')) irSeccionRt('sucesos'); };
     }
     resumenRouter(e);
   } else if (rt.pestana === 'interfaces') {
     if (montar || !$('#rtTablaIf')) cuerpo.innerHTML = '<section class="hoja desliza" id="rtTablaIf"></section>';
     tablaInterfaces(e);
-  } else {
-    if (montar) {
-      cuerpo.innerHTML = `<div id="rtSeccion">${gatoCargando('Preguntándole al router…')}</div>`;
-      cargarSeccion(true);
-    }
-  }
+  } else if (rt.pestana === 'ancho') {
+    anchoDeBanda(e, montar);
+  } else if (rt.pestana === 'herramientas') {
+    if (montar) herramientasRt();
+  } else if (rt.pestana === 'sucesos') {
+    if (montar) cargarSucesosRt();
+  } else if (montar) {
+    cuerpo.innerHTML = `<div id="rtSeccion">${gatoCargando('Preguntándole al router…')}</div>`;
+    cargarSeccion(true);
+  } else if (ESTATICAS_RT.includes(rt.pestana) && rt.seccion[rt.pestana] && Date.now() - rt.seccion[rt.pestana].t > 60000) cargarSeccion(true);
 }
 
 function interfazSel(e) {
@@ -203,7 +246,7 @@ function resumenRouter(e) {
     const cs = h.eventos.filter(x => x.tipo === 'caida'), ws = h.eventos.filter(x => x.tipo === 'wan-caida');
     const pct = h.disponibilidad >= 99.995 ? '100' : nf.format(Math.floor(h.disponibilidad * 100) / 100);
     disp.innerHTML = `<span><b>${pct} %</b> del tiempo respondiendo ${R.en}.</span>` +
-      (cs.length ? `<span>${plural(cs.length, 'caída', 'caídas')} del router.</span>` : '<span class="tenue">Sin caídas del router.</span>') +
+      (cs.length ? `<button type="button" class="enlace" data-ver-sucesos>${plural(cs.length, 'caída', 'caídas')} del router: ver cuándo y cuánto duraron</button>` : '<span class="tenue">Sin caídas del router.</span>') +
       (ws.length ? ws.slice(-4).reverse().map(w => { const v = h.eventos.find(x => x.tipo === 'wan-vuelta' && x.t > w.t); return `<span class="caida"><span class="punto caido" aria-hidden="true"></span>WAN caído ${cuando(w.t)}, ${v ? durTxt(v.t - w.t) : 'sigue caído'}</span>`; }).join('') : '');
   }
 }
@@ -371,6 +414,8 @@ function pintarSeccion() {
       <section class="hoja desliza"><table class="tabla-rt registro-rt"><tbody>
       ${l.map(x => { const err = /error|critical|warning/.test(x.temas); return `<tr class="${err ? 'error' : ''}"><td>${esc(x.hora)}</td><td style="width:170px">${String(x.temas).split(',').map(t => `<span class="etq ${/error|critical/.test(t) ? 'mal' : /warning/.test(t) ? 'aviso' : ''}">${esc(t)}</span>`).join(' ')}</td><td>${esc(x.mensaje)}</td></tr>`; }).join('') || '<tr><td class="tenue">Nada coincide.</td></tr>'}</tbody></table></section>`;
   }
+  if (!h && rt.pestana === 'conexiones') h = seccionConexiones(d, coincide);
+  else if (!h && TABLAS_RT[rt.pestana]) h = `<div class="sub-cab" style="justify-content:flex-end">${buscador('Buscar')}</div>` + seccionGenerica(rt.pestana, d, coincide);
   el.innerHTML = h;
   const rr = $('#rtRedes'); if (rr) rr.onclick = ev => { const b = ev.target.closest('[data-red]'); if (b) { rt.red = b.dataset.red || null; pintarSeccion(); } };
   const inp = $('#rtFiltro');
@@ -457,4 +502,196 @@ async function dialogoRouter(clienteId, id) {
     try { await enviar(`/api/equipos/${id}`, 'DELETE'); dlg.close(); aviso('Router quitado de Atalaya.'); location.hash = '#/c/' + clienteId; await cargar(true); }
     catch (x) { if (!x.login) msg(x.message); }
   };
+}
+
+/* ======================================================================
+   Secciones genéricas: tablas tal como las da RouterOS, con formato y búsqueda
+   ====================================================================== */
+const SI = v => v === 'true' || v === 'yes';
+const FMT = {
+  t: v => v == null || v === '' ? '<span class="tenue">—</span>' : esc(v),
+  mono: v => v == null || v === '' ? '<span class="tenue">—</span>' : `<span class="mono">${esc(v)}</span>`,
+  si: v => SI(v) ? 'Sí' : '<span class="tenue">No</span>',
+  num: v => v == null || v === '' ? '—' : miles(v),
+  bytes: v => v == null || v === '' ? '—' : bytes(Number(v)),
+  bps: v => v == null || v === '' ? '—' : bps(Number(v)),
+  par: (v, f) => { if (v == null || v === '') return '—'; const [a, b] = String(v).split('/'); return `<span class="tasas"><span class="b">↑ ${f(Number(a))}</span> <span class="s">↓ ${f(Number(b))}</span></span>`; },
+  dur: v => v == null || v === '' ? '—' : esc(hace(segundos2(v))),
+  estado: (v, f, fila) => SI(fila.disabled) ? '<span class="etq">Deshabilitado</span>' : SI(fila.invalid) ? '<span class="etq mal">Inválido</span>'
+    : fila.running != null ? (SI(fila.running) ? '<span class="etq ok">Activo</span>' : '<span class="etq mal">Sin enlace</span>')
+    : fila.active != null ? (SI(fila.active) ? '<span class="etq ok">Activa</span>' : '<span class="etq">Inactiva</span>') : '<span class="etq ok">Activo</span>'
+};
+const segundos2 = t => { if (/^\d+$/.test(String(t))) return Number(t); let s = 0; for (const [, n, u] of String(t).matchAll(/(\d+)(w|d|h|m|s)/g)) s += Number(n) * ({ w: 604800, d: 86400, h: 3600, m: 60, s: 1 })[u]; return s; };
+const C = (campo, etiqueta, fmt = 't', extra = {}) => ({ campo, etiqueta, fmt, ...extra });
+const ESTADO = C('disabled', 'Estado', 'estado');
+const TABLAS_RT = {
+  ip: [{ clave: 'direcciones', cols: [C('address', 'Dirección', 'mono'), C('network', 'Red', 'mono'), C('interface', 'Interfaz'), C('dynamic', 'Dinámica', 'si'), ESTADO, C('comment', 'Comentario')] }],
+  rutas: [{ clave: 'rutas', cols: [C('dst-address', 'Destino', 'mono'), C('gateway', 'Puerta de enlace', 'mono'), C('immediate-gw', 'Salida', 'mono', { alt: 'gateway-status' }), C('distance', 'Distancia', 'num'), C('routing-table', 'Tabla', 't', { alt: 'routing-mark' }), C('dynamic', 'Dinámica', 'si'), C('active', 'Estado', 'estado'), C('comment', 'Comentario')] }],
+  arp: [{ clave: 'arp', cols: [C('address', 'IP', 'mono'), C('mac-address', 'MAC', 'mono'), C('interface', 'Interfaz'), C('status', 'Estado'), C('dynamic', 'Dinámica', 'si'), C('comment', 'Comentario')] }],
+  dns: [{ clave: 'dns', titulo: 'Configuración', kv: { servers: 'Servidores', 'dynamic-servers': 'Servidores dinámicos', 'allow-remote-requests': ['Responde a la red', 'si'], 'cache-size': 'Caché', 'cache-used': 'Caché usada', 'cache-max-ttl': 'TTL máximo', 'use-doh-server': 'DNS sobre HTTPS' } },
+    { clave: 'estaticos', titulo: 'Entradas estáticas', cols: [C('name', 'Nombre', 'mono'), C('type', 'Tipo'), C('address', 'Dirección', 'mono', { alt: 'cname' }), C('ttl', 'TTL'), ESTADO, C('comment', 'Comentario')] }],
+  bridges: [{ clave: 'bridges', titulo: 'Bridges', cols: [C('name', 'Bridge'), C('protocol-mode', 'Protocolo'), C('vlan-filtering', 'Filtrado VLAN', 'si'), ESTADO, C('comment', 'Comentario')] },
+    { clave: 'puertos', titulo: 'Puertos', cols: [C('interface', 'Interfaz'), C('bridge', 'Bridge'), C('pvid', 'PVID'), C('hw', 'Por hardware', 'si'), C('status', 'Estado'), C('comment', 'Comentario')] },
+    { clave: 'vlans', titulo: 'VLAN', cols: [C('name', 'Nombre'), C('vlan-id', 'ID'), C('interface', 'Sobre'), ESTADO, C('comment', 'Comentario')] }],
+  vecinos: [{ clave: 'vecinos', cols: [C('identity', 'Equipo'), C('address', 'IP', 'mono'), C('mac-address', 'MAC', 'mono'), C('interface', 'Visto por'), C('platform', 'Plataforma'), C('board', 'Modelo'), C('version', 'Versión'), C('uptime', 'Encendido', 'dur')] }],
+  redeswifi: [{ clave: 'wifi', cols: [C('name', 'Interfaz'), C('configuration.ssid', 'Red (SSID)'), C('configuration.mode', 'Modo'), C('channel.band', 'Banda'), C('channel.frequency', 'Frecuencia'), C('security.authentication-types', 'Seguridad'), C('master-interface', 'Principal'), ESTADO] },
+    { clave: 'wireless', cols: [C('name', 'Interfaz'), C('ssid', 'Red (SSID)'), C('mode', 'Modo'), C('band', 'Banda'), C('frequency', 'Frecuencia'), C('security-profile', 'Seguridad'), C('master-interface', 'Principal'), ESTADO] }],
+  capsman: [{ clave: 'caps7', cols: [C('identity', 'Punto de acceso'), C('address', 'Dirección', 'mono'), C('board', 'Modelo'), C('version', 'Versión'), C('state', 'Estado')] },
+    { clave: 'caps6', cols: [C('identity', 'Punto de acceso'), C('address', 'Dirección', 'mono'), C('board', 'Modelo'), C('version', 'Versión'), C('state', 'Estado')] }],
+  dhcpserv: [{ clave: 'servidores', titulo: 'Servidores', cols: [C('name', 'Nombre'), C('interface', 'Interfaz'), C('address-pool', 'Pool'), C('lease-time', 'Concesión', 'dur'), ESTADO] },
+    { clave: 'redes', titulo: 'Redes', cols: [C('address', 'Red', 'mono'), C('gateway', 'Puerta de enlace', 'mono'), C('dns-server', 'DNS', 'mono'), C('domain', 'Dominio'), C('comment', 'Comentario')] }],
+  dhcpcli: [{ clave: 'clientes', cols: [C('interface', 'Interfaz'), C('status', 'Estado'), C('address', 'IP obtenida', 'mono'), C('gateway', 'Puerta de enlace', 'mono'), C('primary-dns', 'DNS', 'mono'), C('expires-after', 'Caduca en', 'dur'), C('comment', 'Comentario')] }],
+  pools: [{ clave: 'pools', titulo: 'Pools', cols: [C('name', 'Nombre'), C('ranges', 'Rangos', 'mono'), C('next-pool', 'Siguiente'), C('comment', 'Comentario')] },
+    { clave: 'usados', titulo: 'Direcciones en uso', cols: [C('pool', 'Pool'), C('address', 'IP', 'mono'), C('owner', 'Quién'), C('info', 'Detalle', 'mono')] }],
+  wgif: [{ clave: 'interfaces', cols: [C('name', 'Interfaz'), C('listen-port', 'Puerto'), C('mtu', 'MTU'), ESTADO, C('comment', 'Comentario')] }],
+  tuneles: ['eoip', 'gre', 'ipip', 'l2tp', 'sstp', 'ovpn'].map(k => ({ clave: k, titulo: { eoip: 'EoIP', gre: 'GRE', ipip: 'IPIP', l2tp: 'Clientes L2TP', sstp: 'Clientes SSTP', ovpn: 'Clientes OpenVPN' }[k],
+    cols: [C('name', 'Nombre'), C('local-address', 'Local', 'mono'), C('remote-address', 'Remoto', 'mono', { alt: 'connect-to' }), C('user', 'Usuario'), ESTADO, C('comment', 'Comentario')] })),
+  colas: [{ clave: 'simples', titulo: 'Colas simples', cols: [C('name', 'Nombre'), C('target', 'Para', 'mono'), C('max-limit', 'Límite', 'par', { f: bps }), C('rate', 'Ahora', 'par', { f: bps }), C('bytes', 'Total', 'par', { f: bytes }), ESTADO, C('comment', 'Comentario')] },
+    { clave: 'arbol', titulo: 'Árbol de colas', cols: [C('name', 'Nombre'), C('parent', 'Padre'), C('packet-mark', 'Marca'), C('max-limit', 'Límite', 'bps'), C('rate', 'Ahora', 'bps'), C('bytes', 'Total', 'bytes'), ESTADO] }],
+  nat: [{ clave: 'nat', cols: [C('chain', 'Cadena'), C('action', 'Acción'), C('detalle', 'Regla', 'regla'), C('to-addresses', 'Hacia', 'mono'), C('to-ports', 'Puerto'), C('packets', 'Paquetes', 'num'), C('bytes', 'Tráfico', 'bytes')] }],
+  mangle: [{ clave: 'mangle', cols: [C('chain', 'Cadena'), C('action', 'Acción'), C('detalle', 'Regla', 'regla'), C('new-routing-mark', 'Marca de ruta', 't', { alt: 'new-connection-mark' }), C('packets', 'Paquetes', 'num'), C('bytes', 'Tráfico', 'bytes')] }],
+  listas: [{ clave: 'listas', agrupar: 'list', cols: [C('list', 'Lista'), C('address', 'Dirección', 'mono'), C('timeout', 'Caduca en', 'dur'), C('dynamic', 'Dinámica', 'si'), C('creation-time', 'Creada'), C('comment', 'Comentario')] }],
+  paquetes: [{ clave: 'actualizacion', titulo: 'Actualizaciones', kv: { channel: 'Canal', 'installed-version': 'Instalada', 'latest-version': 'Última disponible', status: 'Estado' } },
+    { clave: 'placa', titulo: 'Placa y firmware', kv: { model: 'Modelo', 'serial-number': 'Número de serie', 'firmware-type': 'Tipo', 'current-firmware': 'Firmware actual', 'upgrade-firmware': 'Firmware disponible' } },
+    { clave: 'paquetes', titulo: 'Paquetes instalados', cols: [C('name', 'Paquete'), C('version', 'Versión'), C('build-time', 'Compilado'), ESTADO] }],
+  servicios: [{ clave: 'servicios', nota: 'Servicios de administración del router. Los activos sin restricción de dirección se pueden alcanzar desde cualquier red a la que llegue el router.',
+    cols: [C('name', 'Servicio'), C('port', 'Puerto'), C('address', 'Permitido desde', 'abierto'), C('certificate', 'Certificado'), ESTADO] }],
+  scripts: [{ clave: 'scripts', cols: [C('name', 'Script'), C('owner', 'Dueño'), C('last-started', 'Última vez'), C('run-count', 'Veces', 'num'), C('source', 'Código', 'codigo'), C('comment', 'Comentario')] }],
+  tareas: [{ clave: 'tareas', cols: [C('name', 'Tarea'), C('on-event', 'Ejecuta', 'mono'), C('interval', 'Cada', 'dur'), C('start-date', 'Desde'), C('next-run', 'Próxima'), C('run-count', 'Veces', 'num'), ESTADO] }],
+  reloj: [{ clave: 'reloj', titulo: 'Reloj', kv: { date: 'Fecha', time: 'Hora', 'time-zone-name': 'Zona horaria', 'gmt-offset': 'Desfase', 'time-zone-autodetect': ['Zona automática', 'si'] } },
+    { clave: 'ntp', titulo: 'Cliente NTP', kv: { enabled: ['Activado', 'si'], mode: 'Modo', servers: 'Servidores', 'primary-ntp': 'Servidor principal', status: 'Estado', 'synced-server': 'Sincronizado con', 'system-offset': 'Desfase' } },
+    { clave: 'servidoresntp', titulo: 'Servidores NTP', cols: [C('address', 'Servidor'), C('reachable', 'Alcanzable', 'si'), C('stratum', 'Estrato'), C('offset', 'Desfase'), ESTADO] }],
+  logging: [{ clave: 'reglas', titulo: 'Qué se registra', cols: [C('topics', 'Temas'), C('action', 'Dónde'), C('prefix', 'Prefijo'), ESTADO] },
+    { clave: 'destinos', titulo: 'Destinos', cols: [C('name', 'Nombre'), C('target', 'Tipo'), C('remote', 'Servidor remoto', 'mono'), C('remote-port', 'Puerto'), C('disk-file-name', 'Archivo')] }],
+  snmp: [{ clave: 'snmp', titulo: 'SNMP', kv: { enabled: ['Activado', 'si'], contact: 'Contacto', location: 'Ubicación', 'trap-version': 'Versión de traps', 'trap-target': 'Destino de traps' } },
+    { clave: 'comunidades', titulo: 'Comunidades', cols: [C('name', 'Comunidad'), C('addresses', 'Desde', 'mono'), C('security', 'Seguridad'), C('read-access', 'Lectura', 'si'), C('write-access', 'Escritura', 'si'), ESTADO] }],
+  archivos: [{ clave: 'archivos', cols: [C('name', 'Archivo', 'mono'), C('type', 'Tipo'), C('size', 'Tamaño', 'bytes'), C('creation-time', 'Creado', 't', { alt: 'last-modified' })] }],
+  contenedores: [{ clave: 'contenedores', cols: [C('name', 'Contenedor', 't', { alt: 'tag' }), C('tag', 'Imagen', 'mono'), C('status', 'Estado'), C('interface', 'Interfaz'), C('arch', 'Arquitectura'), C('start-on-boot', 'Al arrancar', 'si'), C('comment', 'Comentario')] }],
+  usuarios: [{ clave: 'activos', titulo: 'Conectados ahora', cols: [C('name', 'Usuario'), C('address', 'Desde', 'mono'), C('via', 'Por'), C('when', 'Desde las'), C('group', 'Grupo')] },
+    { clave: 'usuarios', titulo: 'Usuarios', cols: [C('name', 'Usuario'), C('group', 'Grupo'), C('address', 'Permitido desde', 'mono'), C('last-logged-in', 'Último acceso'), ESTADO, C('comment', 'Comentario')] }]
+};
+FMT.regla = (v, f, x) => esc([x.protocol, x['src-address'] && `desde ${x['src-address']}`, x['dst-address'] && `hacia ${x['dst-address']}`, x['dst-port'] && `puerto ${x['dst-port']}`,
+  (x['in-interface'] || x['in-interface-list']) && `entra por ${x['in-interface'] || x['in-interface-list']}`, (x['out-interface'] || x['out-interface-list']) && `sale por ${x['out-interface'] || x['out-interface-list']}`].filter(Boolean).join(', ') || 'Todo')
+  + (x.comment ? `<br><span class="tenue">${esc(x.comment)}</span>` : '');
+FMT.abierto = (v, f, x) => SI(x.disabled) ? '<span class="tenue">—</span>' : v ? `<span class="mono">${esc(v)}</span>` : '<span class="etq aviso">Cualquier dirección</span>';
+FMT.codigo = v => v ? `<details class="codigo-det"><summary>Ver</summary><code class="codigo">${esc(v)}</code></details>` : '—';
+
+function tablaGenerica(def, filas, coincide) {
+  if (def.kv) {
+    const r = filas[0] || {};
+    const pares = Object.entries(def.kv).filter(([k]) => r[k] != null && r[k] !== '');
+    if (!pares.length) return '';
+    return `<div class="sub-cab"><h3>${esc(def.titulo || '')}</h3></div><dl class="kv-rt hoja">${pares.map(([k, d]) => { const [et, fmt] = Array.isArray(d) ? d : [d, 't']; return `<div><dt>${esc(et)}</dt><dd>${FMT[fmt](r[k], null, r)}</dd></div>`; }).join('')}</dl>`;
+  }
+  const l = filas.filter(x => coincide(...Object.values(x)));
+  const celda = (c, x) => { const v = x[c.campo] != null && x[c.campo] !== '' ? x[c.campo] : (c.alt ? x[c.alt] : x[c.campo]); return FMT[c.fmt](v, c.f, x); };
+  const cols = def.cols.filter(c => c.fmt === 'estado' || c.fmt === 'regla' || filas.some(x => (x[c.campo] != null && x[c.campo] !== '') || (c.alt && x[c.alt])));
+  const tabla = filas2 => `<section class="hoja desliza" style="margin-bottom:8px"><table class="tabla-rt"><thead><tr>${cols.map(c => `<th class="${['num', 'bytes', 'bps'].includes(c.fmt) ? 'num' : ''}">${c.etiqueta}</th>`).join('')}</tr></thead><tbody>
+    ${filas2.map(x => `<tr style="${SI(x.disabled) ? 'opacity:.55' : ''}">${cols.map(c => `<td class="${['num', 'bytes', 'bps'].includes(c.fmt) ? 'num' : ''}">${celda(c, x)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="tenue">Nada coincide.</td></tr>`}</tbody></table></section>`;
+  let h = def.titulo ? `<div class="sub-cab"><h3>${esc(def.titulo)} <span>${filas.length}</span></h3></div>` : '';
+  if (def.nota) h += `<p class="tenue" style="margin:-4px 0 12px;font-size:14px">${esc(def.nota)}</p>`;
+  if (def.agrupar) {
+    const grupos = [...new Set(l.map(x => x[def.agrupar]))].sort();
+    return h + grupos.map(g => `<div class="sub-cab"><h3>${esc(g)} <span>${l.filter(x => x[def.agrupar] === g).length}</span></h3></div>${tabla(l.filter(x => x[def.agrupar] === g))}`).join('') || h + tabla([]);
+  }
+  return h + tabla(l);
+}
+
+function seccionGenerica(nombre, d, coincide) {
+  const defs = TABLAS_RT[nombre] || [];
+  const partes = defs.filter(def => d[def.clave] && d[def.clave].length).map(def => tablaGenerica(def, d[def.clave], coincide)).filter(Boolean);
+  if (!partes.length) return `<div class="hoja vacio gato-vacio">${gatoSVG('programando')}<strong>Nada que mostrar</strong>Este router no tiene ${esc(TITULO_RT[nombre].toLowerCase())} configurado, o su versión de RouterOS no lo incluye.</div>`;
+  return partes.join('');
+}
+
+/* ---------------- Conexiones: top destinos y orígenes ---------------- */
+function seccionConexiones(d, coincide) {
+  const fila = (x, max) => `<tr><td><span class="mono">${esc(x.ip)}</span></td><td class="num">${miles(x.conexiones)}</td><td style="width:34%"><div class="carril"><span style="width:${Math.round(x.conexiones / max * 100)}%;background:var(--senal)"></span></div></td><td class="num">${bytes(x.bytes)}</td></tr>`;
+  const tabla = (t, l) => { const f = l.filter(x => coincide(x.ip)), m = Math.max(1, ...l.map(x => x.conexiones));
+    return `<div><div class="sub-cab"><h3>${t}</h3></div><section class="hoja desliza" style="margin-bottom:8px"><table class="tabla-rt"><thead><tr><th>Dirección</th><th class="num">Conexiones</th><th></th><th class="num">Tráfico</th></tr></thead><tbody>${f.map(x => fila(x, m)).join('') || '<tr><td colspan="4" class="tenue">Nada coincide.</td></tr>'}</tbody></table></section></div>`; };
+  const prot = Object.entries(d.protocolos || {}).sort((a, b) => b[1] - a[1]).map(([p, n]) => `<span class="etq">${esc(p)} ${miles(n)}</span>`).join(' ');
+  return `<div class="sub-cab"><h3>${miles(d.total)} conexiones abiertas <span>${prot}</span></h3><label class="buscar">${ICO.lupa}<span class="sr">Buscar IP</span><input type="search" id="rtFiltro" placeholder="Buscar IP" value="${esc(rt.filtro)}"></label></div>
+    <div class="dos-tablas">${tabla('Destinos más usados', d.destinos)}${tabla('Equipos con más conexiones', d.origenes)}</div>`;
+}
+
+/* ---------------- Ancho de banda: todas las interfaces en vivo ---------------- */
+function anchoDeBanda(e, montar) {
+  const red = e.red || {}, l = (red.interfaces || []).filter(i => i.activa && !i.deshabilitada).sort((a, b) => ((b.rx || 0) + (b.tx || 0)) - ((a.rx || 0) + (a.tx || 0)));
+  const cuerpo = $('#rtCuerpo');
+  const clave = l.map(i => i.nombre).join('|');
+  if (montar || cuerpo.dataset.ifs !== clave) {
+    cuerpo.dataset.ifs = clave;
+    cuerpo.innerHTML = l.length ? `<div class="ancho-rejilla">${l.map(i => `<section class="tablero-vivo"><div class="tv-cab"><h3>${esc(i.nombre)}<small>${esc(i.comentario || TIPOS_IF[i.tipo] || i.tipo)}</small></h3><div class="tv-cifras" data-cif="${esc(i.nombre)}"></div></div><div class="grafico-vivo chico" data-graf="${esc(i.nombre)}"></div></section>`).join('')}</div>`
+      : `<div class="hoja vacio">Sin interfaces activas.</div>`;
+  }
+  for (const i of l) {
+    const c = cuerpo.querySelector(`[data-cif="${CSS.escape(i.nombre)}"]`), g = cuerpo.querySelector(`[data-graf="${CSS.escape(i.nombre)}"]`);
+    if (c) c.innerHTML = `<div class="bajada"><b>${bps(i.rx)}</b><span>Bajada</span></div><div class="subida"><b>${bps(i.tx)}</b><span>Subida</span></div>`;
+    if (g) graficoTrafico(g, ((rt.vivo && rt.vivo.serie[i.nombre]) || []).map(([t, rx, tx]) => ({ t, rx, tx })), true);
+  }
+}
+
+/* ---------------- Herramientas: ping y traceroute desde el router ---------------- */
+function herramientasRt() {
+  $('#rtCuerpo').innerHTML = `<form class="herr-rt hoja" id="rtHerr" novalidate>
+      <label class="campo">Destino<input name="destino" spellcheck="false" placeholder="8.8.8.8, google.com, 192.168.88.10" value="${esc(rt.herrDestino || '')}" required></label>
+      <button class="btn prim" type="submit" value="ping">Ping</button><button class="btn" type="submit" value="traceroute">Traceroute</button>
+    </form>
+    <p class="tenue" style="font-size:13.5px;margin:8px 0 18px">Lo hace el propio router: así ves la red desde el cliente. No cambia nada en el router.</p>
+    <div id="rtHerrRes">${rt.herr || ''}</div>`;
+  const f = $('#rtHerr');
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const tipo = (ev.submitter && ev.submitter.value) || 'ping', destino = f.destino.value.trim();
+    rt.herrDestino = destino;
+    const res = $('#rtHerrRes');
+    res.innerHTML = gatoCargando(tipo === 'ping' ? `Haciendo ping a ${esc(destino)}…` : `Siguiendo el camino hasta ${esc(destino)}…`);
+    f.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      const { resultado: r } = await enviar(`/api/routers/${rt.id}/herramienta`, 'POST', { tipo, destino });
+      if (tipo === 'ping') {
+        const fin = r[r.length - 1] || {}, ok = r.filter(x => x.tiempo != null);
+        rt.herr = `<div class="sub-cab"><h3>Ping a ${esc(destino)} <span>${ok.length} de ${r.length} respuestas${fin.media != null ? `, media ${nf.format(fin.media)} ms` : ''}</span></h3></div>
+          <section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>#</th><th>Desde</th><th class="num">Tiempo</th><th class="num">TTL</th><th>Estado</th></tr></thead><tbody>
+          ${r.map(x => `<tr><td class="tenue">${esc(x.seq)}</td><td class="mono">${esc(x.host || destino)}</td><td class="num">${x.tiempo != null ? nf.format(x.tiempo) + ' ms' : '—'}</td><td class="num">${esc(x.ttl || '—')}</td><td>${x.tiempo != null ? '<span class="etq ok">Respondió</span>' : `<span class="etq mal">${esc(x.estado || 'Sin respuesta')}</span>`}</td></tr>`).join('')}</tbody></table></section>`;
+      } else {
+        rt.herr = `<div class="sub-cab"><h3>Camino hasta ${esc(destino)} <span>${plural(r.length, 'salto', 'saltos')}</span></h3></div>
+          <section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>Salto</th><th>Dirección</th><th class="num">Último</th><th class="num">Media</th><th class="num">Peor</th><th>Pérdida</th></tr></thead><tbody>
+          ${r.map(x => `<tr><td class="tenue">${esc(x.salto)}</td><td class="mono">${x.direccion ? esc(x.direccion) : '<span class="tenue">* sin respuesta</span>'}</td><td class="num">${x.ultimo != null ? nf.format(x.ultimo) + ' ms' : '—'}</td><td class="num">${x.media != null ? nf.format(x.media) + ' ms' : '—'}</td><td class="num">${x.peor != null ? nf.format(x.peor) + ' ms' : '—'}</td><td>${x.perdida && x.perdida !== '0%' ? `<span class="etq aviso">${esc(x.perdida)}</span>` : '<span class="tenue">0 %</span>'}</td></tr>`).join('')}</tbody></table></section>`;
+      }
+      res.innerHTML = rt.herr;
+    } catch (x) { if (!x.login) res.innerHTML = gatoError(esc(x.message)); }
+    finally { f.querySelectorAll('button').forEach(b => b.disabled = false); }
+  };
+  if (!rt.herrDestino) f.destino.focus();
+}
+
+/* ---------------- Caídas y sucesos de este router ---------------- */
+const NOMBRE_SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Se agregó a Atalaya'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
+async function cargarSucesosRt(dias = rt.diasSucesos || 30) {
+  rt.diasSucesos = dias;
+  const cuerpo = $('#rtCuerpo'), id = rt.id;
+  cuerpo.innerHTML = gatoCargando('Buscando en el historial…');
+  let d;
+  try { d = await api(`/api/equipos/${id}/sucesos?dias=${dias}`); } catch (x) { if (!x.login) cuerpo.innerHTML = gatoError(esc(x.message)); return; }
+  if (rt.id !== id || rt.pestana !== 'sucesos') return;
+  cuerpo.innerHTML = vistaSucesos(d, dias);
+  cuerpo.querySelector('[data-dias-grupo]').onclick = ev => { const b = ev.target.closest('[data-dias]'); if (b) cargarSucesosRt(+b.dataset.dias); };
+}
+function vistaSucesos(d, dias) {
+  const r = d.resumen, l = d.sucesos.filter(x => x.tipo !== 'vuelta' && x.tipo !== 'wan-vuelta');
+  return `<div class="sub-cab"><h3>Últimos ${dias} días</h3>
+      <div class="segmentos" role="group" aria-label="Periodo" data-dias-grupo>${[7, 30, 90, 365].map(n => `<button type="button" data-dias="${n}" aria-pressed="${n === dias}">${n === 365 ? '1 año' : n + ' días'}</button>`).join('')}</div></div>
+    <div class="losas" style="margin-bottom:16px">
+      <div class="losa ${r.caidas ? 'mal' : ''}"><h4>Caídas</h4><div class="v">${r.caidas}</div><small>${r.caidas ? `${durTxt(r.sinRespuesta)} sin responder en total` : 'Ninguna'}</small></div>
+      <div class="losa ${r.wan ? 'mal' : ''}"><h4>Caídas del WAN</h4><div class="v">${r.wan}</div><small>con el router respondiendo</small></div>
+      <div class="losa"><h4>Reinicios</h4><div class="v">${r.reinicios}</div><small>detectados por el tiempo encendido</small></div>
+    </div>
+    ${l.length ? `<section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>Qué pasó</th><th>Empezó</th><th>Terminó</th><th class="num">Duración</th><th>Detalle</th></tr></thead><tbody>
+      ${l.map(x => { const [cl, t] = NOMBRE_SUCESO[x.tipo] || ['', x.tipo]; const f = ms => new Date(ms).toLocaleString('es', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `<tr><td><span class="estado-ses"><span class="punto ${cl}" aria-hidden="true"></span>${t}</span></td><td>${f(x.t)}</td>
+          <td>${x.hasta ? f(x.hasta) : x.sigue ? '<span class="etq mal">Sigue así</span>' : '<span class="tenue">—</span>'}</td>
+          <td class="num">${x.duracion != null ? durTxt(x.duracion) : x.sigue ? durTxt(Date.now() - x.t) : '—'}</td>
+          <td class="tenue" style="white-space:normal">${esc(x.detalle || '')}</td></tr>`; }).join('')}</tbody></table></section>`
+      : `<div class="hoja vacio gato-vacio">${gatoSVG('reparando')}<strong>Sin sucesos en este periodo</strong>Ni caídas ni reinicios. Todo tranquilo.</div>`}`;
 }

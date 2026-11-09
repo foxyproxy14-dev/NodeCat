@@ -118,23 +118,23 @@ class Conexion {
     }
   }
 
-  ejecutar(palabras) {
+  ejecutar(palabras, tiempo = this.o.tiempo) {
     return new Promise((ok, mal) => {
       if (!this.sock || this.sock.destroyed) return mal(new ErrorRouter('No hay conexión con el router.', 'red'));
       const tag = String(this.siguiente++);
-      const t = setTimeout(() => { this.pendientes.delete(tag); mal(new ErrorRouter(`El router tardó demasiado en responder a ${palabras[0]}.`, 'red')); }, this.o.tiempo);
+      const t = setTimeout(() => { this.pendientes.delete(tag); mal(new ErrorRouter(`El router tardó demasiado en responder a ${palabras[0]}.`, 'red')); }, tiempo);
       this.pendientes.set(tag, { ok, mal, filas: [], t });
       this.sock.write(frase([...palabras, `.tag=${tag}`]));
     });
   }
 
   /** Lectura: imprimir(['/interface/print'], { proplist: [...], filtros: {...}, extra: [...] }) */
-  async imprimir(ruta, { proplist, filtros, extra } = {}) {
+  async imprimir(ruta, { proplist, filtros, extra, tiempo } = {}) {
     const p = [ruta];
     if (proplist) p.push('=.proplist=' + proplist.join(','));
     if (extra) p.push(...extra);
     if (filtros) for (const [k, v] of Object.entries(filtros)) p.push(`?${k}=${v}`);
-    return (await this.ejecutar(p)).filas;
+    return (await this.ejecutar(p, tiempo)).filas;
   }
 
   fallarTodo(e) {
