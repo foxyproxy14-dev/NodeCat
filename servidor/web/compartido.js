@@ -65,6 +65,13 @@ function filaRed(e) {
     <span class="f-extra f-ses" data-etq="Disponibilidad">${disp(e.disponibilidad)}</span>
     <span class="f-up">${vivo ? esc(duracion(e.arranque)) : ''}</span>${v}</div>`;
 }
+// Si el cliente usa sedes, las filas van agrupadas por sede (igual que en el panel)
+function porSede(lista, fila, cuenta) {
+  const sedes = [...new Set(lista.map(e => e.sede).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  if (!sedes.length) return lista.map(fila).join('');
+  return [...sedes, null].map(sd => [sd, lista.filter(e => (e.sede || null) === sd)]).filter(([, l]) => l.length)
+    .map(([sd, l]) => `<div class="fila-grupo"><b>${sd ? esc(sd) : 'Sin sede'}</b><span>${cuenta(l.length)}</span></div>${l.map(fila).join('')}`).join('');
+}
 const SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['aviso', 'Se reinició'], 'wan-caida': ['caido', 'Se cayó un enlace a Internet'], 'wan-vuelta': ['ok', 'Volvió el enlace a Internet'] };
 
 let datos = null, recibido = 0, falla = null;
@@ -85,10 +92,10 @@ function pintar() {
       <div class="dos-col"><div>
         ${c.servidores.length ? `<div class="cab-seccion"><h2>Servidores <span>${c.servidores.length}</span></h2></div>
           <div class="tablero"><div class="tablero-cab" aria-hidden="true"><span>Servidor</span><span>CPU, última hora</span><span>Memoria</span><span>Disco más lleno</span><span>Disponibilidad</span><span class="c-up">Encendido</span><span></span></div>
-          ${c.servidores.map(filaServidor).join('')}</div>` : ''}
+          ${porSede(c.servidores, filaServidor, n => plural(n, 'servidor', 'servidores'))}</div>` : ''}
         ${c.red.length ? `<div class="cab-seccion" style="margin-top:${c.servidores.length ? 36 : 0}px"><h2>Red <span>${c.red.length}</span></h2></div>
           <div class="tablero"><div class="tablero-cab rt" aria-hidden="true"><span>Equipo de red</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Disponibilidad</span><span class="c-up">Encendido</span><span></span></div>
-          ${c.red.map(filaRed).join('')}</div>` : ''}
+          ${porSede(c.red, filaRed, n => plural(n, 'equipo de red', 'equipos de red'))}</div>` : ''}
         ${!c.servidores.length && !c.red.length ? gatoVacio('Sin equipos', 'Todavía no hay equipos vigilados.') : ''}
       </div>
       <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja">${c.sucesos.length ? `<ul class="sucesos">${c.sucesos.map(s => { const [k, t] = SUCESO[s.tipo] || ['', s.tipo]; return `<li><span class="punto ${k}" aria-hidden="true"></span><span><b>${esc(s.equipo)}</b>: ${t}</span><small>${cuando(s.t)}</small></li>`; }).join('')}</ul>` : '<div class="vacio">Sin caídas en los últimos 7 días.</div>'}</section></aside>

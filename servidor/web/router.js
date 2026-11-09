@@ -489,6 +489,7 @@ async function dialogoRouter(clienteId, id) {
     </details>` : ''}
     ${demo ? '<div class="msg atencion">Router del modo demo: solo se puede cambiar el nombre.</div>' : ''}
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Router principal" required></label>
+    ${campoSede(clienteId, e ? e.sede : '')}
     ${demo ? '' : `${campoSonda(clienteId, cfg, 'el router')}<div class="tres">
       <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
       <label class="campo">Usuario<input name="usuario" spellcheck="false" autocomplete="off" value="${esc(cfg ? cfg.usuario : 'nodecat')}" required></label>
@@ -507,7 +508,7 @@ async function dialogoRouter(clienteId, id) {
     if (!t || tipo !== 'bien') return gatoDice(m, t);
     m.className = 'msg bien'; m.textContent = t; m.hidden = false; caraDeGato('reparando', 1);
   };
-  const datos = () => demo ? { nombre: f.nombre.value } : { nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, ping: f.ping.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
+  const datos = () => demo ? { nombre: f.nombre.value, sede: f.sede.value } : { sede: f.sede.value, nombre: f.nombre.value, host: f.host.value, usuario: f.usuario.value, puerto: +f.puerto.value, clave: f.clave.value, ssl: f.ssl.checked, wan: f.wan.value, ping: f.ping.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
   if (!demo) f.ssl.onchange = () => { if (f.ssl.checked && +f.puerto.value === 8728) f.puerto.value = 8729; if (!f.ssl.checked && +f.puerto.value === 8729) f.puerto.value = 8728; };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');
@@ -791,6 +792,7 @@ execute api-user generate-key nodecat</code>
     </details>` : ''}
     ${demo ? '<div class="msg atencion">FortiGate del modo demo: solo se puede cambiar el nombre.</div>' : ''}
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Firewall principal" required></label>
+    ${campoSede(clienteId, e ? e.sede : '')}
     ${demo ? '' : `${campoSonda(clienteId, cfg, 'el FortiGate')}<div class="tres">
       <label class="campo">IP o nombre<input name="host" spellcheck="false" value="${esc(cfg ? cfg.host : '')}" placeholder="10.20.0.1" required></label>
       <label class="campo">VDOM <span class="ayuda-campo">opcional</span><input name="vdom" spellcheck="false" value="${esc(cfg ? cfg.vdom : '')}" placeholder="root"></label>
@@ -803,7 +805,7 @@ execute api-user generate-key nodecat</code>
     <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar FortiGate'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
   const msg = (t, tipo) => { if (!t || tipo !== 'bien') return gatoDice(m, t); m.className = 'msg bien'; m.textContent = t; m.hidden = false; };
-  const datos = () => demo ? { nombre: f.nombre.value } : { tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
+  const datos = () => demo ? { nombre: f.nombre.value, sede: f.sede.value } : { sede: f.sede.value, tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');
   if (bp) bp.onclick = ev => ocupado(ev.currentTarget, f.sonda.value ? 'Probando por la sonda…' : 'Probando…', async () => {

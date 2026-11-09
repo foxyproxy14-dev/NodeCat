@@ -66,7 +66,7 @@ function servidor(e) {
   const vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
   const dm = (e.discos || []).reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
   return {
-    nombre: e.alias || e.nombre, estado: estadoSimple(e), so: e.so || '', desde: e.estado === 'caido' ? e.ultimo : null,
+    nombre: e.alias || e.nombre, sede: e.sede || null, estado: estadoSimple(e), so: e.so || '', desde: e.estado === 'caido' ? e.ultimo : null,
     cpu: vivo ? e.cpu : null, ramPct: vivo ? e.ramPct : null, ramUsada: vivo ? e.ramUsada : null, ramTotal: vivo ? e.ramTotal : null,
     disco: vivo && dm ? { unidad: dm.unidad, pct: dm.pct, libre: dm.libre } : null,
     arranque: vivo ? e.arranque : null, disponibilidad: disponibilidad(e.id),
@@ -79,7 +79,7 @@ function equipoRed(e) {
   const tasa = (w, k) => w[k] ?? (r.wan && r.wan.interfaz === w.interfaz ? r.wan[k] : null) ?? ((r.interfaces || []).find(i => i.nombre === w.interfaz) || {})[k] ?? null;
   const wans = (r.wans && r.wans.length ? r.wans : r.wan ? [r.wan] : []).map(w => ({ interfaz: w.interfaz, activa: !!w.activa, rx: tasa(w, 'rx'), tx: tasa(w, 'tx') }));
   return {
-    nombre: e.alias || e.nombre, tipo: e.tipo, estado: estadoSimple(e), desde: e.estado === 'caido' ? e.ultimo : null,
+    nombre: e.alias || e.nombre, sede: e.sede || null, tipo: e.tipo, estado: estadoSimple(e), desde: e.estado === 'caido' ? e.ultimo : null,
     modelo: r.modelo || '', cpu: vivo ? e.cpu : null, ramPct: vivo ? e.ramPct : null, arranque: vivo ? e.arranque : null,
     wans: vivo ? wans : [],
     // Solo destinos públicos (Cloudflare, Google, pruebas de SLA): nunca la puerta de enlace ni IP internas

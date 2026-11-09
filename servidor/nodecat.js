@@ -140,12 +140,12 @@ ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { c
 ruta('POST', '/api/routers/:id/herramienta', {}, async ({ sesion, p, cuerpo }) => { const e = routerVisible(sesion, p.id); if (e.tipo !== 'mikrotik') throw error(400, 'Herramienta solo disponible en MikroTik.'); return { resultado: await mikrotik.herramienta(e.id, cuerpo.tipo, cuerpo.destino) }; });
 ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => (cuerpo.tipo === 'fortigate' ? fortigate : mikrotik).probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
 ruta('POST', '/api/clientes/:id/fortigates', soloAdmin, ({ p, cuerpo, sesion }) => {
-  const id = fortigate.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el FortiGate ${cuerpo.nombre}.`); return { id };
+  const id = fortigate.crear(Number(p.id), cuerpo.nombre, cuerpo); if (cuerpo.sede !== undefined) flota.editarEquipo(id, { sede: cuerpo.sede }); log(`${sesion.usuario} agregó el FortiGate ${cuerpo.nombre}.`); return { id };
 });
 ruta('POST', '/api/clientes/:id/routers', soloAdmin, ({ p, cuerpo, sesion }) => {
-  const id = mikrotik.crear(Number(p.id), cuerpo.nombre, cuerpo); log(`${sesion.usuario} agregó el router ${cuerpo.nombre}.`); return { id };
+  const id = mikrotik.crear(Number(p.id), cuerpo.nombre, cuerpo); if (cuerpo.sede !== undefined) flota.editarEquipo(id, { sede: cuerpo.sede }); log(`${sesion.usuario} agregó el router ${cuerpo.nombre}.`); return { id };
 });
-ruta('PUT', '/api/routers/:id', soloAdmin, ({ p, cuerpo, sesion }) => { const e = routerVisible(sesion, p.id); modRed(e).editar(e.id, cuerpo.nombre, cuerpo); return { ok: true }; });
+ruta('PUT', '/api/routers/:id', soloAdmin, ({ p, cuerpo, sesion }) => { const e = routerVisible(sesion, p.id); modRed(e).editar(e.id, cuerpo.nombre, cuerpo); if (cuerpo.sede !== undefined) flota.editarEquipo(e.id, { sede: cuerpo.sede }); return { ok: true }; });
 
 ruta('GET', '/api/historial/sesiones', {}, ({ sesion, url, res }) => {
   const f = Object.fromEntries(url.searchParams);
@@ -201,7 +201,7 @@ ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   if (u && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw error(400, 'Escribe una dirección completa, por ejemplo https://nodecat.miempresa.com');
   ajustes.guardar('urlAgentes', u); return { ok: true };
 });
-ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null }); return { ok: true }; });
+ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null, sede: cuerpo.sede }); return { ok: true }; });
 ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { mikrotik.quitar(e.id); fortigate.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
 
 // Cuentas

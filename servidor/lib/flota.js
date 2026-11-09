@@ -63,7 +63,7 @@ const clientes = () => q('SELECT c.id, c.nombre, c.notas, c.creado, c.grupo_id, 
 
 // ---------------------------------------------------------------- equipos
 const equipo = id => q('SELECT * FROM equipos WHERE id = ?').get(id);
-function editarEquipo(id, { alias, cliente_id }) {
+function editarEquipo(id, { alias, cliente_id, sede }) {
   const e = equipo(id); if (!e) throw new Error('Ese equipo ya no existe.');
   if (cliente_id != null && cliente_id !== e.cliente_id) {
     if (!cliente(cliente_id)) throw new Error('Ese cliente no existe.');
@@ -78,6 +78,8 @@ function editarEquipo(id, { alias, cliente_id }) {
     }
   }
   if (alias != null) q('UPDATE equipos SET alias = ? WHERE id = ?').run(String(alias).trim().slice(0, 60), id);
+  // Sede dentro del mismo cliente (opcional): solo una etiqueta para agrupar sus equipos
+  if (sede !== undefined) q('UPDATE equipos SET sede = ? WHERE id = ?').run(String(sede || '').trim().replace(/\s+/g, ' ').slice(0, 60) || null, id);
   cargarVivo(id);
 }
 function borrarEquipo(id) {
@@ -351,7 +353,7 @@ function vistaEquipo(v, ahora) {
     cpu: d.cpu ?? null, ramPct: d.ramPct ?? null, ramTotal: d.ramTotal ?? null, ramUsada: d.ramUsada ?? null,
     so: d.so || '', arranque: d.arranque || null, discos: d.discos || [], sesiones: d.sesiones || [],
     errorSesiones: d.errorSesiones || null, errorMetricas: d.errorMetricas || null,
-    red: d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null,
+    red: d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null, sede: v.sede || null,
     historial: v.hora
   };
 }

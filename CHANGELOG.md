@@ -2,6 +2,10 @@
 
 ## 0.8.0 (noviembre de 2026)
 
+- Sedes dentro de un cliente: campo opcional en cada equipo; la página del cliente los agrupa por sede y permite filtrar. Sin sedes, se ve como antes. La página compartida también los agrupa.
+- Horas en formato de 12 horas con segundos y reloj en la barra superior.
+- Menú "Enlaces compartidos" con todos los enlaces de todos los clientes.
+
 - Compartir con un cliente: enlace de solo lectura, sin cuenta, con el estado de sus equipos (o de todas las sedes de su grupo). Sin sesiones, IP, configuración ni acceso a los equipos. Con vencimiento, contador de visitas y botón para anularlo.
 - "Agregar servidores" dentro de un cliente muestra solo el instalador y la clave de ese cliente; crear clientes y grupos queda en la página principal.
 

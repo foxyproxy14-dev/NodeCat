@@ -341,6 +341,7 @@ function montar(r) {
     v.innerHTML = `
       <nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<span>${esc(c.nombre)}</span></nav>
       <section class="titular cli-cab"><h1 id="cliTitulo"></h1><p id="cliSub"></p></section>
+      <div class="sedes-cli" id="sedesCli" role="group" aria-label="Filtrar por sede" hidden></div>
       <ul class="problemas" id="problemas"></ul>
       <div class="dos-col">
         <div>
@@ -538,7 +539,9 @@ async function cargarSucesos() {
 function pintarSucesos() {
   const el = $('#sucesos'); if (!el || !sucesos) return;
   const r = rutaActual();
-  const l = (r.vista === 'cliente' ? sucesos.filter(s => s.cliente_id === r.id) : sucesos).slice(0, 10);
+  const sd = r.vista === 'cliente' ? sedeFiltro.get(r.id) || '' : '';
+  const enSede = s => { if (!sd) return true; const e = equipo(s.equipo_id); return !!e && (e.sede || SIN_SEDE) === sd; };
+  const l = (r.vista === 'cliente' ? sucesos.filter(s => s.cliente_id === r.id && enSede(s)) : sucesos).slice(0, 10);
   el.innerHTML = l.length ? `<ul class="sucesos">${l.map(s => {
     const [clase, txt] = SUCESOS[s.tipo] || ['', s.tipo];
     const eq = equipo(s.equipo_id);
@@ -548,24 +551,49 @@ function pintarSucesos() {
 }
 
 /* ---------------- Cliente ---------------- */
+// Sedes dentro de un cliente: etiqueta opcional de cada equipo. Sin sedes, la página se ve como siempre.
+const sedeFiltro = new Map();   // cliente → sede elegida ('' = todas)
+const SIN_SEDE = '\u0000';
+const sedesDe = l => [...new Set(l.map(e => e.sede).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+function porSede(lista, fila, cab, cuenta) {
+  const sedes = sedesDe(lista);
+  if (!sedes.length) return lista.map(fila).join('');
+  const grupos = [...sedes, SIN_SEDE].map(sd => [sd, lista.filter(e => (e.sede || SIN_SEDE) === sd)]).filter(([, l]) => l.length);
+  return grupos.map(([sd, l]) => `<div class="fila-grupo"><b>${sd === SIN_SEDE ? 'Sin sede' : esc(sd)}</b><span>${cuenta(l.length)}</span></div>${l.map(fila).join('')}`).join('');
+}
 function vistaCliente(id) {
-  const c = cliente(id), todos = c.equipos, eq = todos.filter(e => e.tipo === 'windows'), routers = todos.filter(e => e.tipo !== 'windows'), p = problemas(todos);
+  const c = cliente(id), todosCli = c.equipos;
+  const sedes = sedesDe(todosCli);
+  let sel = sedeFiltro.get(id) || '';
+  if (sel && sel !== SIN_SEDE && !sedes.includes(sel)) { sel = ''; sedeFiltro.delete(id); }
+  const enSede = e => !sel || (e.sede || SIN_SEDE) === sel;
+  const todos = todosCli.filter(enSede), eq = todos.filter(e => e.tipo === 'windows'), routers = todos.filter(e => e.tipo !== 'windows'), p = problemas(todos);
+  // Botones de sede (solo si el cliente tiene sedes)
+  const bs = $('#sedesCli');
+  if (sedes.length) {
+    const hayGrave = l => problemas(l).some(x => x.n === 'alerta');
+    const opciones = [['', 'Todas las sedes', todosCli], ...sedes.map(sd => [sd, sd, todosCli.filter(e => e.sede === sd)])];
+    const sinSede = todosCli.filter(e => !e.sede); if (sinSede.length) opciones.push([SIN_SEDE, 'Sin sede', sinSede]);
+    bs.innerHTML = opciones.map(([k, t, l]) => `<button type="button" class="chip-sede ${sel === k ? 'activa' : ''}" data-sede="${esc(k)}" aria-pressed="${sel === k}">${k ? `<span class="punto ${hayGrave(l) ? 'caido' : 'ok'}" aria-hidden="true"></span>` : ''}${esc(t)} <span class="n">${l.length}</span></button>`).join('');
+    bs.hidden = false;
+    bs.querySelectorAll('[data-sede]').forEach(b => b.onclick = () => { sedeFiltro.set(id, b.dataset.sede); vistaCliente(id); pintarSucesos(); });
+  } else { bs.hidden = true; bs.innerHTML = ''; }
   $('#tituloRed').innerHTML = `Red <span>${routers.length}</span>`;
   $('#tableroRed').innerHTML = routers.length ? `<div class="tablero">
     <div class="tablero-cab rt" aria-hidden="true"><span>Equipo de red</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Equipos con IP</span><span class="c-up">Encendido</span><span></span></div>
-    ${routers.map(filaRouter).join('')}</div>` : gatoVacio('Sin equipos de red', esAdmin() ? 'Agrega sus MikroTik o FortiGate para ver el tráfico, los enlaces a Internet, la VPN y mucho más.' : 'Un administrador puede agregar sus MikroTik o FortiGate.');
+    ${porSede(routers, filaRouter, true, n => plural(n, 'equipo de red', 'equipos de red'))}</div>` : sel ? '<div class="vacio">Esta sede no tiene equipos de red.</div>' : gatoVacio('Sin equipos de red', esAdmin() ? 'Agrega sus MikroTik o FortiGate para ver el tráfico, los enlaces a Internet, la VPN y mucho más.' : 'Un administrador puede agregar sus MikroTik o FortiGate.');
   const vivos = todos.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas').length;
   const ses = todasLasSesiones(eq), act = ses.filter(s => s.estado === 'activa').length, dsc = ses.filter(s => s.estado === 'desconectada').length;
   $('#cliTitulo').textContent = c.nombre;
   const graves = new Set(p.filter(x => x.n === 'alerta').map(x => x.e.id)).size;
-  $('#cliSub').innerHTML = !todos.length ? 'Todavía no hay equipos. Descarga el agente de este cliente e instálalo en cada servidor, y agrega sus routers.' :
-    `${graves ? `<b>${graves === 1 ? 'Un equipo necesita' : graves + ' equipos necesitan'} atención.</b> ` : ''}<b>${vivos} de ${todos.length}</b> equipos en línea, ${plural(act, 'sesión activa', 'sesiones activas')} y ${plural(dsc, 'desconectada', 'desconectadas')}.` +
+  $('#cliSub').innerHTML = !todosCli.length ? 'Todavía no hay equipos. Descarga el agente de este cliente e instálalo en cada servidor, y agrega sus routers.' :
+    `${graves ? `<b>${graves === 1 ? 'Un equipo necesita' : graves + ' equipos necesitan'} atención.</b> ` : ''}<b>${vivos} de ${todos.length}</b> equipos en línea${sedes.length && !sel ? ` en ${plural(sedes.length, 'sede', 'sedes')}` : sel ? ` en ${sel === SIN_SEDE ? 'los equipos sin sede' : esc(sel)}` : ''}, ${plural(act, 'sesión activa', 'sesiones activas')} y ${plural(dsc, 'desconectada', 'desconectadas')}.` +
     (c.notas ? `<br><span class="tenue">${esc(c.notas)}</span>` : '');
   chipsProblemas(p, false);
   $('#tituloTablero').innerHTML = `Servidores <span>${eq.length}</span>`;
   const t = $('#tablero');
   if (!eq.length) {
-    t.innerHTML = gatoVacio('Sin servidores', esAdmin() ? 'Descarga el instalador, cópialo a cada servidor y ábrelo con doble clic. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el instalador</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
+    t.innerHTML = sel ? '<div class="vacio">Esta sede no tiene servidores.</div>' : gatoVacio('Sin servidores', esAdmin() ? 'Descarga el instalador, cópialo a cada servidor y ábrelo con doble clic. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el instalador</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
     const b = $('#btnAg2'); if (b) b.onclick = () => agregarServidores(c.id);
     if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
     return;
@@ -573,8 +601,15 @@ function vistaCliente(id) {
   const lista = [...eq].sort((a, b) => ({ caido: 0, aviso: 1, pendiente: 2, ok: 3 })[nivelDe(a)] - ({ caido: 0, aviso: 1, pendiente: 2, ok: 3 })[nivelDe(b)] || a.nombre.localeCompare(b.nombre));
   t.innerHTML = `<div class="tablero">
     <div class="tablero-cab" aria-hidden="true"><span>Servidor</span><span>CPU, última hora</span><span>Memoria</span><span>Disco más lleno</span><span>Sesiones</span><span class="c-up">Encendido</span><span></span></div>
-    ${lista.map(filaEquipo).join('')}</div>`;
+    ${porSede(lista, filaEquipo, false, n => plural(n, 'servidor', 'servidores'))}</div>`;
   if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
+}
+
+/** Campo "Sede" con las sedes que ya tiene el cliente. */
+function campoSede(clienteId, actual) {
+  const c = cliente(clienteId), l = c ? sedesDe(c.equipos) : [];
+  return `<label class="campo">Sede <span class="ayuda-campo">Opcional. Para separar los equipos de un mismo cliente por sede; escribe una nueva o elige una.</span>
+    <input name="sede" maxlength="60" list="listaSedes" value="${esc(actual || '')}" placeholder="${l.length ? esc(l[0]) : 'Sede principal'}" autocomplete="off"><datalist id="listaSedes">${l.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>`;
 }
 
 function chispa(hist, clave, actual) {
@@ -1128,6 +1163,7 @@ function editarEquipo(id) {
   let confirmar = false;
   const dlg = libre(`<form><h3>Editar ${esc(s.nombre)}</h3>
     <label class="campo">Nombre visible<input name="alias" maxlength="60" value="${esc(s.alias)}" placeholder="${esc(s.nombre)}"><span class="ayuda-campo">Opcional. Por ejemplo “Servidor de facturación”. Vacío para usar el nombre del equipo.</span></label>
+    ${campoSede(s.cliente, s.sede)}
     <label class="campo">Cliente<select name="cliente">${estado.clientes.map(c => `<option value="${c.id}" ${c.id === s.cliente ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select>
       <span class="ayuda-campo">Si lo cambias de cliente, su agente se pasa solo al cliente nuevo en su próximo informe (agente 1.3 o superior). Los agentes más antiguos hay que reinstalarlos con el instalador del cliente nuevo.</span></label>
     <div class="msg error" role="alert" hidden></div>
@@ -1135,7 +1171,7 @@ function editarEquipo(id) {
   const f = dlg.querySelector('form'), e = f.querySelector('.msg');
   f.onsubmit = async ev => {
     ev.preventDefault();
-    try { await enviar(`/api/equipos/${id}`, 'PUT', { alias: f.alias.value, cliente: +f.cliente.value }); dlg.close(); aviso('Cambios guardados.'); montada = null; await cargar(true); }
+    try { await enviar(`/api/equipos/${id}`, 'PUT', { alias: f.alias.value, cliente: +f.cliente.value, sede: f.sede.value }); dlg.close(); aviso('Cambios guardados.'); montada = null; await cargar(true); }
     catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
   const bq = f.querySelector('[data-quitar]');

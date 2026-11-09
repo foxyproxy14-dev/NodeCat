@@ -865,3 +865,12 @@ body.iniciando .inicio-carga { display: grid; }
 .hora-actual { font-weight: 600; color: var(--tinta); margin-right: 12px; font-variant-numeric: tabular-nums; }
 .compartido .herr { margin-left: auto; }
 .filtro-enlaces { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Sedes dentro de un cliente */
+.sedes-cli { display: flex; flex-wrap: wrap; gap: 8px; margin: -12px 0 22px; }
+.chip-sede { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border: 1px solid var(--linea); border-radius: 999px; background: var(--hoja); color: var(--tinta-2); font: inherit; font-size: 14px; cursor: pointer; }
+.chip-sede:hover { border-color: var(--linea-2); color: var(--tinta); }
+.chip-sede .n { color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+.chip-sede .punto { margin: 0; }
+.chip-sede.activa { background: var(--senal); border-color: var(--senal); color: #fff; }
+.chip-sede.activa .n { color: rgba(255,255,255,.8); }
+.chip-sede:focus-visible { outline: 2px solid var(--senal); outline-offset: 2px; }

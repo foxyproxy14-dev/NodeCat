@@ -193,6 +193,10 @@ Si NodeCat no llega a la red del cliente, cualquier servidor de esa red con el a
 
 El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, las hace en la red local y devuelve el resultado. Solo acepta comandos de lectura. Todo funciona igual que con una conexión directa (secciones, ping, traceroute, avisos); si la sonda se desconecta, el equipo se marca caído en segundos. La contraseña o el token viajan cifrados por HTTPS hasta el agente de ese cliente y no se guardan en el servidor.
 
+## Sedes dentro de un cliente
+
+Si un cliente tiene varias sedes, no hace falta crear un grupo ni subclientes: en **Editar** de cada servidor, MikroTik o FortiGate escribe su **Sede** (la primera vez se crea sola; después se elige de la lista). La página del cliente separa entonces sus equipos por sede y muestra botones para ver una sola sede. Un cliente sin sedes se ve como siempre. Todas las sedes usan el mismo instalador del cliente.
+
 ## Compartir con un cliente (solo lectura)
 
 En la página del cliente: **Compartir** > **Crear enlace**. El cliente abre el enlace sin cuenta y ve sus equipos: si están en línea, CPU, memoria, disco, tráfico de Internet, latencia, disponibilidad de 24 h y caídas de la última semana. Se actualiza sola.

@@ -46,7 +46,15 @@ function jornada(t) {
 const equiposDemo = [];   // { id, clave, cfg, perfil, sesiones, arranque, discos }
 
 function preparar() {
-  if (!q('SELECT COUNT(*) n FROM clientes').get().n) { sembrar(); transaccion(sembrarRouters); }
+  if (!q('SELECT COUNT(*) n FROM clientes').get().n) {
+    sembrar(); transaccion(sembrarRouters);
+    // Transportes Andes: un cliente con dos sedes (sin crear subclientes)
+    const ta = q("SELECT id FROM clientes WHERE nombre = 'Transportes Andes'").get();
+    if (ta) {
+      q("UPDATE equipos SET sede = 'Valencia' WHERE cliente_id = ? AND nombre IN ('TA-DC01', 'TA-ERP', 'TA-TS01', 'Core sede Valencia')").run(ta.id);
+      q("UPDATE equipos SET sede = 'Puerto Cabello' WHERE cliente_id = ? AND nombre IN ('TA-TS02', 'Almacén Puerto Cabello')").run(ta.id);
+    }
+  }
   if (!auth.hayCuentas()) {
     auth.guardarCuenta({ usuario: 'demo', clave: 'nodecat-demo', rol: 'admin', clientes: null }, true);
     const g = q("SELECT grupo_id FROM clientes WHERE nombre = 'Transportes Andes'").get().grupo_id;
