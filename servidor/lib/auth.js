@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { q } = require('./db');
 const { aleatorio, iguales, log } = require('./util');
+const { cifrar, descifrar } = require('./secreto');
 
 const ITERACIONES = 210000;
 const INACTIVIDAD = 60 * 60 * 1000;        // la sesión caduca tras 1 h sin uso
@@ -84,7 +85,7 @@ function borrarCuenta(usuario) {
   q('DELETE FROM usuarios WHERE usuario = ?').run(usuario);
 }
 function cuentas() {
-  return q('SELECT usuario, rol, clientes, grupos, creado, ultimo_acceso FROM usuarios ORDER BY usuario').all()
+  return q('SELECT usuario, rol, clientes, grupos, creado, ultimo_acceso, totp IS NOT NULL AS dosPasos FROM usuarios ORDER BY usuario').all()
     .map(c => ({ ...c, clientes: c.clientes ? JSON.parse(c.clientes) : null, grupos: c.grupos ? JSON.parse(c.grupos) : null }));
 }
 function cambiarClave(usuario, actual, nueva) {
@@ -107,13 +108,75 @@ function fallo(ip) {
   fallos.set(ip, f);
 }
 
-function iniciar(usuario, clave, ip) {
+// ---- Verificación en dos pasos (TOTP, RFC 6238: Google Authenticator, Microsoft Authenticator, Authy…) ----
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(buf) { let bits = '', s = ''; for (const b of buf) bits += b.toString(2).padStart(8, '0'); for (let i = 0; i + 5 <= bits.length; i += 5) s += B32[parseInt(bits.slice(i, i + 5), 2)]; return s; }
+function deBase32(s) { let bits = ''; for (const c of s.replace(/=+$/, '').toUpperCase()) { const v = B32.indexOf(c); if (v < 0) continue; bits += v.toString(2).padStart(5, '0'); } const out = []; for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(out); }
+function totpEn(secreto, paso) {
+  const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(paso));
+  const h = crypto.createHmac('sha1', deBase32(secreto)).update(b).digest();
+  const o = h[h.length - 1] & 15;
+  return String(((h.readUInt32BE(o) & 0x7fffffff) % 1e6)).padStart(6, '0');
+}
+const ultimoPaso = new Map();   // usuario → último paso usado (un código no sirve dos veces)
+function totpValido(usuario, secreto, codigo) {
+  const c = String(codigo || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(c)) return false;
+  const ahora = Math.floor(Date.now() / 30000);
+  for (const d of [0, -1, 1]) {
+    const paso = ahora + d;
+    if (paso <= (ultimoPaso.get(usuario) || 0)) continue;
+    if (iguales(totpEn(secreto, paso), c)) { ultimoPaso.set(usuario, paso); return true; }
+  }
+  return false;
+}
+const huellaRec = c => crypto.createHash('sha256').update(String(c).replace(/[\s-]/g, '').toUpperCase()).digest('hex');
+const pendientes2fa = new Map();   // usuario → { secreto, hasta }
+function dosPasosEstado(usuario) { const r = q('SELECT totp, recuperacion FROM usuarios WHERE usuario = ?').get(usuario); return { activo: !!(r && r.totp), recuperacion: r && r.recuperacion ? JSON.parse(r.recuperacion).length : 0 }; }
+function dosPasosPreparar(usuario) {
+  const secreto = base32(crypto.randomBytes(20));
+  pendientes2fa.set(usuario, { secreto, hasta: Date.now() + 15 * 60000 });
+  return { secreto, uri: `otpauth://totp/${encodeURIComponent('NodeCat:' + usuario)}?secret=${secreto}&issuer=NodeCat&algorithm=SHA1&digits=6&period=30` };
+}
+function dosPasosActivar(usuario, codigo) {
+  const p = pendientes2fa.get(usuario);
+  if (!p || p.hasta < Date.now()) throw new Error('El código QR caducó. Vuelve a empezar.');
+  if (!totpValido(usuario, p.secreto, codigo)) throw new Error('Ese código no es correcto. Revisa que la hora del teléfono esté bien y escribe el código que se ve ahora.');
+  const codigos = Array.from({ length: 8 }, () => { const x = crypto.randomBytes(5).toString('hex').toUpperCase(); return x.slice(0, 5) + '-' + x.slice(5); });
+  q('UPDATE usuarios SET totp = ?, recuperacion = ? WHERE usuario = ?').run(cifrar(p.secreto), JSON.stringify(codigos.map(huellaRec)), usuario);
+  pendientes2fa.delete(usuario);
+  q('DELETE FROM sesiones_web WHERE usuario = ? AND id NOT IN (SELECT id FROM sesiones_web WHERE usuario = ? ORDER BY ultimo DESC LIMIT 1)').run(usuario, usuario);
+  log(`${usuario} activó la verificación en dos pasos.`);
+  return codigos;
+}
+function dosPasosQuitar(usuario, { clave, codigo } = {}, porAdmin) {
+  const r = q('SELECT hash, totp FROM usuarios WHERE usuario = ?').get(usuario);
+  if (!r) throw new Error('Esa cuenta no existe.');
+  if (!porAdmin) {
+    if (!comprobar(String(clave || ''), r.hash)) throw new Error('La contraseña no es correcta.');
+    if (r.totp && !totpValido(usuario, descifrar(r.totp), codigo)) throw new Error('El código del autenticador no es correcto.');
+  }
+  q('UPDATE usuarios SET totp = NULL, recuperacion = NULL WHERE usuario = ?').run(usuario);
+  log(`${porAdmin ? porAdmin + ' quitó' : usuario + ' desactivó'} la verificación en dos pasos${porAdmin ? ' de ' + usuario : ''}.`);
+}
+
+function iniciar(usuario, clave, ip, codigo) {
   const min = bloqueado(ip);
   if (min) throw new Error(`Demasiados intentos. Espera ${min} min y vuelve a probar.`);
-  const r = q('SELECT usuario, hash FROM usuarios WHERE usuario = ?').get(String(usuario || ''));
+  const r = q('SELECT usuario, hash, totp, recuperacion FROM usuarios WHERE usuario = ?').get(String(usuario || ''));
   // Se calcula el hash aunque la cuenta no exista, para no revelar qué usuarios hay
   const ok = r ? comprobar(String(clave || ''), r.hash) : (comprobar('x', hash('y')), false);
   if (!ok) { fallo(ip); throw new Error('Usuario o contraseña incorrectos.'); }
+  if (r.totp) {
+    if (!codigo) throw Object.assign(new Error('Escribe el código de tu aplicación de autenticación.'), { status: 401, dosPasos: true });
+    const c = String(codigo).trim();
+    let valido = totpValido(r.usuario, descifrar(r.totp), c);
+    if (!valido && /^[0-9A-F]{5}-?[0-9A-F]{5}$/i.test(c)) {   // código de recuperación (sirve una sola vez)
+      const l = JSON.parse(r.recuperacion || '[]'), h = huellaRec(c), i = l.indexOf(h);
+      if (i >= 0) { l.splice(i, 1); q('UPDATE usuarios SET recuperacion = ? WHERE usuario = ?').run(JSON.stringify(l), r.usuario); valido = true; log(`${r.usuario} entró con un código de recuperación (le quedan ${l.length}).`); }
+    }
+    if (!valido) { fallo(ip); throw Object.assign(new Error('El código no es correcto. Escribe el que se ve ahora en la aplicación.'), { status: 401, dosPasos: true }); }
+  }
   fallos.delete(ip);
   const id = aleatorio(32), csrf = aleatorio(24), ahora = Date.now();
   q('INSERT INTO sesiones_web (id, usuario, csrf, creada, ultimo) VALUES (?, ?, ?, ?, ?)').run(id, r.usuario, csrf, ahora, ahora);
@@ -146,4 +209,4 @@ function limpiar() {
   for (const [ip, f] of fallos) if (f.hasta < ahora && f.n === 0) fallos.delete(ip);
 }
 
-module.exports = { ROLES, hayCuentas, prepararInicio, crearPrimera, guardarCuenta, borrarCuenta, cuentas, cambiarClave, iniciar, sesion, cerrar, limpiar, hash };
+module.exports = { dosPasosEstado, dosPasosPreparar, dosPasosActivar, dosPasosQuitar, ROLES, hayCuentas, prepararInicio, crearPrimera, guardarCuenta, borrarCuenta, cuentas, cambiarClave, iniciar, sesion, cerrar, limpiar, hash };

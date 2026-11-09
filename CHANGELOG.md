@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.10.0 (noviembre de 2026)
+
+- Verificación en dos pasos con aplicación de autenticación (código QR) y códigos de recuperación; el administrador puede quitarla a otra cuenta.
+- Cada equipo muestra una insignia de su sistema (Proxmox, Windows Server, Hyper-V, Ubuntu, Debian, Rocky, MikroTik, FortiGate…) con el punto de estado en la esquina.
+
 ## 0.9.0 (noviembre de 2026)
 
 - Proxmox VE: agente para el host con una línea, al estilo de ProxMenux: General, Apps (qué corre en cada VM/LXC y su dirección), VM y LXC, Almacenamiento (con salud SMART), Backups y Nodo. Solo lectura, con la API local (sin tokens).

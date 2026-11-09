@@ -934,3 +934,19 @@ body.iniciando .inicio-carga { display: grid; }
 .menu button.con-desc small { color: var(--tinta-3); font-size: 12.5px; }
 .ficha .punto, .tabla .punto { margin-right: 7px; }
 .dlg .pestanas-hv button { min-width: 0; }
+.qr-2fa { display: grid; place-items: center; margin: 6px 0 14px; }
+.qr-2fa svg { width: 220px; height: 220px; background: #fff; border-radius: 12px; padding: 6px; }
+.codigos-rec { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.codigos-rec code { display: block; text-align: center; padding: 8px; border: 1px solid var(--linea); border-radius: 8px; font-size: 15px; letter-spacing: .06em; }
+/* Insignias de sistema */
+.so-insignia { position: relative; flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #59636b; color: #fff; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; line-height: 1; }
+.so-insignia .punto { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; margin: 0; border: 2px solid var(--hoja); border-radius: 50%; }
+.so-insignia .punto.caido { border-radius: 3px; }
+.so-insignia.grande { width: 46px; height: 46px; font-size: 15px; border-radius: 12px; margin-right: 14px; vertical-align: 6px; }
+.so-insignia.grande .punto { width: 14px; height: 14px; }
+.so-px { background: #e57000; } .so-ub { background: #e95420; } .so-db { background: #a80030; } .so-rk { background: #10a37f; }
+.so-al { background: #1a6fe0; } .so-rh { background: #c40000; } .so-ce { background: #8c2a7a; } .so-fe { background: #3c6eb4; }
+.so-su { background: #4b8a3b; } .so-ar { background: #1793d1; } .so-ap { background: #0d597f; } .so-tn { background: #0095d5; }
+.so-ws, .so-wi { background: #0067b8; } .so-hv { background: #5c2d91; } .so-lx { background: #3a3f44; color: #ffd84d; }
+.so-mt { background: #2f3b44; } .so-fg { background: #c8281f; }
+.f-nombre { gap: 12px; }

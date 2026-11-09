@@ -155,3 +155,24 @@ function gatoFavicon(color) {
   const s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='14 18 92 80'><path d='M38 86 Q16 88 18 66 Q19 55 29 53' fill='none' stroke='#EE8A2E' stroke-width='8' stroke-linecap='round'/><path d='M44 51 L45 20 L56 32 Q63 29 70 32 L81 20 L82 51 Z' fill='#EE8A2E'/><ellipse cx='56.5' cy='40' rx='3' ry='3.8' fill='#121518'/><ellipse cx='69.5' cy='40' rx='3' ry='3.8' fill='#121518'/><rect x='32' y='47' width='68' height='49' rx='8' fill='#1d2327'/><rect x='46' y='42' width='12' height='9' rx='4.5' fill='#EE8A2E'/><rect x='68' y='42' width='12' height='9' rx='4.5' fill='#EE8A2E'/><circle cx='86' cy='82' r='8' fill='${color}'/></svg>`;
   return 'data:image/svg+xml,' + encodeURIComponent(s);
 }
+
+/* Insignia del sistema de cada equipo (iniciales y color propios, no los logotipos oficiales) con el punto de estado en la esquina */
+const SISTEMAS = [
+  [/proxmox/i, 'px', 'PX', 'Proxmox VE'], [/ubuntu/i, 'ub', 'UB', 'Ubuntu'], [/debian/i, 'db', 'DB', 'Debian'], [/rocky/i, 'rk', 'RK', 'Rocky Linux'],
+  [/alma/i, 'al', 'AL', 'AlmaLinux'], [/red ?hat|rhel/i, 'rh', 'RH', 'Red Hat'], [/centos/i, 'ce', 'CE', 'CentOS'], [/fedora/i, 'fe', 'FE', 'Fedora'],
+  [/suse/i, 'su', 'SU', 'openSUSE'], [/arch/i, 'ar', 'AR', 'Arch Linux'], [/alpine/i, 'ap', 'AP', 'Alpine'], [/truenas/i, 'tn', 'TN', 'TrueNAS'],
+  [/windows server/i, 'ws', 'WS', 'Windows Server'], [/windows/i, 'wi', 'WIN', 'Windows']
+];
+function sistemaDe(e) {
+  if (e.tipo === 'mikrotik') return ['mt', 'MT', 'MikroTik'];
+  if (e.tipo === 'fortigate') return ['fg', 'FG', 'FortiGate'];
+  if (e.tipo === 'proxmox') return ['px', 'PX', 'Proxmox VE'];
+  const so = e.so || '';
+  if (e.hipervisor === 'hyperv') return ['hv', 'HV', 'Hyper-V en ' + (so || 'Windows')];
+  for (const [re, k, t, n] of SISTEMAS) if (re.test(so)) return [k, t, n];
+  return e.tipo === 'linux' ? ['lx', 'LX', so || 'Linux'] : e.tipo === 'windows' ? ['wi', 'WIN', so || 'Windows'] : ['', '?', so || ''];
+}
+function insigniaSO(e, estado) {
+  const [k, t, n] = sistemaDe(e);
+  return `<span class="so-insignia so-${k}" title="${String(n).replace(/"/g, '&quot;')}" aria-hidden="true">${t}<span class="punto ${estado || e.estado || ''}"></span></span>`;
+}

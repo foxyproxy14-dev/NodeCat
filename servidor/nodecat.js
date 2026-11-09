@@ -111,15 +111,23 @@ ruta('POST', '/api/configurar', { publica: true }, ({ cuerpo, res, req }) => {
   auth.crearPrimera(cuerpo.codigo, String(cuerpo.usuario || '').trim(), cuerpo.clave);
   return iniciarSesion(req, res, String(cuerpo.usuario || '').trim(), cuerpo.clave);
 });
-ruta('POST', '/api/login', { publica: true }, ({ cuerpo, req, res }) => iniciarSesion(req, res, String(cuerpo.usuario || '').trim(), cuerpo.clave));
-function iniciarSesion(req, res, usuario, clave) {
-  const id = auth.iniciar(usuario, clave, ipDe(req));
+ruta('POST', '/api/login', { publica: true }, ({ cuerpo, req, res }) => iniciarSesion(req, res, String(cuerpo.usuario || '').trim(), cuerpo.clave, cuerpo.codigo));
+function iniciarSesion(req, res, usuario, clave, codigo) {
+  let id;
+  try { id = auth.iniciar(usuario, clave, ipDe(req), codigo); }
+  catch (e) { if (e.dosPasos) { res.writeHead(401, { ...SEGURIDAD, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ error: e.message, dosPasos: true })); return; } throw e; }
   res.setHeader('Set-Cookie', `nodecat=${id}; Path=/; HttpOnly; SameSite=Strict${esHttps(req) ? '; Secure' : ''}`);
   const s = auth.sesion(id);
   log(`${s.usuario} inició sesión desde ${ipDe(req)}.`);
   return { usuario: s.usuario, rol: s.rol, csrf: s.csrf, clientes: s.clientes, version: config.VERSION, demo: config.DEMO };
 }
 ruta('POST', '/api/logout', {}, ({ sesion, res }) => { auth.cerrar(sesion.id); res.setHeader('Set-Cookie', 'nodecat=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); return { ok: true }; });
+// Verificación en dos pasos
+ruta('GET', '/api/dos-pasos', {}, ({ sesion }) => auth.dosPasosEstado(sesion.usuario));
+ruta('POST', '/api/dos-pasos/preparar', {}, ({ sesion }) => auth.dosPasosPreparar(sesion.usuario));
+ruta('POST', '/api/dos-pasos/activar', {}, ({ sesion, cuerpo }) => ({ codigos: auth.dosPasosActivar(sesion.usuario, cuerpo.codigo) }));
+ruta('POST', '/api/dos-pasos/quitar', {}, ({ sesion, cuerpo }) => { auth.dosPasosQuitar(sesion.usuario, cuerpo); return { ok: true }; });
+ruta('DELETE', '/api/cuentas/:usuario/dos-pasos', soloAdmin, ({ p, sesion }) => { const u = decodeURIComponent(p.usuario); if (u.toLowerCase() === sesion.usuario.toLowerCase()) throw error(400, 'Para tu propia cuenta, usa Verificación en dos pasos en tu menú.'); auth.dosPasosQuitar(u, {}, sesion.usuario); return { ok: true }; });
 ruta('POST', '/api/clave', {}, ({ sesion, cuerpo }) => { auth.cambiarClave(sesion.usuario, cuerpo.actual, cuerpo.nueva); return { ok: true }; });
 
 // Estado e historial

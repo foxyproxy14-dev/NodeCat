@@ -214,6 +214,10 @@ El agente mantiene una conexión abierta hacia NodeCat, recibe las consultas, la
 
 Si un cliente tiene varias sedes, no hace falta crear un grupo ni subclientes: en **Editar** de cada servidor, MikroTik o FortiGate escribe su **Sede** (la primera vez se crea sola; después se elige de la lista). La página del cliente separa entonces sus equipos por sede y muestra botones para ver una sola sede. Un cliente sin sedes se ve como siempre. Todas las sedes usan el mismo instalador del cliente.
 
+## Verificación en dos pasos
+
+Menú con tu nombre > **Verificación en dos pasos** > **Activar**. Escanea el código QR con cualquier aplicación de autenticación (Google Authenticator, Microsoft Authenticator, Authy, 2FAS, Bitwarden…) y escribe el código de 6 cifras. NodeCat te da 8 **códigos de recuperación** de un solo uso por si pierdes el teléfono: guárdalos. Desde ese momento, al entrar te pide la contraseña y el código. Si alguien de tu equipo pierde el teléfono, un administrador puede quitarle la verificación en **Cuentas de acceso** para que la vuelva a activar.
+
 ## Compartir con un cliente (solo lectura)
 
 En la página del cliente: **Compartir** > **Crear enlace**. El cliente abre el enlace sin cuenta y ve sus equipos: si están en línea, CPU, memoria, disco, tráfico de Internet, latencia, disponibilidad de 24 h y caídas de la última semana. Se actualiza sola.
@@ -256,7 +260,7 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 - **Servidor:** Node.js 22 con SQLite integrado, sin ninguna dependencia de npm. Cliente propio de la API de RouterOS y de la API REST de FortiOS. Historial por minuto durante 7 días y cada 5 minutos durante 400 días.
 - **Agente:** C# para .NET Framework 4.5, compilado con Mono (`agente/build.sh`). El ejecutable listo está en `servidor/agente/`.
 - **Web:** HTML, CSS y JavaScript sin frameworks, con tema claro y oscuro y diseño adaptado al móvil.
-- **Seguridad:** contraseñas con PBKDF2-SHA256, sesiones con cookie HttpOnly y protección CSRF, bloqueo tras 5 intentos fallidos, clave de agente distinta por cliente, y token de Telegram, contraseñas de MikroTik y tokens de FortiGate cifrados en disco.
+- **Seguridad:** verificación en dos pasos (TOTP) opcional por cuenta, contraseñas con PBKDF2-SHA256, sesiones con cookie HttpOnly y protección CSRF, bloqueo tras 5 intentos fallidos, clave de agente distinta por cliente, y token de Telegram, contraseñas de MikroTik y tokens de FortiGate cifrados en disco.
 
 ## Próximas fases
 

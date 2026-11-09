@@ -76,6 +76,8 @@ const columnas = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.nam
 if (!columnas('equipos').includes('config')) db.exec('ALTER TABLE equipos ADD COLUMN config TEXT');
 if (!columnas('clientes').includes('grupo_id')) db.exec('ALTER TABLE clientes ADD COLUMN grupo_id INTEGER REFERENCES grupos(id) ON DELETE SET NULL');
 if (!columnas('usuarios').includes('grupos')) db.exec('ALTER TABLE usuarios ADD COLUMN grupos TEXT');
+if (!columnas('usuarios').includes('totp')) db.exec('ALTER TABLE usuarios ADD COLUMN totp TEXT');
+if (!columnas('usuarios').includes('recuperacion')) db.exec('ALTER TABLE usuarios ADD COLUMN recuperacion TEXT');
 if (!columnas('equipos').includes('sede')) db.exec('ALTER TABLE equipos ADD COLUMN sede TEXT');
 if (!columnas('equipos').includes('instalacion')) db.exec('ALTER TABLE equipos ADD COLUMN instalacion TEXT');
 if (!columnas('equipos').includes('desinstalado')) db.exec('ALTER TABLE equipos ADD COLUMN desinstalado INTEGER');

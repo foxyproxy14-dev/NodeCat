@@ -29,6 +29,7 @@
       <p class="ayuda">Con la cuenta de NodeCat que te dio el administrador.</p>
       <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label class="campo">Contraseña<input name="clave" type="password" autocomplete="current-password" required></label>
+      <label class="campo" id="campoCodigo" hidden>Código de verificación<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="11" spellcheck="false" placeholder="123456"><span class="ayuda-campo">El de 6 cifras de tu aplicación de autenticación, o un código de recuperación.</span></label>
       <div id="accesoError" hidden></div>
       <button class="btn prim ancho" type="submit">Entrar</button>
       <p class="pie">Después de 5 intentos fallidos, hay que esperar 5 minutos.</p>

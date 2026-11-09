@@ -45,7 +45,7 @@ const subEstado = (e, normal) => e.estado === 'caido' ? `Sin respuesta desde ${c
 function filaServidor(s) {
   const vivo = s.estado === 'ok', v = '<span></span>';
   return `<div class="fila ${s.estado}">
-    <span class="f-nombre"><span class="punto ${s.estado}" aria-hidden="true"></span><span><strong>${esc(s.nombre)}</strong><small>${esc(subEstado(s, s.so))}</small></span></span>
+    <span class="f-nombre">${insigniaSO({ tipo: s.tipo, so: s.so, hipervisor: s.hipervisor }, s.estado)}<span><strong>${esc(s.nombre)}</strong><small>${esc(subEstado(s, s.so))}</small></span></span>
     ${vivo && s.cpu != null ? `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, s.cpu)}</span>` : '<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>'}
     ${vivo ? medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') + medidor(s.disco ? s.disco.pct : null, s.disco ? `${s.disco.unidad} con ${nf.format(s.disco.libre)} GB libres` : '', 'Disco más lleno') : v + v}
     <span class="f-ses" data-etq="Disponibilidad">${disp(s.disponibilidad)}</span>
@@ -59,7 +59,7 @@ function filaRed(e) {
     : w.rx == null ? `<span class="tenue">Midiendo…</span><small>Enlace arriba</small>`
     : `<span><span class="b">↓ ${bps(e.wans.reduce((n, x) => n + (x.rx || 0), 0))}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(e.wans.reduce((n, x) => n + (x.tx || 0), 0))}</span></span><small>${e.wans.length > 1 ? `${e.wans.length} enlaces arriba` : 'Enlace arriba'}${lat ? `, ${Math.round(lat.ms)} ms a ${esc(lat.nombre)}` : ''}</small>`;
   return `<div class="fila rt ${e.estado}">
-    <span class="f-nombre"><span class="punto ${e.estado}" aria-hidden="true"></span><span><strong>${esc(e.nombre)}</strong><small>${esc(subEstado(e, e.modelo || (e.tipo === 'fortigate' ? 'FortiGate' : 'MikroTik')))}</small></span></span>
+    <span class="f-nombre">${insigniaSO({ tipo: e.tipo }, e.estado)}<span><strong>${esc(e.nombre)}</strong><small>${esc(subEstado(e, e.modelo || (e.tipo === 'fortigate' ? 'FortiGate' : 'MikroTik')))}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : v + v}
     <span class="f-wan ${vivo && caidos.length ? 'caida' : ''}" data-etq="Internet">${internet}</span>
     <span class="f-extra f-ses" data-etq="Disponibilidad">${disp(e.disponibilidad)}</span>

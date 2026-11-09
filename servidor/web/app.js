@@ -67,7 +67,7 @@ async function api(ruta, opc = {}) {
     mostrarAcceso(SESION ? 'Tu sesión terminó. Vuelve a entrar.' : '');
     const e = new Error(d.error); e.login = true; throw e;
   }
-  if (!r.ok) throw new Error((d && d.error) || `NodeCat respondió con el error ${r.status}.`);
+  if (!r.ok) throw Object.assign(new Error((d && d.error) || `NodeCat respondió con el error ${r.status}.`), { dosPasos: !!(d && d.dosPasos) });
   return d;
 }
 const enviar = (ruta, metodo, datos) => api(ruta, { method: metodo, body: JSON.stringify(datos || {}) });
@@ -122,12 +122,17 @@ $('#formAcceso').addEventListener('submit', async ev => {
   const f = ev.currentTarget, b = f.querySelector('button');
   if (!f.usuario.value.trim() || !f.clave.value) { errorAcceso('Escribe tu usuario y tu contraseña.'); return; }
   b.disabled = true; b.textContent = 'Comprobando…';
+  const cc = $('#campoCodigo');
   try {
-    const info = await enviar('/api/login', 'POST', { usuario: f.usuario.value.trim(), clave: f.clave.value });
-    f.clave.value = '';
+    const info = await enviar('/api/login', 'POST', { usuario: f.usuario.value.trim(), clave: f.clave.value, codigo: cc.hidden ? undefined : f.codigo.value.trim() });
+    f.clave.value = ''; f.codigo.value = ''; cc.hidden = true;
     mostrarInicio(`Hola, ${info.usuario}. Revisando a tus clientes…`);
     entrar(info);
-  } catch (err) { errorAcceso(err.message); f.clave.value = ''; f.clave.focus(); }
+  } catch (err) {
+    // Verificación en dos pasos: la contraseña está bien, falta (o falló) el código
+    if (err.dosPasos) { const primera = cc.hidden; cc.hidden = false; errorAcceso(primera ? '' : err.message); f.codigo.value = ''; f.codigo.focus(); if (primera) b.textContent = 'Entrar'; }
+    else { errorAcceso(err.message); f.clave.value = ''; cc.hidden = true; f.codigo.value = ''; f.clave.focus(); }
+  }
   finally { b.disabled = false; b.textContent = 'Entrar'; }
 });
 
@@ -412,7 +417,7 @@ function montar(r) {
     v.innerHTML = `
       <nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<a href="#/c/${c.id}">${esc(c.nombre)}</a>${ICO.miga}<span>${esc(nombreEq(e))}</span></nav>
       <section class="srv-cab">
-        <div><h1><span class="punto" id="srvPunto" aria-hidden="true"></span><span id="srvNombre"></span></h1><p id="srvMeta"></p></div>
+        <div><h1><span id="srvPunto"></span><span id="srvNombre"></span></h1><p id="srvMeta"></p></div>
         <div class="acciones">
           ${e.tipo === 'windows' ? `<a class="btn" href="/api/equipos/${e.id}/rdp" download="${esc(e.nombre)}.rdp">Conectar por Escritorio remoto</a>` : ''}
           ${esAdmin() ? '<button class="btn" type="button" id="btnEditarEq">Editar</button>' : ''}
@@ -648,7 +653,7 @@ function filaEquipo(s) {
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre"><span class="punto ${esc(s.estado)}" aria-hidden="true"></span><span><strong>${esc(nombreEq(s))}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre">${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}</strong><small>${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
@@ -729,7 +734,7 @@ async function cargarHistEq(id, r) {
 
 function vistaEquipo(id) {
   const s = equipo(id); if (!s) return;
-  $('#srvPunto').className = 'punto ' + s.estado;
+  $('#srvPunto').innerHTML = insigniaSO(s).replace('so-insignia', 'so-insignia grande');
   $('#srvNombre').textContent = nombreEq(s);
   const meta = [ESTADOS[s.estado]];
   if (s.so) meta.push(s.so);
@@ -1334,6 +1339,12 @@ async function gestionClientes(abrirId, crear) {
       try { await enviar(`/api/clientes/${id}/clave`, 'POST'); await recargar(); confirmar = null; msg = 'Clave nueva generada. Descarga otra vez el agente para los servidores nuevos.'; pintar(); }
       catch (x) { if (!x.login) err(x.message); }
     });
+    dlg.querySelectorAll('[data-quitar2]').forEach(b => b.onclick = async () => {
+      const u = b.dataset.quitar2;
+      if (borrando !== '2:' + u) { borrando = '2:' + u; pintar(); return; }
+      try { await enviar('/api/cuentas/' + encodeURIComponent(u) + '/dos-pasos', 'DELETE'); await recargar(); borrando = null; pintar(`Verificación en dos pasos quitada a ${u}. Podrá entrar solo con su contraseña y volver a activarla.`, true); }
+      catch (x) { if (!x.login) pintar(x.message); }
+    });
     dlg.querySelectorAll('[data-borrar]').forEach(b => b.onclick = async () => {
       const id = +b.dataset.borrar;
       if (confirmar !== 'borrar' + id) { confirmar = 'borrar' + id; pintar(); return; }
@@ -1400,13 +1411,73 @@ function editarEquipo(id) {
 $('#btnCuenta').addEventListener('click', e => {
   if (!SESION) return;
   if (!$('#menu').hidden) { cerrarMenu(); return; }
-  const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }];
+  const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }, { t: 'Verificación en dos pasos', fn: dosPasos }];
   if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
   menuEn(e.currentTarget, it, `<div class="menu-cab"><b>${esc(SESION.usuario)}</b><span>${ROLES[SESION.rol] || esc(SESION.rol)}${alcance}${SESION.demo ? ', modo demo' : ''}</span></div>`);
 });
+
+/* ---------------- Verificación en dos pasos ---------------- */
+function cargarQr() {
+  return window.qrcode ? Promise.resolve() : new Promise((ok, mal) => { const sc = document.createElement('script'); sc.src = 'qrcode.js'; sc.onload = ok; sc.onerror = () => mal(new Error('No se pudo cargar el generador de QR.')); document.head.appendChild(sc); });
+}
+async function dosPasos() {
+  let est;
+  try { est = await api('/api/dos-pasos'); } catch (x) { if (!x.login) aviso(x.message, true); return; }
+  const dlg = libre('<div></div>');
+  const caja = () => dlg.querySelector('.dlg');
+  const msg = () => dlg.querySelector('.msg.error');
+  const inicio = () => {
+    caja().innerHTML = est.activo ? `<form><h3>Verificación en dos pasos</h3>
+        <div class="msg bien" style="display:block"><b>Activada.</b> Al entrar, NodeCat te pide el código de tu aplicación de autenticación. Te quedan ${plural(est.recuperacion, 'código de recuperación', 'códigos de recuperación')}.</div>
+        <p>Para desactivarla, confirma con tu contraseña y un código de la aplicación.</p>
+        <label class="campo">Contraseña<input type="password" name="clave" autocomplete="current-password" required></label>
+        <label class="campo">Código de la aplicación<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+        <div class="msg error" role="alert" hidden></div>
+        <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button><button class="btn peligro" type="submit">Desactivar</button></div></form>`
+      : `<div><h3>Verificación en dos pasos</h3>
+        <p>Además de tu contraseña, NodeCat te pedirá un código de 6 cifras que cambia cada 30 segundos en tu teléfono. Si alguien consigue tu contraseña, no podrá entrar sin el teléfono.</p>
+        <p class="tenue">Sirve cualquier aplicación de autenticación: Google Authenticator, Microsoft Authenticator, Authy, 2FAS, Bitwarden…</p>
+        <div class="msg error" role="alert" hidden></div>
+        <div class="pie"><button class="btn" type="button" data-cerrar>Ahora no</button><button class="btn prim" type="button" data-empezar>Activar</button></div></div>`;
+    dlg.querySelectorAll('[data-cerrar]').forEach(b => b.onclick = () => dlg.close());
+    const be = dlg.querySelector('[data-empezar]'); if (be) be.onclick = ev => ocupado(ev.currentTarget, 'Preparando…', preparar);
+    const f = dlg.querySelector('form');
+    if (f) { f.clave.focus(); f.onsubmit = async ev => { ev.preventDefault(); try { await enviar('/api/dos-pasos/quitar', 'POST', { clave: f.clave.value, codigo: f.codigo.value }); dlg.close(); aviso('Verificación en dos pasos desactivada.'); } catch (x) { if (!x.login) gatoDice(msg(), x.message); } }; }
+  };
+  const preparar = async () => {
+    let p;
+    try { [p] = await Promise.all([enviar('/api/dos-pasos/preparar', 'POST'), cargarQr()]); } catch (x) { if (!x.login) gatoDice(msg(), x.message); return; }
+    const qr = window.qrcode(0, 'M'); qr.addData(p.uri); qr.make();
+    caja().innerHTML = `<form><h3>Escanea el código</h3>
+      <ol class="pasos"><li>Abre tu aplicación de autenticación y elige <b>agregar cuenta</b> o <b>escanear código QR</b>.</li><li>Escanea este código. Aparecerá “NodeCat” con tu usuario.</li><li>Escribe el código de 6 cifras que muestra la aplicación.</li></ol>
+      <div class="qr-2fa">${qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true })}</div>
+      <details class="clave"><summary>¿No puedes escanear? Escribe esta clave</summary><code class="codigo">${esc(p.secreto.replace(/(.{4})/g, '$1 ').trim())}</code></details>
+      <label class="campo">Código de la aplicación<input name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="123456"></label>
+      <div class="msg error" role="alert" hidden></div>
+      <div class="pie"><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Activar</button></div></form>`;
+    dlg.querySelectorAll('[data-cerrar]').forEach(b => b.onclick = () => dlg.close());
+    const f = dlg.querySelector('form'); f.codigo.focus();
+    f.onsubmit = async ev => {
+      ev.preventDefault();
+      try { const r = await enviar('/api/dos-pasos/activar', 'POST', { codigo: f.codigo.value }); est = { activo: true, recuperacion: r.codigos.length }; codigos(r.codigos); }
+      catch (x) { if (!x.login) gatoDice(msg(), x.message); }
+    };
+  };
+  const codigos = l => {
+    const texto = `Códigos de recuperación de NodeCat (${SESION.usuario})\nCada uno sirve una sola vez si pierdes el teléfono.\n\n${l.join('\n')}\n`;
+    caja().innerHTML = `<div><h3>Verificación en dos pasos activada</h3>
+      <p><b>Guarda estos códigos de recuperación</b> en un lugar seguro. Si pierdes el teléfono, cada uno te deja entrar una vez en lugar del código de la aplicación. No se vuelven a mostrar.</p>
+      <div class="codigos-rec">${l.map(c => `<code>${esc(c)}</code>`).join('')}</div>
+      <p style="margin-top:14px"><button class="btn" type="button" data-copiar>Copiar</button> <a class="btn" download="nodecat-codigos-recuperacion.txt" href="data:text/plain;charset=utf-8,${encodeURIComponent(texto)}">Descargar .txt</a></p>
+      <div class="pie"><button class="btn prim" type="button" data-cerrar>Ya los guardé</button></div></div>`;
+    dlg.querySelector('[data-cerrar]').onclick = () => { dlg.close(); aviso('Listo. La próxima vez que entres, NodeCat te pedirá el código.'); };
+    dlg.querySelector('[data-copiar]').onclick = async () => { try { await navigator.clipboard.writeText(texto); aviso('Códigos copiados.'); } catch { aviso('No se pudo copiar; descárgalos.', true); } };
+  };
+  inicio();
+}
 
 function cambiarClave() {
   const dlg = libre(`<form><h3>Cambiar mi contraseña</h3><p>Al cambiarla se cierra tu sesión en los demás navegadores.</p>
@@ -1439,9 +1510,9 @@ async function cuentas() {
     const dlg = libre(`<h3>Cuentas de acceso</h3>
       <p>Los administradores gestionan clientes, cuentas y notificaciones. Las cuentas de solo lectura únicamente miran. Puedes limitar cualquier cuenta a algunos clientes, por ejemplo para que un cliente vea solo lo suyo.</p>
       <div class="tabla-dlg desliza"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Clientes</th><th>Último acceso</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>
-      ${lista.map(c => `<tr><td><span class="usr">${esc(c.usuario)}</span>${yo(c) ? ' <span class="tenue">(tú)</span>' : ''}</td>
+      ${lista.map(c => `<tr><td><span class="usr">${esc(c.usuario)}</span>${yo(c) ? ' <span class="tenue">(tú)</span>' : ''}${c.dosPasos ? ' <span class="chip-hv ok" title="Verificación en dos pasos activada" style="margin:0 0 0 6px">2 pasos</span>' : ''}</td>
         <td>${ROLES[c.rol] || esc(c.rol)}</td><td style="white-space:normal;max-width:220px">${esc(alcance(c))}</td><td class="tenue">${c.ultimo_acceso ? cuando(c.ultimo_acceso) : 'Nunca'}</td>
-        <td class="acc">${yo(c) ? '' : `<button type="button" class="enlace" data-editar="${esc(c.usuario)}">Editar</button><button type="button" class="enlace peligro" data-borrar="${esc(c.usuario)}">${borrando === c.usuario ? '¿Seguro? Borrar' : 'Borrar'}</button>`}</td></tr>`).join('')}
+        <td class="acc">${yo(c) ? '' : `<button type="button" class="enlace" data-editar="${esc(c.usuario)}">Editar</button>${c.dosPasos ? `<button type="button" class="enlace" data-quitar2="${esc(c.usuario)}">${borrando === '2:' + c.usuario ? '¿Seguro? Quitar 2 pasos' : 'Quitar 2 pasos'}</button>` : ''}<button type="button" class="enlace peligro" data-borrar="${esc(c.usuario)}">${borrando === c.usuario ? '¿Seguro? Borrar' : 'Borrar'}</button>`}</td></tr>`).join('')}
       </tbody></table></div>
       <form class="separado"><h4>${editando ? `Editar la cuenta de ${esc(editando.usuario)}` : 'Nueva cuenta'}</h4>
         <div class="tres">
@@ -1463,6 +1534,12 @@ async function cuentas() {
     f.querySelectorAll('[name=cli], [name=grp]').forEach(x => x.onchange = () => { if (x.checked) f.alcance.value = 'algunos'; });
     dlg.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => { editando = lista.find(c => c.usuario === b.dataset.editar); borrando = null; pintar(); });
     const nv = dlg.querySelector('[data-nuevo]'); if (nv) nv.onclick = () => { editando = null; pintar(); };
+    dlg.querySelectorAll('[data-quitar2]').forEach(b => b.onclick = async () => {
+      const u = b.dataset.quitar2;
+      if (borrando !== '2:' + u) { borrando = '2:' + u; pintar(); return; }
+      try { await enviar('/api/cuentas/' + encodeURIComponent(u) + '/dos-pasos', 'DELETE'); await recargar(); borrando = null; pintar(`Verificación en dos pasos quitada a ${u}. Podrá entrar solo con su contraseña y volver a activarla.`, true); }
+      catch (x) { if (!x.login) pintar(x.message); }
+    });
     dlg.querySelectorAll('[data-borrar]').forEach(b => b.onclick = async () => {
       const u = b.dataset.borrar;
       if (borrando !== u) { borrando = u; pintar(); return; }

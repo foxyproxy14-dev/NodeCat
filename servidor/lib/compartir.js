@@ -66,7 +66,7 @@ function servidor(e) {
   const vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
   const dm = (e.discos || []).reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
   return {
-    nombre: e.alias || e.nombre, sede: e.sede || null, estado: estadoSimple(e), so: e.so || '', desde: e.estado === 'caido' ? e.ultimo : null,
+    nombre: e.alias || e.nombre, sede: e.sede || null, tipo: e.tipo, hipervisor: e.hipervisor || null, estado: estadoSimple(e), so: e.so || '', desde: e.estado === 'caido' ? e.ultimo : null,
     cpu: vivo ? e.cpu : null, ramPct: vivo ? e.ramPct : null, ramUsada: vivo ? e.ramUsada : null, ramTotal: vivo ? e.ramTotal : null,
     disco: vivo && dm ? { unidad: dm.unidad, pct: dm.pct, libre: dm.libre } : null,
     arranque: vivo ? e.arranque : null, disponibilidad: disponibilidad(e.id),
