@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.2.1 (noviembre de 2026)
+
+- Nuevo logo y mascota: el gato de Atalaya. Repara el servidor, corre al cargar, programa en las listas vacías, se impacienta si algo tarda y se avergüenza con los errores.
+- Icono nuevo para la pestaña del navegador y para el agente.
+- Los sucesos de enlace WAN caído y recuperado se muestran con su texto.
+
 ## 0.2.0 (noviembre de 2026)
 
 Fase 2: routers MikroTik.

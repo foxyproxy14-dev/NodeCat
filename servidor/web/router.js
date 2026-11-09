@@ -120,7 +120,7 @@ function pintarCuerpoRt(montar) {
     tablaInterfaces(e);
   } else {
     if (montar) {
-      cuerpo.innerHTML = `<div id="rtSeccion"><div class="hoja vacio">Consultando el router…</div></div>`;
+      cuerpo.innerHTML = `<div id="rtSeccion">${gatoCargando('Preguntándole al router…')}</div>`;
       cargarSeccion(true);
     }
   }
@@ -279,8 +279,8 @@ function tablaInterfaces(e) {
 function pintarSeccion() {
   const el = $('#rtSeccion'); if (!el) return;
   const s = rt.seccion[rt.pestana];
-  if (!s) { el.innerHTML = '<div class="hoja vacio">Consultando el router…</div>'; return; }
-  if (s.error) { el.innerHTML = `<div class="msg error">${esc(s.error)}</div>`; return; }
+  if (!s) { el.innerHTML = gatoCargando('Preguntándole al router…'); return; }
+  if (s.error) { el.innerHTML = gatoError(esc(s.error)); return; }
   const activo = document.activeElement && document.activeElement.id === 'rtFiltro';
   const pos = activo ? document.activeElement.selectionStart : null;
   const f = rt.filtro.trim().toLowerCase(), coincide = (...v) => !f || v.some(x => String(x || '').toLowerCase().includes(f));
@@ -298,7 +298,7 @@ function pintarSeccion() {
         <td>${x.estado === 'bound' ? '<span class="etq ok">Conectado</span>' : `<span class="etq">${esc(x.estado || '—')}</span>`}${x.dinamica ? '' : ' <span class="etq">Fija</span>'}</td>
         <td class="tenue">${esc(x.servidor)}</td><td>${hace(x.visto)}</td></tr>`).join('') || '<tr><td colspan="6" class="tenue">Nada coincide.</td></tr>'}</tbody></table></section>`;
   } else if (rt.pestana === 'wifi') {
-    if (d.noDisponible) h = '<div class="hoja vacio"><strong>Este router no tiene Wi‑Fi</strong>O no se puede leer su tabla de clientes inalámbricos.</div>';
+    if (d.noDisponible) h = '<div class="hoja vacio gato-vacio">' + gatoSVG('programando') + '<strong>Este router no tiene Wi‑Fi</strong>O no se puede leer su tabla de clientes inalámbricos.</div>';
     else {
       const l = d.lista.filter(x => coincide(x.mac, x.interfaz, x.ssid));
       h = `<div class="sub-cab"><h3>Clientes Wi‑Fi <span>${d.lista.length} conectados</span></h3>${buscador('Buscar MAC o interfaz')}</div>
@@ -310,7 +310,7 @@ function pintarSeccion() {
     }
   } else if (rt.pestana === 'vpn') {
     const wg = d.wireguard || [], ppp = d.ppp || [], ips = d.ipsec || [];
-    if (!wg.length && !ppp.length && !ips.length) h = '<div class="hoja vacio"><strong>Sin túneles VPN</strong>Este router no tiene WireGuard, PPP ni IPsec configurados, o no hay ninguno conectado.</div>';
+    if (!wg.length && !ppp.length && !ips.length) h = '<div class="hoja vacio gato-vacio">' + gatoSVG('programando') + '<strong>Sin túneles VPN</strong>Este router no tiene WireGuard, PPP ni IPsec configurados, o no hay ninguno conectado.</div>';
     if (wg.length) h += `<div class="sub-cab"><h3>WireGuard <span>${wg.filter(x => !x.deshabilitado && x.saludo != null && x.saludo < 180).length} de ${wg.length} conectados</span></h3></div>
       <section class="hoja desliza"><table class="tabla-rt"><thead><tr><th>Par</th><th>Estado</th><th>Último saludo</th><th>Desde</th><th>Redes</th><th class="num">Recibido</th><th class="num">Enviado</th></tr></thead><tbody>
       ${wg.map(x => { const ok = !x.deshabilitado && x.saludo != null && x.saludo < 180;

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/clientes.png" alt="Atalaya: resumen de todos los clientes" width="900">
+  <img src="docs/img/gato.png" alt="El gato de Atalaya, asomado a un servidor" width="150">
 </p>
 
 <h1 align="center">Atalaya</h1>
@@ -7,6 +7,10 @@
 <p align="center">
   Todos tus clientes, todos sus servidores, desde un mismo lugar.<br>
   Servidores Windows, routers MikroTik, sesiones de Escritorio remoto y avisos por Telegram.
+</p>
+
+<p align="center">
+  <img src="docs/img/clientes.png" alt="Atalaya: resumen de todos los clientes" width="900">
 </p>
 
 ---
@@ -41,6 +45,12 @@ Es la evolución multicliente de [Vigía](https://github.com/foxyproxy14-dev/vig
     <td><img src="docs/img/servidor-oscuro.png" alt="Tema oscuro"></td>
   </tr>
 </table>
+
+## El gato
+
+Atalaya tiene mascota. Repara el servidor cuando todo va bien, corre mientras algo carga, programa cuando una lista está vacía, se impacienta si algo tarda demasiado y se avergüenza cuando hay un error. Si tu sistema tiene activado "reducir movimiento", se queda quieto.
+
+<p align="center"><img src="docs/img/gato-poses.png" alt="Las cinco poses del gato: reparando, corriendo, programando, molesto y avergonzado" width="760"></p>
 
 ## Instalar
 

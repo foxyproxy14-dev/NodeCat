@@ -640,3 +640,90 @@ body.consola .barra { background: color-mix(in srgb, var(--papel) 90%, transpare
   .tv-cifras div { align-items: flex-start; }
   .grafico-vivo { height: 190px; }
 }
+
+/* ======================================================================
+   El gato de Atalaya
+   ====================================================================== */
+.gato { display: block; overflow: visible; --gato-caja: #1d2327; --gato-rejilla: #3a444b; }
+body.consola .gato, :root[data-tema="oscuro"] .gato { --gato-caja: #2b343a; --gato-rejilla: #4b565e; }
+@media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) .gato { --gato-caja: #2b343a; --gato-rejilla: #4b565e; } }
+.gato .g-caja, .gato .g-teclado { fill: var(--gato-caja); }
+.gato .g-teclado { fill: var(--gato-rejilla); }
+.gato .g-rejilla { fill: none; stroke: var(--gato-rejilla); stroke-width: 3; stroke-linecap: round; }
+.gato .g-led { fill: var(--ok); }
+.estado-aviso .gato .g-led { fill: var(--aviso); }
+.estado-alerta .gato .g-led { fill: var(--alerta); }
+.gato .g-programando .g-led, .g-programando .g-led { fill: var(--senal); }
+.gato * { transform-box: fill-box; }
+
+/* Reparando: mete la pata en el servidor, salta una chispa, mueve la cola y parpadea */
+.g-reparando .g-cola { transform-origin: 100% 100%; animation: g-cola 3.2s ease-in-out infinite; }
+.g-reparando .g-ojos { transform-origin: 50% 50%; animation: g-parpadeo 4.6s infinite; }
+.g-reparando .g-pata2 { animation: g-reparar 5s ease-in-out infinite; }
+.g-reparando .g-cabeza { transform-origin: 50% 100%; animation: g-asomar 5s ease-in-out infinite; }
+.g-reparando .g-chispa { transform-origin: 50% 50%; opacity: 0; animation: g-chispa 5s ease-out infinite; }
+@keyframes g-cola { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-14deg); } }
+@keyframes g-parpadeo { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes g-reparar { 0%, 30%, 70%, 100% { transform: translateY(0); } 38%, 46%, 54%, 62% { transform: translateY(7px); } 42%, 50%, 58% { transform: translateY(4px); } }
+@keyframes g-asomar { 0%, 30%, 70%, 100% { transform: translateY(0) rotate(0); } 40%, 60% { transform: translateY(3px) rotate(-4deg); } }
+@keyframes g-chispa { 0%, 40% { opacity: 0; transform: scale(.3); } 44% { opacity: 1; transform: scale(1.1); } 52% { opacity: 0; transform: scale(.6) rotate(40deg); } 56% { opacity: 1; transform: scale(.9); } 64%, 100% { opacity: 0; transform: scale(.3); } }
+
+/* Corriendo */
+.g-corriendo .g-cuerpo { animation: g-rebote .36s ease-in-out infinite; }
+.g-corriendo .g-pata-a, .g-corriendo .g-pata-d { transform-origin: 50% 0; animation: g-zancada .36s ease-in-out infinite; }
+.g-corriendo .g-pata-b, .g-corriendo .g-pata-c { transform-origin: 50% 0; animation: g-zancada .36s ease-in-out infinite reverse; }
+.g-corriendo .g-cola-corre { transform-origin: 100% 100%; animation: g-cola .36s ease-in-out infinite; }
+.g-corriendo .g-polvo circle { fill: var(--linea-2); animation: g-polvo .72s ease-out infinite; }
+.g-corriendo .g-polvo circle:nth-child(2) { animation-delay: .24s; } .g-corriendo .g-polvo circle:nth-child(3) { animation-delay: .48s; }
+@keyframes g-rebote { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes g-zancada { 0%, 100% { transform: rotate(28deg); } 50% { transform: rotate(-28deg); } }
+@keyframes g-polvo { from { opacity: .9; transform: translateX(0) scale(.6); } to { opacity: 0; transform: translateX(-12px) scale(1.4); } }
+
+/* Programando */
+.g-programando .g-teclea1 { animation: g-teclear .3s ease-in-out infinite; }
+.g-programando .g-teclea2 { animation: g-teclear .3s ease-in-out infinite .15s; }
+.g-programando .g-cola { transform-origin: 0 100%; animation: g-cola 4s ease-in-out infinite; }
+.g-programando .g-codigo rect { fill: var(--senal); opacity: 0; animation: g-codigo 2.4s ease-out infinite; }
+.g-programando .g-codigo rect:nth-child(2) { animation-delay: .8s; } .g-programando .g-codigo rect:nth-child(3) { animation-delay: 1.6s; }
+.g-programando .g-cabeza-p { transform-origin: 50% 100%; animation: g-asentir 2.4s ease-in-out infinite; }
+@keyframes g-teclear { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes g-codigo { 0% { opacity: 0; transform: translateY(6px); } 25% { opacity: .9; } 100% { opacity: 0; transform: translateY(-14px); } }
+@keyframes g-asentir { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(2deg); } }
+
+/* Molesto: la cola golpea */
+.g-molesto .g-cola-golpe { transform-origin: 0 100%; animation: g-golpe .5s ease-in infinite; }
+.g-molesto .g-cabeza-m { transform-origin: 50% 100%; animation: g-bufido 2s ease-in-out infinite; }
+.g-molesto .g-globo-f { fill: var(--hoja); stroke: var(--linea-2); stroke-width: 1; }
+.g-molesto .g-globo-t { fill: var(--tinta-2); font: 600 10px var(--fuente); }
+.g-molesto .g-globo { animation: g-aparece .4s ease-out both; }
+@keyframes g-golpe { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(-22deg); } }
+@keyframes g-bufido { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-1px); } }
+@keyframes g-aparece { from { opacity: 0; transform: translateY(4px); } }
+
+/* Avergonzado */
+.g-avergonzado .g-gota { animation: g-gota 1.8s ease-in infinite; }
+.g-avergonzado .g-manos { animation: g-tiembla 2.4s ease-in-out infinite; }
+@keyframes g-gota { 0% { opacity: 0; transform: translateY(-4px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(10px); } }
+@keyframes g-tiembla { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1.2px); } }
+
+/* Usos */
+.gato-carga { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 30px 20px; color: var(--tinta-2); font-size: 14px; }
+.gato-carga .gato { width: 96px; height: 80px; }
+.gato-carga.chica { flex-direction: row; padding: 6px 0; gap: 10px; }
+.gato-carga.chica .gato { width: 54px; height: 45px; }
+.gato-vacio .gato { width: 110px; height: 92px; margin: -6px auto 6px; }
+.gato-error { display: flex; align-items: flex-end; gap: 12px; margin: 0 0 16px; }
+.gato-error .gato { width: 74px; height: 62px; flex: none; }
+.gato-dice { position: relative; flex: 1; padding: 10px 14px; border-radius: 14px 14px 14px 4px; font-size: 14px; background: color-mix(in srgb, var(--alerta) 9%, var(--hoja)); border: 1px solid color-mix(in srgb, var(--alerta) 40%, transparent); margin-bottom: 12px; }
+.acceso-gato { width: clamp(150px, 18vw, 230px); height: auto; margin: 0 0 6px -6px; }
+.marca-gato { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.marca-gato .gato { width: 38px; height: 32px; }
+.titular-gato { display: flex; align-items: flex-end; gap: 24px; }
+.titular-gato .gato { width: 120px; height: 100px; flex: none; margin-bottom: -6px; }
+.inicio-carga { position: fixed; inset: 0; display: none; place-items: center; background: var(--papel); z-index: 60; }
+body.iniciando .inicio-carga { display: grid; }
+.toast .gato { width: 34px; height: 28px; flex: none; margin: -4px 0 -4px -4px; }
+.toast.con-gato::before { display: none; }
+@media (max-width: 860px) { .titular-gato .gato { display: none; } .marca-gato .gato { width: 32px; height: 27px; } }
+.aviso-gato { margin: 24px 0 0; }
+.titular .texto { flex: 1; min-width: 0; }

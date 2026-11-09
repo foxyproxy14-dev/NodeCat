@@ -92,7 +92,7 @@ function mostrarAcceso(msg, configurar) {
   $('#acceso').hidden = false;
   $('#formAcceso').hidden = !!configurar;
   $('#formConfigurar').hidden = !configurar;
-  const e = $('#accesoError'); e.textContent = msg || ''; e.hidden = !msg;
+  errorAcceso(msg);
   setTimeout(() => {
     if (configurar) $('#formConfigurar').codigo.focus();
     else { const f = $('#formAcceso'); (f.usuario.value ? f.clave : f.usuario).focus(); }
@@ -101,21 +101,21 @@ function mostrarAcceso(msg, configurar) {
 
 $('#formAcceso').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const f = ev.currentTarget, b = f.querySelector('button'), e = $('#accesoError');
-  if (!f.usuario.value.trim() || !f.clave.value) { e.textContent = 'Escribe tu usuario y tu contraseña.'; e.hidden = false; return; }
+  const f = ev.currentTarget, b = f.querySelector('button');
+  if (!f.usuario.value.trim() || !f.clave.value) { errorAcceso('Escribe tu usuario y tu contraseña.'); return; }
   b.disabled = true; b.textContent = 'Comprobando…';
   try {
     const info = await enviar('/api/login', 'POST', { usuario: f.usuario.value.trim(), clave: f.clave.value });
     f.clave.value = '';
     entrar(info);
-  } catch (err) { e.textContent = err.message; e.hidden = false; f.clave.value = ''; f.clave.focus(); }
+  } catch (err) { errorAcceso(err.message); f.clave.value = ''; f.clave.focus(); }
   finally { b.disabled = false; b.textContent = 'Entrar'; }
 });
 
 $('#formConfigurar').addEventListener('submit', async ev => {
   ev.preventDefault();
   const f = ev.currentTarget, b = f.querySelector('button'), e = f.querySelector('.msg');
-  const mal = m => { e.textContent = m; e.hidden = false; };
+  const mal = m => { e.className = ''; e.innerHTML = gatoError(esc(m)); e.hidden = false; };
   if (!/^\d{6}$/.test(f.codigo.value.trim())) return mal('El código tiene 6 cifras. Búscalo en el registro del servidor.');
   if (f.clave.value !== f.repite.value) return mal('Las contraseñas no coinciden.');
   b.disabled = true;
@@ -124,6 +124,7 @@ $('#formConfigurar').addEventListener('submit', async ev => {
   finally { b.disabled = false; }
 });
 
+function errorAcceso(m) { const e = $('#accesoError'); e.innerHTML = m ? gatoError(esc(m)) : ''; e.hidden = !m; }
 async function salir() {
   try { await enviar('/api/logout', 'POST'); } catch (e) { }
   mostrarAcceso('');
@@ -154,7 +155,8 @@ async function cargar(forzar) {
   } catch (err) {
     if (err.login) return;
     const a = $('#aviso');
-    a.textContent = err.message === 'No hay conexión con Atalaya.' ? 'Se perdió la conexión con Atalaya. Comprueba que el servidor sigue en marcha.' : err.message;
+    const t = err.message === 'No hay conexión con Atalaya.' ? 'Uy, perdí la conexión con Atalaya. Comprueba que el servidor sigue en marcha; lo sigo intentando.' : err.message;
+    if (a.dataset.t !== t || a.hidden) { a.innerHTML = gatoError(esc(t)); a.dataset.t = t; }
     a.hidden = false;
   }
 }
@@ -189,7 +191,7 @@ function luz(latir) {
   if (clase) document.body.classList.add(clase);
   const color = clase === 'estado-alerta' ? '%23d03b3b' : clase === 'estado-aviso' ? '%23fab219' : clase === 'estado-ok' ? '%230ca30c' : '%23888';
   // Icono: la torre (una "l") con la luz encima
-  $('#favicon').href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23121518'/%3E%3Crect x='13' y='12' width='6' height='15' rx='2' fill='%23fff'/%3E%3Ccircle cx='16' cy='7' r='4' fill='${color}'/%3E%3C/svg%3E`;
+  $('#favicon').href = gatoFavicon(decodeURIComponent(color));
   if (latir) { const l = $('#luz'); l.classList.remove('latido'); void l.offsetWidth; l.classList.add('latido'); }
 }
 
@@ -254,7 +256,7 @@ function montar(r) {
           </div>
           <div id="tablero"></div>
         </div>
-        <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos"><div class="vacio">Cargando…</div></section></aside>
+        <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos">${gatoCargando('Cargando…', 'chica')}</section></aside>
       </div>`;
     $('#buscarCli').addEventListener('input', e => { filtroCli = e.target.value; actualizar(r); });
     const bc = $('#btnClientes'); if (bc) bc.addEventListener('click', () => gestionClientes());
@@ -278,7 +280,7 @@ function montar(r) {
           </div>
           <div id="tableroRed"></div>
         </div>
-        <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos"><div class="vacio">Cargando…</div></section></aside>
+        <aside><div class="cab-seccion"><h2>Últimos sucesos</h2></div><section class="hoja" id="sucesos">${gatoCargando('Cargando…', 'chica')}</section></aside>
       </div>`;
     if (esAdmin()) {
       $('#btnAgente').addEventListener('click', () => gestionClientes(c.id));
@@ -389,7 +391,13 @@ function vistaResumen() {
   else if (graves) titulo = graves === 1 ? 'Un cliente necesita atención.' : `${graves} clientes necesitan atención.`;
   else if (leves) titulo = leves === 1 ? 'Todo en marcha, con un aviso.' : `Todo en marcha, con avisos en ${leves} clientes.`;
   else titulo = 'Todo en orden.';
-  $('#titular').innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${plural(eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores')} y ${plural(eq.filter(e => e.tipo === 'mikrotik').length, 'router', 'routers')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
+  const contento = eq.length && !graves && !leves;
+  $('#titular').classList.toggle('titular-gato', !!contento);
+  const gatoT = $('#titular').querySelector('.gato');
+  if (contento && !gatoT) $('#titular').insertAdjacentHTML('beforeend', gatoSVG('reparando'));
+  if (!contento && gatoT) gatoT.remove();
+  let tt = $('#titular .texto'); if (!tt) { $('#titular').insertAdjacentHTML('afterbegin', '<div class="texto"></div>'); tt = $('#titular .texto'); }
+  tt.innerHTML = `<h1>${titulo}</h1>` + (eq.length ? `<p><b>${enLinea} de ${eq.length}</b> equipos en línea en ${plural(cs.length, 'cliente', 'clientes')}: ${plural(eq.filter(e => e.tipo === 'windows').length, 'servidor', 'servidores')} y ${plural(eq.filter(e => e.tipo === 'mikrotik').length, 'router', 'routers')}. <b>${plural(act, 'sesión activa', 'sesiones activas')}</b> de Escritorio remoto.</p>` : '');
   chipsProblemas(p, true);
   $('#tituloTablero').innerHTML = `Clientes <span>${cs.length}</span>`;
 
@@ -400,7 +408,7 @@ function vistaResumen() {
   lista.sort((a, b) => peso(a) - peso(b) || a.nombre.localeCompare(b.nombre));
   const t = $('#tablero');
   if (!cs.length) {
-    t.innerHTML = `<div class="hoja vacio"><strong>Todavía no hay clientes</strong>Crea un cliente, descarga su agente y instálalo en sus servidores.<br><br>${esAdmin() ? '<button class="btn prim" type="button" id="btnPrimerCli">Crear el primer cliente</button>' : 'Pide a un administrador que te dé acceso.'}</div>`;
+    t.innerHTML = gatoVacio('Todavía no hay clientes', 'Crea un cliente, descarga su agente y agrega sus routers. Yo me encargo de vigilarlos.', `<br><br>${esAdmin() ? '<button class="btn prim" type="button" id="btnPrimerCli">Crear el primer cliente</button>' : 'Pide a un administrador que te dé acceso.'}`);
     const b = $('#btnPrimerCli'); if (b) b.onclick = () => gestionClientes(null, true);
     return;
   }
@@ -432,7 +440,7 @@ function filaCliente(c) {
 }
 
 /* ---------------- Últimos sucesos ---------------- */
-const SUCESOS = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Agente instalado'] };
+const SUCESOS = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Agente instalado'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
 let sucesos = null, sucesosT = 0;
 async function cargarSucesos() {
   try { sucesos = arr((await api('/api/eventos')).eventos); sucesosT = Date.now(); } catch (e) { if (e.login) return; sucesos = sucesos || []; }
@@ -456,7 +464,7 @@ function vistaCliente(id) {
   $('#tituloRed').innerHTML = `Red <span>${routers.length}</span>`;
   $('#tableroRed').innerHTML = routers.length ? `<div class="tablero">
     <div class="tablero-cab rt" aria-hidden="true"><span>Router</span><span>CPU</span><span>Memoria</span><span>Internet ahora</span><span class="c-extra">Equipos con IP</span><span class="c-up">Encendido</span><span></span></div>
-    ${routers.map(filaRouter).join('')}</div>` : `<div class="hoja vacio"><strong>Sin routers</strong>${esAdmin() ? 'Agrega sus MikroTik para ver el tráfico, el enlace a Internet, DHCP, Wi‑Fi y VPN.' : 'Un administrador puede agregar sus routers MikroTik.'}</div>`;
+    ${routers.map(filaRouter).join('')}</div>` : gatoVacio('Sin routers', esAdmin() ? 'Agrega sus MikroTik para ver el tráfico, el enlace a Internet, DHCP, Wi‑Fi y VPN.' : 'Un administrador puede agregar sus routers MikroTik.');
   const vivos = todos.filter(e => e.estado === 'ok' || e.estado === 'sinMetricas').length;
   const ses = todasLasSesiones(eq), act = ses.filter(s => s.estado === 'activa').length, dsc = ses.filter(s => s.estado === 'desconectada').length;
   $('#cliTitulo').textContent = c.nombre;
@@ -468,7 +476,7 @@ function vistaCliente(id) {
   $('#tituloTablero').innerHTML = `Servidores <span>${eq.length}</span>`;
   const t = $('#tablero');
   if (!eq.length) {
-    t.innerHTML = `<div class="hoja vacio"><strong>Sin servidores</strong>${esAdmin() ? 'Descarga el agente, cópialo a cada servidor y ejecuta “Instalar agente.bat”. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el agente</button>' : 'Un administrador tiene que instalar el agente en sus servidores.'}</div>`;
+    t.innerHTML = gatoVacio('Sin servidores', esAdmin() ? 'Descarga el agente, cópialo a cada servidor y ejecuta “Instalar agente.bat”. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el agente</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
     const b = $('#btnAg2'); if (b) b.onclick = () => gestionClientes(c.id);
     if (Date.now() - sucesosT > 30000) cargarSucesos(); else pintarSucesos();
     return;
@@ -535,14 +543,14 @@ function vistaSesiones() {
   const f = filtroSes.trim().toLowerCase();
   const l = todas.filter(s => (filtroEstado === 'todas' || s.estado === filtroEstado) &&
     (!f || [s.usuario, s.servidor, s.equipo, s.dominio, s.cliente].some(v => String(v || '').toLowerCase().includes(f))));
-  tabla(l, true, todas.length ? '<strong>Ninguna sesión coincide</strong>Cambia la búsqueda o el filtro.' : '<strong>No hay sesiones</strong>Ahora mismo nadie está conectado.');
+  tabla(l, true, todas.length ? '<strong>Ninguna sesión coincide</strong>Cambia la búsqueda o el filtro.' : gatoSVG('programando') + '<strong>No hay sesiones</strong>Ahora mismo nadie está conectado.');
 }
 
 function tabla(lista, conServidor, vacio) {
   const val = (s, c) => c === 'inicio' || c === 'inactivo' || c === 'id' ? (s[c] == null ? -1 : s[c]) : String(s[c] == null ? '' : s[c]).toLowerCase();
   const filas = [...lista].sort((a, b) => { const va = val(a, orden.campo), vb = val(b, orden.campo); return (va < vb ? -1 : va > vb ? 1 : 0) * (orden.asc ? 1 : -1); });
   const t = $('#tablaSes');
-  if (!filas.length) { t.innerHTML = `<div class="vacio">${vacio}</div>`; return; }
+  if (!filas.length) { t.innerHTML = `<div class="vacio gato-vacio">${vacio}</div>`; return; }
   const col = (c, txt) => `<th aria-sort="${orden.campo === c ? (orden.asc ? 'ascending' : 'descending') : 'none'}"><button type="button" data-orden="${c}">${txt}${orden.campo === c ? `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="${orden.asc ? 'M5 2 9 8H1z' : 'M5 8 9 2H1z'}" fill="currentColor"/></svg>` : ''}</button></th>`;
   t.innerHTML = `<table><thead><tr>
     ${col('usuario', 'Persona')}${conServidor ? col('servidor', 'Servidor') + col('cliente', 'Cliente') : ''}${col('estado', 'Estado')}${col('equipo', 'Conectada desde')}${col('inactivo', 'Inactiva')}${col('inicio', 'Entró')}${col('id', 'ID')}
@@ -730,14 +738,14 @@ function vistaHistorial() {
   sel.value = hist.cliente;
   const q = paramsHist(); q.set('csv', '1');
   $('#btnCsv').href = '/api/historial/sesiones?' + q;
-  if (!hist.datos) { $('#tablaHist').innerHTML = '<div class="vacio">Cargando el historial…</div>'; return; }
+  if (!hist.datos) { $('#tablaHist').innerHTML = gatoCargando('Buscando en el historial…'); return; }
   const l = hist.datos, P = PERIODOS[hist.periodo], ahora = Date.now();
   const personas = new Set(l.map(x => x.usuario.toLowerCase())).size;
   const dur = l.map(x => (x.fin || ahora) - x.inicio);
   $('#tituloHist').textContent = l.length ? `${plural(l.length, 'sesión', 'sesiones')} de ${plural(personas, 'persona', 'personas')} ${P.en}.` : `Sin sesiones ${P.en}.`;
   $('#subHist').innerHTML = l.length ? `Duración media de <b>${durTxt(dur.reduce((a, b) => a + b, 0) / dur.length)}</b>. ${plural(l.filter(x => !x.fin).length, 'sigue conectada', 'siguen conectadas')} ahora.${l.length >= 5000 ? ' Se muestran las 5.000 más recientes; exporta a Excel para verlas por partes.' : ''}` :
     'El historial empieza a guardarse cuando el agente de cada servidor empieza a informar.';
-  if (!l.length) { $('#tablaHist').innerHTML = `<div class="vacio"><strong>No hay sesiones que mostrar</strong>${hist.texto || hist.cliente ? 'Cambia la búsqueda, el cliente o el periodo.' : 'Prueba con un periodo más largo.'}</div>`; return; }
+  if (!l.length) { $('#tablaHist').innerHTML = `<div class="vacio gato-vacio">${gatoSVG('programando')}<strong>No hay sesiones que mostrar</strong>${hist.texto || hist.cliente ? 'Cambia la búsqueda, el cliente o el periodo.' : 'Prueba con un periodo más largo.'}</div>`; return; }
   $('#tablaHist').innerHTML = `<table><thead><tr><th>Persona</th><th>Servidor</th><th>Cliente</th><th>Conectada desde</th><th>Entró</th><th>Salió</th><th>Duración</th><th>Desconexiones</th></tr></thead><tbody>
     ${l.slice(0, 1500).map(x => `<tr>
       <td><span class="usr">${esc(x.usuario)}</span>${x.dominio ? `<span class="dom">${esc(x.dominio)}</span>` : ''}</td>
@@ -770,9 +778,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu()
 
 function aviso(texto, error) {
   const d = document.createElement('div');
-  d.className = 'toast' + (error ? ' error' : '');
+  d.className = 'toast' + (error ? ' error con-gato' : '');
   d.setAttribute('role', error ? 'alert' : 'status');
-  d.textContent = texto;
+  if (error) { d.innerHTML = gatoSVG('avergonzado'); d.append(texto); } else d.textContent = texto;
   $('#avisos').appendChild(d);
   setTimeout(() => d.remove(), error ? 9000 : 4500);
 }
@@ -1072,4 +1080,7 @@ $('#btnTema').addEventListener('click', () => {
   if (rutaActual().vista === 'equipo') actualizar();
 });
 
+$('#accesoGato').innerHTML = gatoSVG('reparando', 'El gato de Atalaya reparando un servidor').replace('class="gato', 'class="acceso-gato gato');
+$('#barraGato').innerHTML = gatoSVG('reparando');
+$('#inicioCarga').innerHTML = gatoCargando('Abriendo Atalaya…');
 iniciar();

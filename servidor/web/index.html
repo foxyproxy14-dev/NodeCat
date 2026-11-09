@@ -17,6 +17,7 @@
 <section class="acceso" id="acceso" hidden>
   <div class="acceso-marca">
     <div>
+      <div id="accesoGato"></div>
       <span class="marca" aria-label="Atalaya">ata<span class="l">l<span class="luz"></span></span>aya</span>
       <p>Todos tus clientes, todos sus servidores, desde un mismo lugar.</p>
     </div>
@@ -28,7 +29,7 @@
       <p class="ayuda">Con la cuenta de Atalaya que te dio el administrador.</p>
       <label class="campo">Usuario<input name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
       <label class="campo">Contraseña<input name="clave" type="password" autocomplete="current-password" required></label>
-      <div class="msg error" id="accesoError" role="alert" hidden></div>
+      <div id="accesoError" hidden></div>
       <button class="btn prim ancho" type="submit">Entrar</button>
       <p class="pie">Después de 5 intentos fallidos, hay que esperar 5 minutos.</p>
     </form>
@@ -48,7 +49,7 @@
 <!-- ================= Panel ================= -->
 <header class="barra">
   <div class="barra-in">
-    <a class="marca" href="#/" aria-label="Atalaya, ir al resumen">ata<span class="l">l<span class="luz" id="luz"></span></span>aya</a>
+    <a class="marca-gato" href="#/" aria-label="Atalaya, ir al resumen"><span id="barraGato"></span><span class="marca">ata<span class="l">l<span class="luz" id="luz"></span></span>aya</span></a>
     <nav class="nav" id="nav" aria-label="Vistas"></nav>
     <div class="herr">
       <span class="reloj" id="reloj" aria-live="polite"></span>
@@ -64,13 +65,15 @@
 </header>
 
 <main>
-  <div class="aviso-global" id="aviso" role="alert" hidden></div>
+  <div id="aviso" class="aviso-gato" hidden></div>
   <div id="vista"></div>
 </main>
 
+<div class="inicio-carga" id="inicioCarga"></div>
 <div class="menu" id="menu" role="menu" hidden></div>
 <dialog id="dialogo"></dialog>
 <div class="avisos" id="avisos" aria-live="polite"></div>
+<script src="gato.js"></script>
 <script src="app.js"></script>
 <script src="router.js"></script>
 </body>
