@@ -877,9 +877,17 @@ async function editarCliente(id, despues) {
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(c.nombre)}" required></label>
     <label class="campo">Notas<textarea name="notas" maxlength="500" placeholder="Contacto, horario, contrato…">${esc(c.notas)}</textarea><span class="ayuda-campo">Las ve todo el que tenga acceso a este cliente.</span></label>
     <div class="msg error" role="alert" hidden></div>
-    <div class="pie"><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
+    <div class="pie"><button class="btn" type="button" data-borrar style="margin-right:auto">Borrar cliente</button><button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">Guardar</button></div></form>`);
   const f = dlg.querySelector('form'), e = f.querySelector('.msg');
   f.nombre.focus();
+  const n = (cliente(id) || { equipos: [] }).equipos.length;
+  let confirmar = false;
+  const bb = f.querySelector('[data-borrar]');
+  bb.onclick = async () => {
+    if (!confirmar) { confirmar = true; bb.className = 'btn peligro'; bb.textContent = n ? `¿Seguro? Se borra con sus ${n} equipos y su historial` : '¿Seguro? Borrar cliente'; return; }
+    try { await enviar(`/api/clientes/${id}`, 'DELETE'); dlg.close(); aviso(`Cliente ${c.nombre} borrado.`); location.hash = '#/'; await cargar(true); }
+    catch (x) { if (!x.login) { e.textContent = x.message; e.hidden = false; } }
+  };
   f.onsubmit = async ev => {
     ev.preventDefault();
     try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value }); dlg.close(); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
