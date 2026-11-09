@@ -175,7 +175,8 @@ function sistemaDe(e) {
 // Si el usuario puso un logo en datos/logos, se usa en lugar de las iniciales
 const ARCHIVO_LOGO = { px: 'proxmox', ub: 'ubuntu', db: 'debian', rk: 'rocky', al: 'almalinux', rh: 'redhat', ce: 'centos', fe: 'fedora', su: 'opensuse', ar: 'arch', ap: 'alpine', tn: 'truenas', ws: 'windows-server', wi: 'windows', hv: 'hyperv', lx: 'linux', mt: 'mikrotik', fg: 'fortigate' };
 let LOGOS_PROPIOS = {};
-fetch('/api/logos').then(r => r.json()).then(o => { for (const f of o.logos || []) LOGOS_PROPIOS[f.replace(/\.\w+$/, '')] = '/logos/' + f; }).catch(() => { });
+function ponerLogos(l) { LOGOS_PROPIOS = {}; const v = Date.now(); for (const f of l || []) LOGOS_PROPIOS[f.replace(/\.\w+$/, '')] = '/logos/' + f + '?v=' + v; }
+fetch('/api/logos').then(r => r.json()).then(o => ponerLogos(o.logos)).catch(() => { });
 function insigniaSO(e, estado) {
   const [k, t, n] = sistemaDe(e);
   const nombre = ARCHIVO_LOGO[k], logo = nombre && (LOGOS_PROPIOS[nombre] || (k === 'ws' && LOGOS_PROPIOS.windows) || (k === 'hv' && LOGOS_PROPIOS.windows));

@@ -952,3 +952,10 @@ body.iniciando .inicio-carga { display: grid; }
 .f-nombre { gap: 12px; }
 .so-insignia.con-logo { background: var(--hoja-2); border: 1px solid var(--linea); }
 .so-insignia.con-logo img { width: 72%; height: 72%; object-fit: contain; }
+.lista-logos { display: grid; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
+.fila-logo { display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--linea); }
+.fila-logo:first-child { border-top: 0; }
+.fila-logo .nombre b { display: block; font-weight: 600; }
+.fila-logo .nombre small { color: var(--tinta-3); font-size: 13px; }
+.fila-logo .acciones { display: flex; gap: 8px; }
+.fila-logo label.btn { cursor: pointer; }

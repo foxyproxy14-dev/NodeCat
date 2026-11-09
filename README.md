@@ -216,7 +216,12 @@ Si un cliente tiene varias sedes, no hace falta crear un grupo ni subclientes: e
 
 ## Logos de los sistemas
 
-Cada equipo muestra una insignia con las iniciales de su sistema. Si prefieres logos, pon tus archivos en la carpeta `datos/logos` de la instalación (junto a la base de datos) con estos nombres, en SVG, PNG o WebP: `proxmox`, `windows-server`, `windows`, `hyperv`, `ubuntu`, `debian`, `rocky`, `almalinux`, `redhat`, `centos`, `fedora`, `opensuse`, `arch`, `alpine`, `truenas`, `linux`, `mikrotik`, `fortigate` (por ejemplo `datos/logos/proxmox.svg`). NodeCat los usa en un minuto; los que falten siguen con iniciales. Los SVG se sirven aislados, sin poder ejecutar código.
+Cada equipo muestra una insignia con las iniciales de su sistema. Para usar logos: menú con tu nombre > **Logos de los sistemas**.
+
+- **Subir varios logos a la vez:** elige los archivos y NodeCat reconoce el sistema por el nombre (`Ubuntu-logo.png`, `proxmox_ve.svg`, `windows-server-2022.png`…), los renombra y los asigna solo.
+- O en la fila de cada sistema: **Subir logo**, **Cambiar** o **Quitar**. Cada fila dice en cuántos equipos se usa.
+
+Sirven SVG, PNG o WebP de hasta 512 KB. Se guardan en `datos/logos` y los SVG se sirven aislados, sin poder ejecutar código. Los sistemas sin logo siguen con iniciales.
 
 ## Verificación en dos pasos
 

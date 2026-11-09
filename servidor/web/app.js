@@ -1412,12 +1412,81 @@ $('#btnCuenta').addEventListener('click', e => {
   if (!SESION) return;
   if (!$('#menu').hidden) { cerrarMenu(); return; }
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }, { t: 'Verificación en dos pasos', fn: dosPasos }];
-  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Notificaciones por Telegram', fn: notificaciones });
+  if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Logos de los sistemas', fn: logosSistemas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
   menuEn(e.currentTarget, it, `<div class="menu-cab"><b>${esc(SESION.usuario)}</b><span>${ROLES[SESION.rol] || esc(SESION.rol)}${alcance}${SESION.demo ? ', modo demo' : ''}</span></div>`);
 });
+
+/* ---------------- Logos de los sistemas ---------------- */
+const SISTEMAS_LOGO = [
+  ['proxmox', 'Proxmox VE', { tipo: 'proxmox' }, 'Hosts de Proxmox'], ['windows-server', 'Windows Server', { tipo: 'windows', so: 'Windows Server 2022' }, 'Servidores Windows Server'],
+  ['windows', 'Windows', { tipo: 'windows', so: 'Windows 11' }, 'PC con Windows, y Windows Server o Hyper-V si no tienen el suyo'], ['hyperv', 'Hyper-V', { tipo: 'windows', hipervisor: 'hyperv' }, 'Hosts de Hyper-V'],
+  ['ubuntu', 'Ubuntu', { tipo: 'linux', so: 'Ubuntu' }, ''], ['debian', 'Debian', { tipo: 'linux', so: 'Debian' }, ''], ['rocky', 'Rocky Linux', { tipo: 'linux', so: 'Rocky' }, ''],
+  ['almalinux', 'AlmaLinux', { tipo: 'linux', so: 'AlmaLinux' }, ''], ['redhat', 'Red Hat', { tipo: 'linux', so: 'Red Hat' }, ''], ['centos', 'CentOS', { tipo: 'linux', so: 'CentOS' }, ''],
+  ['fedora', 'Fedora', { tipo: 'linux', so: 'Fedora' }, ''], ['opensuse', 'openSUSE', { tipo: 'linux', so: 'openSUSE' }, ''], ['arch', 'Arch Linux', { tipo: 'linux', so: 'Arch' }, ''],
+  ['alpine', 'Alpine', { tipo: 'linux', so: 'Alpine' }, ''], ['truenas', 'TrueNAS', { tipo: 'linux', so: 'TrueNAS' }, ''], ['linux', 'Linux (otros)', { tipo: 'linux', so: 'Linux' }, 'Distribuciones sin logo propio'],
+  ['mikrotik', 'MikroTik', { tipo: 'mikrotik' }, 'Routers MikroTik'], ['fortigate', 'FortiGate', { tipo: 'fortigate' }, 'Firewalls FortiGate']
+];
+// El sistema por el nombre del archivo: "Ubuntu-logo-2022.svg" → ubuntu
+function reconocerLogo(archivo) {
+  const t = archivo.toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[_\s.]+/g, '-');
+  const reglas = [[/hyper-?v/, 'hyperv'], [/windows-?server|win-?srv|winserver/, 'windows-server'], [/windows|win1[01]|microsoft/, 'windows'], [/proxmox|pve/, 'proxmox'],
+    [/ubuntu/, 'ubuntu'], [/debian/, 'debian'], [/rocky/, 'rocky'], [/alma/, 'almalinux'], [/red-?hat|rhel/, 'redhat'], [/centos/, 'centos'], [/fedora/, 'fedora'],
+    [/suse/, 'opensuse'], [/arch/, 'arch'], [/alpine/, 'alpine'], [/truenas|freenas/, 'truenas'], [/mikrotik|routeros/, 'mikrotik'], [/forti/, 'fortigate'], [/linux|tux/, 'linux']];
+  const r = reglas.find(([re]) => re.test(t));
+  return r ? r[1] : null;
+}
+async function logosSistemas() {
+  const dlg = libre('<div></div>', true);
+  const usados = n => equipos().filter(e => { const k = sistemaDe(e)[0]; return ARCHIVO_LOGO[k] === n; }).length;
+  let quitando = null;
+  const pintar = () => {
+    dlg.querySelector('.dlg').innerHTML = `<div><h3>Logos de los sistemas</h3>
+      <p>Sube el logo de cada sistema y NodeCat lo usará en lugar de las iniciales, en todas las pantallas y en las páginas compartidas. Sirven SVG, PNG o WebP de hasta 512 KB; mejor si es cuadrado y con fondo transparente.</p>
+      <p><label class="btn prim">Subir varios logos a la vez<input type="file" multiple accept=".svg,.png,.webp,image/svg+xml,image/png,image/webp" data-varios hidden></label>
+        <span class="tenue" style="margin-left:8px">NodeCat reconoce el sistema por el nombre del archivo (por ejemplo <code>Ubuntu-logo.png</code>) y lo asigna solo.</span></p>
+      <div class="lista-logos">${SISTEMAS_LOGO.map(([n, t, ej, d]) => { const tiene = !!LOGOS_PROPIOS[n], u = usados(n); return `<div class="fila-logo">
+        ${insigniaSO(ej, 'ok')}
+        <span class="nombre"><b>${esc(t)}</b><small>${tiene ? 'Con logo propio' : 'Con iniciales'}${u ? `, en ${plural(u, 'equipo', 'equipos')}` : ''}${d ? `. ${esc(d)}` : ''}</small></span>
+        <span class="acciones"><label class="btn">${tiene ? 'Cambiar' : 'Subir logo'}<input type="file" accept=".svg,.png,.webp,image/svg+xml,image/png,image/webp" data-subir="${n}" hidden></label>
+        ${tiene ? `<button type="button" class="btn ${quitando === n ? 'peligro' : ''}" data-quitar="${n}">${quitando === n ? '¿Seguro?' : 'Quitar'}</button>` : ''}</span></div>`; }).join('')}</div>
+      <div class="msg error" role="alert" hidden></div>
+      <div class="pie"><button class="btn" type="button" data-cerrar>Cerrar</button></div></div>`;
+    const m = dlg.querySelector('.msg.error');
+    dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
+    const listo = (l, texto) => { ponerLogos(l); quitando = null; pintar(); actualizar(); aviso(texto); };
+    const leerArchivo = f => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.readAsDataURL(f); });
+    dlg.querySelector('[data-varios]').onchange = async ev => {
+      const archivos = [...ev.target.files], hechos = [], fuera = [];
+      let ultimo = null;
+      for (const f of archivos) {
+        const n = reconocerLogo(f.name);
+        if (!n || f.size > 512 * 1024) { fuera.push(f.name + (n ? ' (pesa más de 512 KB)' : '')); continue; }
+        try { ultimo = await enviar(`/api/logos/${n}`, 'PUT', { datos: await leerArchivo(f) }); hechos.push(SISTEMAS_LOGO.find(x => x[0] === n)[1]); }
+        catch (x) { if (x.login) return; fuera.push(`${f.name} (${x.message})`); }
+      }
+      if (ultimo) { ponerLogos(ultimo.logos); quitando = null; pintar(); actualizar(); }
+      if (hechos.length) aviso(`Logos asignados: ${hechos.join(', ')}.`);
+      if (fuera.length) gatoDice(dlg.querySelector('.msg.error'), `No reconocí ${fuera.length === 1 ? 'este archivo' : 'estos archivos'}: ${fuera.join(', ')}. Súbelos desde la fila de su sistema.`);
+    };
+    dlg.querySelectorAll('[data-subir]').forEach(i => i.onchange = async () => {
+      const f = i.files[0]; if (!f) return;
+      if (f.size > 512 * 1024) { gatoDice(m, 'El archivo debe pesar menos de 512 KB.'); return; }
+      const datos = await leerArchivo(f);
+      try { const r = await enviar(`/api/logos/${i.dataset.subir}`, 'PUT', { datos }); listo(r.logos, 'Logo guardado.'); }
+      catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+    dlg.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+      if (quitando !== b.dataset.quitar) { quitando = b.dataset.quitar; pintar(); return; }
+      try { const r = await enviar(`/api/logos/${b.dataset.quitar}`, 'DELETE'); listo(r.logos, 'Logo quitado: vuelven las iniciales.'); }
+      catch (x) { if (!x.login) gatoDice(m, x.message); }
+    });
+  };
+  try { ponerLogos((await api('/api/logos')).logos); } catch { }
+  pintar();
+}
 
 /* ---------------- Verificación en dos pasos ---------------- */
 function cargarQr() {

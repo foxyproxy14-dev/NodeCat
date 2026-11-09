@@ -294,7 +294,33 @@ function logosDisponibles() {
   try { l = fs.readdirSync(LOGOS).map(f => f.match(/^([a-z-]+)\.(svg|png|webp)$/)).filter(m => m && NOMBRES_LOGO.includes(m[1])).map(m => m[1] + '.' + m[2]); } catch { }
   logosCache = { t: Date.now(), l }; return l;
 }
-ruta('GET', '/api/logos', { publica: true }, () => ({ logos: logosDisponibles() }));
+ruta('GET', '/api/logos', { publica: true }, () => ({ logos: logosDisponibles(), nombres: NOMBRES_LOGO }));
+// Subir o quitar un logo desde el panel (solo administradores)
+ruta('PUT', '/api/logos/:nombre', { ...soloAdmin, cuerpoMax: 800 * 1024 }, ({ p, cuerpo, sesion }) => {
+  const nombre = String(p.nombre);
+  if (!NOMBRES_LOGO.includes(nombre)) throw error(400, 'Ese sistema no existe.');
+  const b = Buffer.from(String(cuerpo.datos || ''), 'base64');
+  if (!b.length || b.length > 512 * 1024) throw error(400, 'El archivo debe pesar menos de 512 KB.');
+  const ini = b.subarray(0, 512).toString('utf8');
+  const ext = b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? 'png'
+    : b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' ? 'webp'
+    : /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(ini) ? 'svg' : null;
+  if (!ext) throw error(400, 'Sube una imagen SVG, PNG o WebP.');
+  fs.mkdirSync(LOGOS, { recursive: true });
+  for (const e of ['svg', 'png', 'webp']) { try { fs.unlinkSync(path.join(LOGOS, `${nombre}.${e}`)); } catch { } }
+  fs.writeFileSync(path.join(LOGOS, `${nombre}.${ext}`), b);
+  logosCache.t = 0;
+  log(`${sesion.usuario} subió el logo de ${nombre}.`);
+  return { logos: logosDisponibles() };
+});
+ruta('DELETE', '/api/logos/:nombre', soloAdmin, ({ p, sesion }) => {
+  const nombre = String(p.nombre);
+  if (!NOMBRES_LOGO.includes(nombre)) throw error(400, 'Ese sistema no existe.');
+  for (const e of ['svg', 'png', 'webp']) { try { fs.unlinkSync(path.join(LOGOS, `${nombre}.${e}`)); } catch { } }
+  logosCache.t = 0;
+  log(`${sesion.usuario} quitó el logo de ${nombre}.`);
+  return { logos: logosDisponibles() };
+});
 ruta('GET', '/logos/:archivo', { publica: true }, ({ p, res }) => {
   const f = String(p.archivo);
   if (!logosDisponibles().includes(f)) throw error(404, 'No existe ese logo.');
@@ -326,7 +352,7 @@ async function atender(req, res) {
   } else if (req.method === 'POST' && !r.agente && req.headers['x-nodecat'] !== '1') {
     throw error(403, 'Petición no permitida.');
   }
-  const cuerpo = (req.method === 'POST' || req.method === 'PUT') && !r.agente ? await leerCuerpo(req) : {};
+  const cuerpo = (req.method === 'POST' || req.method === 'PUT') && !r.agente ? await leerCuerpo(req, r.cuerpoMax) : {};
   const datos = await r.fn({ req, res, url, p, sesion, cuerpo });
   if (!res.headersSent && datos !== undefined) json(res, 200, datos);
 }
