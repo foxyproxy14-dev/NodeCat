@@ -64,8 +64,30 @@ function Instalar-NodeCat {
   if (-not $net -or $net -lt 378389) { Fallo 'Hace falta .NET Framework 4.5 o más nuevo. Instálalo desde Windows Update y vuelve a intentarlo.'; return }
   Bien '.NET Framework 4.5 o más nuevo'
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
-  $viejo = Get-Service -Name 'NodeCatAgente' -ErrorAction SilentlyContinue
-  if ($viejo) { Nota 'Ya hay un agente instalado: se va a actualizar.' }
+  # Si hay una versión anterior, se quita del todo antes de instalar (así Windows no pide reiniciar)
+  $nombres = @('NodeCatAgente', 'AtalayaAgente', 'Atalaya')
+  $viejos = @($nombres | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue } | Where-Object { $_ })
+  if ($viejos.Count) {
+    Nota 'Ya hay un agente instalado: se quita primero para actualizarlo.'
+    foreach ($v in $viejos) { try { Stop-Service -Name $v.Name -Force -ErrorAction SilentlyContinue } catch { } }
+    Get-Process -Name 'NodeCatAgente', 'AtalayaAgente' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 800
+    foreach ($v in $viejos) { & sc.exe delete $v.Name | Out-Null }
+    $quedan = $null
+    for ($i = 0; $i -lt 10; $i++) {
+      $quedan = @($nombres | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue } | Where-Object { $_ })
+      if (-not $quedan.Count) { break }
+      # Windows no termina de borrar un servicio mientras algo lo tiene abierto (Servicios, Visor de eventos, Administrador de tareas)
+      if ($i -eq 3) {
+        $abiertos = @(Get-Process -Name 'mmc', 'taskmgr', 'perfmon' -ErrorAction SilentlyContinue)
+        if ($abiertos.Count) { Nota 'Cerrando la consola de Servicios / Administrador de tareas, que no dejan borrar el servicio viejo...'; $abiertos | Stop-Process -Force -ErrorAction SilentlyContinue }
+        foreach ($q in $quedan) { & sc.exe delete $q.Name | Out-Null }
+      }
+      Start-Sleep -Seconds 1
+    }
+    if ($quedan.Count) { Fallo 'Windows todavía tiene marcado el servicio anterior para borrar. Cierra cualquier ventana de Servicios, Visor de eventos o Administrador de tareas (también en otras sesiones de escritorio remoto) y vuelve a pegar el comando.'; return }
+    Bien 'Versión anterior quitada'
+  }
 
   # 3. Descarga con barra de progreso
   Paso 3 'Descargando el agente'

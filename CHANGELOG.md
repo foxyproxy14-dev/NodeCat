@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.13.2 (noviembre de 2026)
+
+- Instalador de PowerShell: si ya hay un agente, lo detiene, cierra su proceso y borra el servicio antes de instalar, esperando a que Windows lo quite del todo. Si algo lo tiene abierto (Servicios, Visor de eventos, Administrador de tareas), lo cierra. Así ya no aparece "ya existe un servicio con ese nombre" ni hace falta reiniciar.
+
 ## 0.13.1 (noviembre de 2026)
 
 - Agente de Windows instalable con un comando de PowerShell (`irm URL/instalar/CLAVE.ps1 | iex`), desde la misma ventana de **Descargar agente → Windows / Hyper-V**. Muestra cada paso: permisos (si no es administrador, se abre solo con permisos), requisitos, descarga con barra de progreso, instalación del servicio y verificación. Como no pasa por el navegador, no aparece el aviso de "archivo sospechoso" de Chrome ni el de SmartScreen.
