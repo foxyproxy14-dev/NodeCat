@@ -1250,3 +1250,9 @@ body.iniciando .inicio-carga { display: grid; }
 .ses-top { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
 .ses-top span { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--linea); background: var(--hoja-2); white-space: nowrap; }
 .ses-top small { color: var(--tinta-3); margin-left: 3px; }
+.ses-srv { display: grid; gap: 2px; }
+.ses-srv small { color: var(--tinta-3); font-size: 12px; }
+#tablaSes table.con-uso th, #tablaSes table.con-uso td { padding: 10px 12px; }
+#tablaSes table.con-uso .ses-top { min-width: 200px; max-width: 280px; white-space: normal; }
+#tablaSes table.con-uso .dom { display: block; font-size: 11.5px; }
+#tablaSes table.con-uso .dom { margin-left: 0; } .ses-srv .enlace { justify-self: start; text-align: left; }

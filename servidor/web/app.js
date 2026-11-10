@@ -400,7 +400,7 @@ function montar(r) {
           <button type="button" data-filtro="desconectada">Desconectadas</button>
         </div>
         <label><span class="sr">Cliente</span><select class="selector" id="sesCli"></select></label>
-        <label class="buscar">${ICO.lupa}<span class="sr">Buscar persona, servidor o equipo</span><input type="search" id="buscarSes" placeholder="Buscar persona, servidor o equipo" value="${esc(filtroSes)}"></label>
+        <label class="buscar">${ICO.lupa}<span class="sr">Buscar persona, servidor o equipo</span><input type="search" id="buscarSes" placeholder="Buscar persona, servidor, equipo o programa" value="${esc(filtroSes)}"></label>
       </div>
       <section class="hoja desliza" id="tablaSes"></section>`;
     $('#buscarSes').addEventListener('input', e => { filtroSes = e.target.value; actualizar(r); });
@@ -458,9 +458,11 @@ function montar(r) {
       </div>
       <p class="disponibilidad" id="disponibilidad"></p>
       <div id="srvVms"></div>
-      <div class="cab-seccion"><h2 id="srvSesTitulo">Sesiones</h2></div>
+      <div class="cab-seccion"><h2 id="srvSesTitulo">Sesiones</h2>
+        <label class="buscar">${ICO.lupa}<span class="sr">Buscar en las sesiones de este servidor</span><input type="search" id="buscarSesSrv" placeholder="Buscar persona, equipo o programa" value="${esc(filtroSesSrv)}"></label></div>
       <section class="hoja desliza" id="tablaSes"></section>
       </div>`;
+    $('#buscarSesSrv').addEventListener('input', ev => { filtroSesSrv = ev.target.value; actualizar(r); });
     $('#rangos').addEventListener('click', ev => { const b = ev.target.closest('[data-rango]'); if (!b) return; rango = b.dataset.rango; guardar('rango', rango); actualizar(r); });
     const be = $('#btnEditarEq'); if (be) be.addEventListener('click', () => editarEquipo(e.id));
     enlazarTabla();
@@ -478,7 +480,9 @@ function actualizar(r = rutaActual()) {
 }
 
 /* ---------------- Resumen de clientes ---------------- */
-let filtroCli = '', filtroSes = '', filtroSesCli = '', filtroEstado = 'todas';
+let filtroCli = '', filtroSes = '', filtroSesCli = '', filtroEstado = 'todas', filtroSesSrv = '';
+// Búsqueda en sesiones: persona, dominio, equipo de origen, servidor, cliente y programas que usa
+const coincideSesion = (s, f) => [s.usuario, s.servidor, s.equipo, s.dominio, s.cliente, ...(s.top || []).map(t => t.nombre)].some(v => String(v || '').toLowerCase().includes(f));
 let orden = { campo: 'usuario', asc: true };
 
 function chipsProblemas(p, conCliente) {
@@ -707,7 +711,7 @@ function vistaSesiones() {
   $('#subSes').innerHTML = todas.length ? `<b>${plural(act, 'sesión activa', 'sesiones activas')}</b> y ${plural(dsc, 'desconectada', 'desconectadas')} en ${plural(new Set(todas.map(s => s.equipoId)).size, 'servidor', 'servidores')}${filtroSesCli ? '' : ` de ${plural(new Set(todas.map(s => s.cliente)).size, 'cliente', 'clientes')}`}.` : 'Cuando alguien entre por Escritorio remoto aparecerá aquí.';
   const f = filtroSes.trim().toLowerCase();
   const l = todas.filter(s => (filtroEstado === 'todas' || s.estado === filtroEstado) &&
-    (!f || [s.usuario, s.servidor, s.equipo, s.dominio, s.cliente].some(v => String(v || '').toLowerCase().includes(f))));
+    (!f || coincideSesion(s, f)));
   tabla(l, true, todas.length ? '<strong>Ninguna sesión coincide</strong>Cambia la búsqueda o el filtro.' : gatoSVG('programando') + '<strong>No hay sesiones</strong>Ahora mismo nadie está conectado.');
 }
 
@@ -723,12 +727,12 @@ function tabla(lista, conServidor, vacio) {
   const t = $('#tablaSes');
   if (!filas.length) { t.innerHTML = `<div class="vacio gato-vacio">${vacio}</div>`; return; }
   const col = (c, txt) => `<th aria-sort="${orden.campo === c ? (orden.asc ? 'ascending' : 'descending') : 'none'}"><button type="button" data-orden="${c}">${txt}${orden.campo === c ? `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="${orden.asc ? 'M5 2 9 8H1z' : 'M5 8 9 2H1z'}" fill="currentColor"/></svg>` : ''}</button></th>`;
-  t.innerHTML = `<table><thead><tr>
-    ${col('usuario', 'Persona')}${conServidor ? col('servidor', 'Servidor') + col('cliente', 'Cliente') : ''}${col('estado', 'Estado')}${conUso ? col('cpu', 'CPU') + col('ram', 'Memoria') + '<th>Lo que más usa</th>' : ''}${col('equipo', 'Conectada desde')}${col('inactivo', 'Inactiva')}${col('inicio', 'Entró')}${col('id', 'ID')}
+  t.innerHTML = `<table class="${conUso ? 'con-uso' : ''}"><thead><tr>
+    ${col('usuario', 'Persona')}${conServidor ? col('servidor', 'Servidor') : ''}${col('estado', 'Estado')}${conUso ? col('cpu', 'CPU') + col('ram', 'Memoria') + '<th>Lo que más usa</th>' : ''}${col('equipo', 'Conectada desde')}${col('inactivo', 'Inactiva')}${col('inicio', 'Entró')}${col('id', 'ID')}
     </tr></thead><tbody>
     ${filas.map(s => `<tr>
         <td><span class="usr">${esc(s.usuario)}</span>${s.dominio ? `<span class="dom">${esc(s.dominio)}</span>` : ''}</td>
-        ${conServidor ? `<td><button type="button" class="enlace" data-eq="${s.equipoId}">${esc(s.servidor)}</button></td><td class="tenue">${esc(s.cliente)}</td>` : ''}
+        ${conServidor ? `<td><span class="ses-srv"><button type="button" class="enlace" data-eq="${s.equipoId}">${esc(s.servidor)}</button><small>${esc(s.cliente)}</small></span></td>` : ''}
         <td><span class="estado-ses"><span class="punto ${esc(s.estado)}" aria-hidden="true"></span>${esc(s.estadoTexto || s.estado)}</span></td>
         ${conUso ? `<td>${usoCpu(s)}</td><td>${usoRam(s)}</td><td>${usoTop(s)}</td>` : ''}
         <td>${s.equipo ? esc(s.equipo) : '<span class="tenue">—</span>'}</td>
@@ -833,8 +837,10 @@ function vistaEquipo(id) {
   const ses = vivo ? s.sesiones : [];
   const act = ses.filter(x => x.estado === 'activa').length, dsc = ses.filter(x => x.estado === 'desconectada').length;
   $('#srvSesTitulo').innerHTML = `${s.tipo === 'windows' ? 'Sesiones' : 'Sesiones SSH y de consola'} <span>${plural(act, 'activa', 'activas')}, ${plural(dsc, 'desconectada', 'desconectadas')}</span>`;
-  tabla(ses.map(x => ({ ...x, servidor: nombreEq(s), equipoId: s.id })), false,
-    !vivo ? '<strong>Sin datos</strong>El servidor no responde.' : `<strong>Nadie conectado a este servidor</strong>${s.tipo === 'windows' ? 'Las sesiones de Escritorio remoto aparecerán aquí.' : 'Las sesiones SSH y de consola aparecerán aquí.'}`);
+  const fq = filtroSesSrv.trim().toLowerCase();
+  const visibles = fq ? ses.filter(x => coincideSesion(x, fq)) : ses;
+  tabla(visibles.map(x => ({ ...x, servidor: nombreEq(s), equipoId: s.id })), false,
+    fq && ses.length ? `<strong>Nadie coincide con “${esc(filtroSesSrv.trim())}”</strong>Busca por persona, dominio, equipo desde el que se conecta o programa.` : !vivo ? '<strong>Sin datos</strong>El servidor no responde.' : `<strong>Nadie conectado a este servidor</strong>${s.tipo === 'windows' ? 'Las sesiones de Escritorio remoto aparecerán aquí.' : 'Las sesiones SSH y de consola aparecerán aquí.'}`);
 }
 
 function anillo(pct) {

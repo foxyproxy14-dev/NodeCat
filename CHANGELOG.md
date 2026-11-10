@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.15.1 (noviembre de 2026)
+
+- La tabla de sesiones ya no se corta a la derecha: el servidor y el cliente van en la misma columna, y los programas que más usa cada sesión se acomodan en filas.
+- Buscador en las sesiones de cada servidor (persona, dominio, equipo desde el que se conecta o programa). El buscador de la página Sesiones ahora también encuentra por programa.
+
 ## 0.15.0 (noviembre de 2026)
 
 - CPU y memoria de cada sesión de Escritorio remoto, con los programas que más usa cada una (agrupados: "chrome ×9"). Columnas nuevas, ordenables, en las sesiones del servidor y en la página Sesiones. El agente lo calcula una vez por informe recorriendo los procesos (la CPU, por diferencia con el informe anterior), así que casi no consume.
