@@ -1237,3 +1237,5 @@ body.iniciando .inicio-carga { display: grid; }
 .logs-detalle td { overflow-wrap: anywhere; font-size: 12.5px; }
 @media (max-width: 980px) { .logs-dos { grid-template-columns: 1fr; } }
 .logs-veces { font-size: 12px; font-weight: 700; padding: 0 7px; border-radius: 99px; background: var(--hoja-2); border: 1px solid var(--linea-2); color: var(--tinta-2); }
+.sub-titulo { margin: 18px 0 6px; font-size: 15px; display: flex; align-items: center; gap: 8px; } .sub-titulo .chip-hv { margin: 0; }
+.en-linea:has(#cmdLinux) { display: flex; align-items: stretch; gap: 8px; } .en-linea:has(#cmdLinux) > * { margin: 0; }

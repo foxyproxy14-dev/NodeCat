@@ -1124,6 +1124,7 @@ async function agregarServidores(id, tipo = 'windows') {
   const c = datos.clientes.find(x => x.id === id); if (!c) return;
   const t = encodeURIComponent(CSRF);
   const comando = `curl -fsSL ${datos.url}/instalar/${c.clave}.sh | bash`;
+  const comandoPs = `irm ${datos.url}/instalar/${c.clave}.ps1 | iex`;
   const TIT = { windows: 'Windows', hyperv: 'Hyper-V', linux: 'Linux', proxmox: 'Proxmox VE' };
   const dlg = libre('<div></div>');
   const pintar = () => {
@@ -1131,11 +1132,15 @@ async function agregarServidores(id, tipo = 'windows') {
     dlg.querySelector('.dlg').innerHTML = `<div><h3>Agregar a ${esc(c.nombre)}</h3>
       <div class="pestanas-hv" role="group" aria-label="Sistema" style="margin-bottom:18px">${Object.entries(TIT).map(([k, v]) => `<button type="button" data-t="${k}" class="${tipo === k ? 'activa' : ''}" aria-pressed="${tipo === k}">${v}</button>`).join('')}</div>
       ${win ? `<p>${tipo === 'hyperv' ? 'En Hyper-V se usa el mismo agente de Windows: lo instalas en el host y él detecta el rol solo. Verás el host y sus <b>máquinas virtuales</b> (encendidas o apagadas, CPU, memoria, disco y tiempo encendidas).' : `El instalador ya va configurado para <b>${esc(c.nombre)}</b> y envía los datos a <b>${esc(datos.url)}</b>${/^https:/.test(datos.url) ? ' por HTTPS' : ''}: no hace falta VPN ni abrir puertos.`}</p>
-        <ol class="pasos"><li>Descarga el instalador.</li>
-          <li>Cópialo al ${tipo === 'hyperv' ? 'host de Hyper-V' : 'servidor'} y ábrelo con doble clic. Si Windows avisa de que es una aplicación desconocida, pulsa <b>Más información</b> y <b>Ejecutar de todas formas</b>.</li>
-          <li>En unos segundos aparecerá aquí. Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</li></ol>
-        <p><a class="btn prim grande" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
-        <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>).</p>`
+        <h4 class="sub-titulo">Con PowerShell <span class="chip-hv ok">recomendado</span></h4>
+        <ol class="pasos"><li>En el ${tipo === 'hyperv' ? 'host de Hyper-V' : 'servidor'}, abre <b>PowerShell como administrador</b> (clic derecho en Inicio, <b>Terminal (Administrador)</b>).</li>
+          <li>Pega este comando. Verás cada paso, la barra de descarga y la instalación del servicio:</li></ol>
+        <div class="en-linea" style="margin:0 0 8px"><input class="codigo" id="cmdLinux" readonly value="${esc(comandoPs)}" style="flex:1"><button class="btn prim" type="button" data-copiar>Copiar</button></div>
+        <p class="tenue" style="margin-top:0">No pasa por el navegador, así que no salen los avisos de “archivo sospechoso”. Si lo abres sin permisos, el script pide ser administrador y sigue solo en otra ventana.</p>
+        <h4 class="sub-titulo">O con el instalador .exe</h4>
+        <p style="margin-top:0">Cópialo al ${tipo === 'hyperv' ? 'host' : 'servidor'} y ábrelo con doble clic. Chrome y Windows pueden avisar de que es poco común porque no está firmado: en Chrome, <b>Descargar archivo sospechoso</b>; en Windows, <b>Más información</b> y <b>Ejecutar de todas formas</b>.</p>
+        <p><a class="btn" href="/api/clientes/${c.id}/instalador?t=${t}">Descargar instalador de ${esc(c.nombre)}</a></p>
+        <p class="tenue">¿Muchos servidores por GPO o script? <a href="/api/clientes/${c.id}/agente?t=${t}">Paquete .zip de ${esc(c.nombre)}</a> (instalación silenciosa: <code>instalar /silencioso</code>). Para quitarlo: Panel de control, Programas, <b>NodeCat Agente</b>.</p>`
       : `<p>${tipo === 'proxmox' ? 'Instálalo en el <b>host de Proxmox</b> (no en las VM ni en los LXC). Verás el nodo y todo lo que tiene: <b>VM y contenedores, apps con su dirección, almacenamiento, discos, backups y actualizaciones</b>. Solo lectura: usa la API local de Proxmox, sin tokens.' : 'Funciona en Debian, Ubuntu, Rocky, AlmaLinux y otras distribuciones con systemd. Verás CPU, memoria, discos, red, temperatura y las sesiones SSH.'}</p>
         <ol class="pasos"><li>Entra por SSH ${tipo === 'proxmox' ? 'al host de Proxmox (o abre su consola Shell en la web)' : 'al servidor'} como root.</li>
           <li>Pega este comando:</li></ol>

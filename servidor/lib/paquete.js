@@ -71,6 +71,17 @@ function instalador(cliente, url) {
 }
 const nombreArchivo = c => c.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+// ---------------------------------------------------------------- Windows por PowerShell (irm … | iex), con pasos y barra de progreso
+const PS1 = path.join(__dirname, '..', 'agente', 'instalar.ps1');
+function scriptWindows(cliente, url) {
+  const q = s => String(s).replace(/'/g, "''").replace(/[\r\n]/g, ' ');
+  return fs.readFileSync(PS1, 'utf8')
+    .replace(/__URL_SCRIPT__/g, q(`${url}/instalar/${cliente.clave}.ps1`))
+    .replace(/__URL_EXE__/g, q(`${url}/instalar/${cliente.clave}.exe`))
+    .replace(/__SERVIDOR__/g, q(url))
+    .replace(/__CLIENTE__/g, q(cliente.nombre).slice(0, 80));
+}
+
 // ---------------------------------------------------------------- Linux y Proxmox
 const PY = path.join(__dirname, '..', 'agente', 'nodecat-agente.py');
 const agentePython = () => fs.readFileSync(PY);
@@ -133,4 +144,4 @@ fi
 `;
 }
 
-module.exports = { crear, instalador, nombreArchivo, disponible, agentePython, scriptLinux };
+module.exports = { scriptWindows, crear, instalador, nombreArchivo, disponible, agentePython, scriptLinux };

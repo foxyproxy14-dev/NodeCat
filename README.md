@@ -123,6 +123,16 @@ En unos segundos el servidor aparece dentro de su cliente. Para muchos servidore
 
 El agente funciona en Windows Server 2012 R2 o superior (y Windows 10/11) con .NET Framework 4.5 o superior. Se instala como el servicio *NodeCat Agente*, con la cuenta del sistema, y envía un informe cada 30 segundos y al momento cuando alguien entra o sale. Si se queda sin conexión guarda hasta una hora de informes y los envía al volver. Si el servidor solo sale a Internet por un proxy, añade `"proxy": "http://proxy:8080"` en su `agente.json`.
 
+## Instalar el agente de Windows con PowerShell
+
+En **Descargar agente → Windows** (o Hyper-V) está el comando para pegar en PowerShell como administrador:
+
+```
+irm https://TU-NODECAT/instalar/CLAVE.ps1 | iex
+```
+
+Muestra los pasos y la barra de descarga e instala el servicio. Es la forma recomendada: el `.exe` sin firmar suele disparar avisos en Chrome y en Windows.
+
 ## En el teléfono
 
 NodeCat se instala como app: en el iPhone, Safari → Compartir → **Añadir a la pantalla de inicio**; en Android, el navegador ofrece **Instalar**. El panel lo sugiere solo la primera vez (y está en el menú de la cuenta). Necesita HTTPS, como cuando lo publicas con Nginx Proxy Manager.

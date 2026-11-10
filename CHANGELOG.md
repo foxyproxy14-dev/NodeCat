@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.13.1 (noviembre de 2026)
+
+- Agente de Windows instalable con un comando de PowerShell (`irm URL/instalar/CLAVE.ps1 | iex`), desde la misma ventana de **Descargar agente → Windows / Hyper-V**. Muestra cada paso: permisos (si no es administrador, se abre solo con permisos), requisitos, descarga con barra de progreso, instalación del servicio y verificación. Como no pasa por el navegador, no aparece el aviso de "archivo sospechoso" de Chrome ni el de SmartScreen.
+
 ## 0.13.0 (noviembre de 2026)
 
 - Logs de FortiGate guardados en NodeCat. Al agregar o editar un FortiGate se activa **Guardar los logs**, se elige la retención (1 día a 1 año) y las categorías (Sistema, VPN, Usuarios, Red/SD-WAN/HA, Seguridad y, opcional, Tráfico). Se leen cada 2 minutos por la API (disco o memoria, solo lectura, también vía sonda), sin duplicados, y se borran solos al vencer.

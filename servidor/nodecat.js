@@ -212,9 +212,22 @@ ruta('GET', '/api/clientes/:id/instalador', { ...soloAdmin, token: true }, ({ p,
 ruta('GET', '/instalar/:clave', { publica: true }, ({ p, req, res }) => {
   const ip = ipDe(req), f = malasClaves.get(ip);
   if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
-  const clave = String(p.clave).replace(/\.sh$/, '');
+  const tipo = /\.ps1$/.test(p.clave) ? 'ps1' : /\.exe$/.test(p.clave) ? 'exe' : 'sh';
+  const clave = String(p.clave).replace(/\.(sh|ps1|exe)$/, '');
   const c = flota.clientes().map(x => flota.cliente(x.id)).find(x => x.clave === clave);
-  if (!c) { claveFallida(ip); res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('echo "Este comando de instalación ya no es válido. Cópialo de nuevo desde NodeCat."; exit 1\n'); return; }
+  if (!c) {
+    claveFallida(ip); res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(tipo === 'ps1' ? "Write-Host 'Este comando de instalación ya no es válido. Cópialo de nuevo desde NodeCat.' -ForegroundColor Red\n" : 'echo "Este comando de instalación ya no es válido. Cópialo de nuevo desde NodeCat."; exit 1\n'); return;
+  }
+  // Windows: el script de PowerShell y el .exe que ese script descarga (ya configurado para el cliente)
+  if (tipo === 'exe') {
+    const b = paquete.instalador(c, urlPublica(req));
+    res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'Content-Length': b.length }); res.end(b); return;
+  }
+  if (tipo === 'ps1') {
+    const b = Buffer.from(paquete.scriptWindows(c, urlPublica(req)), 'utf8');
+    res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': b.length }); res.end(b); return;
+  }
   const b = Buffer.from(paquete.scriptLinux(c, urlPublica(req)));
   res.writeHead(200, { ...SEGURIDAD, 'Content-Type': 'text/x-shellscript; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': b.length });
   res.end(b);
