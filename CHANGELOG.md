@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.19.1 (noviembre de 2026)
+
+- El aviso de actualización (agente nuevo en servidores, RouterOS/FortiOS nuevo en MikroTik y FortiGate) pasa a ser una **flecha azul en la esquina del ícono**, a la izquierda. Antes iba como etiqueta al final del nombre y, con nombres largos, quedaba oculta. Al pasar el ratón por la flecha se ven la versión actual y la nueva.
+
 ## 0.19.0 (noviembre de 2026)
 
 - **Actualizar el agente de Windows desde el panel.** Cuando un servidor tiene un agente más viejo que el que ofrece NodeCat, aparece "⬆ agente" en su fila, el botón **Actualizar a X** en su ficha y, en la página del cliente, **Actualizar N agentes**. Al pulsarlo, en su próximo informe (menos de un minuto) el agente descarga el instalador de su cliente desde NodeCat, comprueba su huella SHA-256 (la da el panel) y se reinstala solo, sin pedir nada en el servidor.

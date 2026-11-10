@@ -1266,3 +1266,11 @@ body.iniciando .inicio-carga { display: grid; }
 .tipos-push { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .etq-hv { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 6px; letter-spacing: .02em; color: #7c5cd6; background: color-mix(in srgb, #7c5cd6 14%, transparent); vertical-align: 2px; }
 .btn.chico { height: 28px; padding: 0 10px; font-size: 12.5px; margin-left: 8px; vertical-align: 1px; }
+/* El nombre se recorta, pero las etiquetas (⬆ agente, Hyper-V, Proxmox) siempre se ven */
+.f-nombre strong.f-titulo { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: visible; }
+.f-titulo .f-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f-titulo .fw-chip, .f-titulo .etq-hv { flex: none; margin-left: 0; }
+.f-titulo .via { flex: none; margin-left: 0; }
+/* Aviso de actualización (agente o RouterOS/FortiOS) en la esquina del ícono */
+.ico-aviso { position: relative; display: inline-flex; flex: none; }
+.aviso-ico { position: absolute; top: -6px; left: -6px; width: 17px; height: 17px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 11px; font-weight: 800; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--hoja); }

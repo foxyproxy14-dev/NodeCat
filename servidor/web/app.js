@@ -686,6 +686,8 @@ function medidor(v, sub, etq) {
   return `<span class="medidor" data-etq="${etq}"><span class="valor">${v}<i>%</i></span>
     <span class="carril n-${nivel(v)}"><span style="width:${Math.min(100, Math.max(0, v))}%"></span></span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
 }
+// Aviso de actualización sobre el ícono del equipo (a la izquierda, así el nombre no se recorta por la etiqueta)
+const conAvisoIco = (ico, aviso) => aviso ? `<span class="ico-aviso">${ico}<span class="aviso-ico" title="${esc(aviso)}" aria-label="${esc(aviso)}" role="img">↑</span></span>` : ico;
 // Pide al panel que actualice el agente de Windows (de un equipo o de todo un cliente)
 async function actualizarAgentes(boton, url) {
   await ocupado(boton, 'Pidiendo…', async () => {
@@ -710,7 +712,7 @@ function filaEquipo(s) {
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${s.agenteNuevo ? `<span class="fw-chip" title="Agente ${esc(s.version)}; hay ${esc(s.agenteNuevo.nueva)}">⬆ agente</span>` : ''}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${conAvisoIco(insigniaSO(s), s.agenteNuevo ? `Agente ${s.version}: hay ${s.agenteNuevo.nueva}${s.agenteNuevo.actualizando ? ' (actualizando)' : ''}` : '')}<span><strong class="f-titulo"><span class="f-texto" title="${esc(nombreEq(s))}">${esc(nombreEq(s))}</span>${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
