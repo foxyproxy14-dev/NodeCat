@@ -20,7 +20,13 @@ function estado(id) {
 }
 const conectado = a => !!a.espera || Date.now() - a.visto < 40000;
 
-function fila(id) { return q("SELECT id, cliente_id, nombre, ultimo_contacto, version_agente FROM equipos WHERE id = ? AND tipo = 'windows'").get(id); }
+function fila(id) {
+  const f = q("SELECT id, cliente_id, nombre, ultimo_contacto, version_agente FROM equipos WHERE id = ? AND tipo = 'windows'").get(id);
+  // La hora del último informe está al día en memoria (en la base se guarda cada minuto)
+  const v = f && require('./flota').vivo.get(f.id);
+  if (v) { f.ultimo_contacto = v.ultimo_contacto; f.version_agente = v.version_agente; }
+  return f;
+}
 function versionVale(v) {
   const p = String(v || '0').split('.').map(Number);
   for (let i = 0; i < 3; i++) { if ((p[i] || 0) !== VERSION_MINIMA[i]) return (p[i] || 0) > VERSION_MINIMA[i]; }

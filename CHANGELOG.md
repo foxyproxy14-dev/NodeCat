@@ -1,5 +1,24 @@
 # Cambios
 
+## 0.14.0 (noviembre de 2026)
+
+Revisión de consumo de recursos. No cambia ninguna función y todo sigue siendo de solo lectura en los equipos. Medido en modo demo con 21 equipos:
+
+- **Menos tráfico entre el panel y el navegador.** Las respuestas y los archivos de la web van comprimidos con gzip: `/api/estado` pasa de 81 KB a 12 KB y `app.js` de 149 KB a 41 KB. La página de un router ya no pide el estado dos veces ni se repinta dos veces cada 3 s, y la serie en vivo solo trae los puntos nuevos. Resumen: de 972 a 171 KB por minuto; página de un router: de 2,7 MB a 0,3 MB por minuto.
+- **Menos escrituras en el disco** (de 1,4 MB a 0,4 MB por minuto). El último informe de cada equipo se guarda en la base como mucho cada minuto, y siempre al detener NodeCat; hasta ahora un router se reescribía en cada lectura (cada 3 a 15 s). Las sesiones solo se actualizan cuando cambian. Sucesos, métricas y tráfico se siguen guardando al momento.
+- **Base de datos más pequeña y rápida.** Métricas y tráfico pasan a tablas agrupadas por equipo y hora (un 45 % menos de disco). El mantenimiento de cada hora ya no recorre las tablas enteras: con 3,8 millones de filas de tráfico, de 1,4 s a 5 ms, y los gráficos de 30 días de 38 a 6 ms. La base se compacta sola (`auto_vacuum` incremental) y el WAL no pasa de 32 MB.
+- **Logs de FortiGate:** el log original se guarda comprimido (más o menos la mitad de espacio) y en cada lectura ya no se procesan otra vez los registros que ya estaban guardados.
+- **Agente de Linux/Proxmox 1.2.0** (se actualiza solo):
+  - Lee la configuración de las VM y los CT del archivo de `/etc/pve` en lugar de lanzar `pvesh` por cada una, y las IP de los CT con `lxc-info`. Si algo falla, usa `pvesh` como antes.
+  - Pregunta `pveversion` cada hora.
+  - Solo envía las partes de Proxmox que cambiaron (apps, copias, nodo, red), y todas cada 15 min.
+  - `smartctl` ya no despierta los discos dormidos: mientras duermen, se muestran sus últimos datos.
+  - Las IP que da el agente invitado de una VM se preguntan cada 10 min, o enseguida si la VM se reinicia.
+- El enlace compartido deja de consultar mientras su pestaña está oculta. Al volver a una pestaña, el panel se pone al día enseguida.
+- Demo: el Proxmox de ejemplo vuelve a informar después de reiniciar el contenedor.
+
+**Al actualizar:** el primer arranque reorganiza las tablas de métricas y tráfico y compacta la base, una sola vez. Tarda de unos segundos a un par de minutos según el tamaño (unos 9 s con 3,8 millones de filas) y necesita espacio libre en el disco más o menos igual al tamaño de la base. Si no hay espacio, NodeCat sigue como antes y lo intenta en el siguiente arranque. Haz copia de la carpeta `datos/` antes, como siempre.
+
 ## 0.13.2 (noviembre de 2026)
 
 - Instalador de PowerShell: si ya hay un agente, lo detiene, cierra su proceso y borra el servicio antes de instalar, esperando a que Windows lo quite del todo. Si algo lo tiene abierto (Servicios, Visor de eventos, Administrador de tareas), lo cierra. Así ya no aparece "ya existe un servicio con ese nombre" ni hace falta reiniciar.

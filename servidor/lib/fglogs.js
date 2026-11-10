@@ -2,6 +2,7 @@
 // Logs de FortiGate guardados en NodeCat: se leen por la API (log/disk o log/memory, solo lectura, también vía sonda),
 // se guardan sin duplicados y se borran solos al pasar los días de retención elegidos para cada equipo.
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 const { q } = require('./db');
 
 q(`CREATE TABLE IF NOT EXISTS fglogs (equipo_id INTEGER NOT NULL, t INTEGER NOT NULL, cat TEXT, sub TEXT, nivel TEXT, accion TEXT,
@@ -46,6 +47,23 @@ function tiempoDe(x) {
   }
   return Date.now();
 }
+// El log original (JSON) se guarda comprimido con un diccionario de los campos habituales de FortiOS: ocupa casi la mitad.
+// Primer byte = versión del diccionario (1). Los registros de versiones anteriores siguen como texto y se leen igual.
+// OJO: el diccionario de la versión 1 no se puede cambiar nunca; si hace falta otro, se agrega como versión 2.
+const DICCIONARIO_1 = Buffer.from(['date', 'time', 'eventtime', 'tz', 'logid', 'type', 'subtype', 'level', 'vd', 'logdesc', 'user', 'ui', 'msg', 'srcip', 'srcport',
+  'srcintf', 'srcintfrole', 'srccountry', 'dstip', 'dstport', 'dstintf', 'dstintfrole', 'dstcountry', 'action', 'status', 'policyid', 'policyname', 'policytype',
+  'poluuid', 'service', 'proto', 'sessionid', 'duration', 'sentbyte', 'rcvdbyte', 'sentpkt', 'rcvdpkt', 'appcat', 'app', 'apprisk', 'utmaction', 'countweb',
+  'devname', 'devid', 'method', 'reason', 'profile', 'cfgtid', 'cfgpath', 'cfgobj', 'cfgattr', 'tunneltype', 'tunnelid', 'remip', 'locip', 'vpntunnel',
+  'xauthuser', 'group', 'hostname', 'url', 'catdesc', 'attack', 'severity', 'virus', 'filename', 'qname', 'trandisp', 'transip', 'transport', 'mastersrcmac',
+  'srcmac', 'osname', 'unauthuser', 'authserver', 'itime'].map(k => `"${k}":`).join('') +
+  '"information""notice""warning""event""system""traffic""forward""local""accept""deny""close""timeout""success""failed""root""-0400""https""HTTPS""TCP""UDP""DNS""wan1""internal""lan""admin""login""logout"');
+const comprimir = texto => Buffer.concat([Buffer.from([1]), zlib.deflateRawSync(texto, { dictionary: DICCIONARIO_1, level: 9 })]);
+function descomprimir(v) {
+  if (v == null || typeof v === 'string') return v;
+  const b = Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+  if (b[0] === 1) return zlib.inflateRawSync(b.subarray(1), { dictionary: DICCIONARIO_1 }).toString('utf8');
+  return b.toString('utf8');
+}
 const corto = (v, n = 300) => v == null || v === '' ? null : String(v).slice(0, n);
 function convertir(x, cat, ruta) {
   const sub = x.subtype || ruta.split('/').pop();
@@ -61,7 +79,7 @@ function convertir(x, cat, ruta) {
     t, cat, sub: corto(sub, 40), nivel: corto(x.level, 20), accion: corto(x.action || x.status || x.utmaction, 40),
     origen: corto(ip(x.srcip || x.remip || (/\(([\d.:a-f]+)\)/i.exec(x.ui || '') || [])[1] || x.locip, x.srcport) || x.srcname, 120), destino: corto(ip(x.dstip, x.dstport) || x.hostname || x.dstname, 160),
     usuario: corto(x.user || x.unauthuser || x.xauthuser, 80), mensaje: corto(mensaje, 600),
-    crudo: crudo.length > 6000 ? crudo.slice(0, 6000) : crudo, clave
+    crudo: comprimir(crudo.length > 6000 ? crudo.slice(0, 6000) : crudo), clave
   };
 }
 
@@ -165,7 +183,7 @@ async function elegirFuente(api, ruta) {
 }
 
 async function recolectar(id, api, conf) {
-  const st = estado.get(id) || { fuentes: new Map(), ultima: 0, error: null, guardados: 0 };
+  const st = estado.get(id) || { fuentes: new Map(), hasta: new Map(), ultima: 0, error: null, guardados: 0 };
   estado.set(id, st);
   let nuevos = 0, fallos = 0, intentos = 0; const importantes = [];
   for (const cat of conf.cats) for (const ruta of CATEGORIAS[cat].rutas) {
@@ -182,11 +200,20 @@ async function recolectar(id, api, conf) {
         l = await leerRuta(api, f.fuente, ruta);
         if (l.length) f.vacia = false;
       }
+      // Cada lectura trae los últimos 500 registros, casi todos ya guardados: los anteriores a lo último visto
+      // (con 30 min de margen) se saltan sin procesarlos. El índice único sigue evitando duplicados en el margen.
+      const visto = st.hasta.get(ruta) || 0;
+      let max = visto;
       for (const x of l) {
+        const t = tiempoDe(x);
+        if (t > max) max = t;
+        if (visto && t < visto - 30 * 60000) continue;
         const c = convertir(x, cat, ruta);
         const ok = Number(insertar.run(id, c.t, c.cat, c.sub, c.nivel, c.accion, c.origen, c.destino, c.usuario, c.mensaje, c.crudo, c.clave, c.marca).changes);
         nuevos += ok; if (ok && c.marca) importantes.push({ marca: c.marca, t: c.t, x });
       }
+      // Solo horas razonables (un reloj desajustado en el futuro no debe hacer saltar los registros buenos)
+      if (max && max < Date.now() + 10 * 60000) st.hasta.set(ruta, max);
     } catch (e) { fallos++; st.error = e.message; }
   }
   // La primera vez se guarda lo que ya había sin avisar (es historial, no algo que esté pasando)
@@ -245,7 +272,9 @@ function consultar(id, o, conf) {
 function detalle(id, fila) {
   const r = q('SELECT crudo FROM fglogs WHERE equipo_id = ? AND rowid = ?').get(id, Number(fila));
   if (!r) return null;
-  try { return JSON.parse(r.crudo); } catch { return { texto: r.crudo }; }
+  let texto;
+  try { texto = descomprimir(r.crudo); } catch { return { texto: 'No se pudo leer este registro.' }; }
+  try { return JSON.parse(texto); } catch { return { texto }; }
 }
 
 module.exports = { set alAlertar(f) { alAlertar = f; }, MARCAS, marcar, CATEGORIAS, POR_DEFECTO, DIAS, CADA, validar, recolectar, limpiar, borrarEquipo, consultar, detalle };

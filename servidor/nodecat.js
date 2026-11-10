@@ -8,6 +8,7 @@ const config = require('./lib/config');
 const { log, iguales } = require('./lib/util');
 const { ajustes, q: dbq } = require('./lib/db');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 const auth = require('./lib/auth');
 const flota = require('./lib/flota');
 const avisos = require('./lib/avisos');
@@ -50,9 +51,14 @@ function cookie(req, nombre) {
   }
   return null;
 }
+// Compresión: las respuestas de más de 1 KB van con gzip si el navegador lo acepta (el estado pasa de ~80 KB a ~12 KB)
+const aceptaGzip = req => /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
 function json(res, status, datos, extra = {}) {
-  const b = Buffer.from(JSON.stringify(datos));
-  res.writeHead(status, { ...SEGURIDAD, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': b.length, ...extra });
+  let b = Buffer.from(JSON.stringify(datos));
+  const cab = { ...SEGURIDAD, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra };
+  if (b.length > 1024 && res.req && aceptaGzip(res.req)) { b = zlib.gzipSync(b, { level: 6 }); cab['Content-Encoding'] = 'gzip'; cab.Vary = 'Accept-Encoding'; }
+  cab['Content-Length'] = b.length;
+  res.writeHead(status, cab);
   res.end(b);
 }
 function leerCuerpo(req, max = 256 * 1024) {
@@ -76,15 +82,25 @@ function servirEstatico(req, res, ruta, extra = {}) {
   const archivo = path.normalize(path.join(WEB, ruta));
   if (!archivo.startsWith(WEB + path.sep)) return false;
   let e = estaticos.get(archivo);
-  if (!e || config.DEMO) {
+  // En la demo se vuelve a leer el archivo si cambió (para probar cambios sin reiniciar)
+  if (!e || (config.DEMO && (!fs.existsSync(archivo) || fs.statSync(archivo).mtimeMs !== e.mtime))) {
     if (!fs.existsSync(archivo) || !fs.statSync(archivo).isFile()) return false;
+    const mtime = fs.statSync(archivo).mtimeMs;
     const datos = fs.readFileSync(archivo);
-    e = { datos, etag: '"' + require('node:crypto').createHash('sha1').update(datos).digest('base64').slice(0, 20) + '"', tipo: TIPOS[path.extname(archivo)] || 'application/octet-stream' };
+    const tipo = TIPOS[path.extname(archivo)] || 'application/octet-stream';
+    // Texto (html, js, css, svg, manifiesto): se comprime una vez y queda en memoria
+    const gz = /^(text\/|image\/svg|application\/manifest)/.test(tipo) && datos.length > 1024 ? zlib.gzipSync(datos, { level: 9 }) : null;
+    e = { datos, gz, mtime, etag: '"' + crypto.createHash('sha1').update(datos).digest('base64').slice(0, 20) + '"', tipo };
     estaticos.set(archivo, e);
   }
-  if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, { ETag: e.etag }); res.end(); return true; }
-  res.writeHead(200, { ...SEGURIDAD, ...extra, 'Content-Type': e.tipo, ETag: e.etag, 'Cache-Control': ruta.startsWith('/fuentes/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Length': e.datos.length });
-  res.end(req.method === 'HEAD' ? undefined : e.datos);
+  const comprimido = e.gz && aceptaGzip(req);
+  // El ETag cambia con la codificación para que ninguna caché intermedia mezcle las dos versiones
+  const etag = comprimido ? e.etag.slice(0, -1) + '-gz"' : e.etag;
+  const cab = e.gz ? { Vary: 'Accept-Encoding' } : {};
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, ...cab }); res.end(); return true; }
+  const cuerpo = comprimido ? e.gz : e.datos;
+  res.writeHead(200, { ...SEGURIDAD, ...extra, ...cab, ...(comprimido ? { 'Content-Encoding': 'gzip' } : {}), 'Content-Type': e.tipo, ETag: etag, 'Cache-Control': ruta.startsWith('/fuentes/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Length': cuerpo.length });
+  res.end(req.method === 'HEAD' ? undefined : cuerpo);
   return true;
 }
 
@@ -145,7 +161,7 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 
 // Routers MikroTik
 function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik' && e.tipo !== 'fortigate') throw error(404, 'Ese equipo no es un equipo de red.'); return e; }
-ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = modRed(e).vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
+ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p, url }) => { const e = routerVisible(sesion, p.id); const v = modRed(e).vivo(e.id, url.searchParams.get('desde')) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
 ruta('GET', '/api/routers/:id/logs', {}, ({ sesion, p, url }) => { const e = routerVisible(sesion, p.id); if (e.tipo !== 'fortigate') throw error(400, 'Solo los FortiGate guardan logs.'); return fortigate.logs(e.id, Object.fromEntries(url.searchParams)); });
 ruta('GET', '/api/routers/:id/logs/:fila', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const d = fortigate.detalleLog(e.id, p.fila); if (!d) throw error(404, 'Ese registro ya no existe.'); return { log: d }; });
 ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await modRed(e).seccion(e.id, p.nombre) }; });
@@ -297,8 +313,7 @@ ruta('GET', '/api/enlaces', soloAdmin, () => ({ enlaces: compartir.todos() }));
 ruta('POST', '/api/enlaces/vencidos', soloAdmin, ({ sesion }) => ({ borrados: compartir.borrarVencidos(sesion.usuario) }));
 ruta('GET', '/api/compartido/:token', { publica: true }, ({ p, req, res }) => {
   const d = compartir.vista(decodeURIComponent(p.token), ipDe(req));
-  res.writeHead(200, { ...SEGURIDAD, 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(d));
+  json(res, 200, d, { 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' });
 });
 // Logos propios de los sistemas: archivos que el usuario pone en DATA_DIR/logos (proxmox.svg, ubuntu.png…)
 const LOGOS = path.join(config.DATA_DIR, 'logos');
@@ -464,6 +479,7 @@ fortigate.arrancar(demo ? require('./lib/fortigate-demo') : null);
 if (demo) demo.arrancar();
 auth.prepararInicio();
 setInterval(() => { flota.vigilar(); }, 10000).unref();
+setInterval(() => { try { flota.guardarPendientes(); } catch (e) { log('Guardado: ' + e.message); } }, flota.GUARDAR_CADA).unref();
 setInterval(() => { auth.limpiar(); }, 10 * 60000).unref();
 setInterval(() => { try { flota.mantenimiento(); } catch (e) { log('Mantenimiento: ' + e.message); } }, 3600e3).unref();
 setTimeout(() => { try { flota.mantenimiento(); } catch (e) { log('Mantenimiento: ' + e.message); } }, 60000).unref();
@@ -472,4 +488,8 @@ servidor.listen(config.PUERTO, () => {
   log(`NodeCat ${config.VERSION}${config.DEMO ? ' (modo demo)' : ''} escuchando en el puerto ${config.PUERTO}. Datos en ${config.DATA_DIR}.`);
   if (!paquete.disponible()) log('Aviso: falta agente/NodeCatAgente.exe; no se podrá descargar el agente.');
 });
-for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => { log('Deteniendo NodeCat…'); servidor.close(); process.exit(0); });
+for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => {
+  log('Deteniendo NodeCat…'); servidor.close();
+  try { flota.guardarPendientes(); require('./lib/db').cerrar(); } catch (e) { log('Al detener: ' + e.message); }
+  process.exit(0);
+});

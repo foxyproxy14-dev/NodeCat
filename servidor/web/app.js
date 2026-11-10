@@ -96,8 +96,11 @@ function entrar(info) {
   montada = null; version = null;
   cargar(true).finally(ocultarInicio);
   if (!sondeo) {
-    sondeo = setInterval(() => { if (SESION && !document.hidden) cargar(); }, 5000);
+    // Si la página de un router ya pidió el estado hace poco (lo hace cada 3 s), el sondeo general no lo repite
+    sondeo = setInterval(() => { if (SESION && !document.hidden && Date.now() - ultimaCarga > 4000) cargar(); }, 5000);
     setInterval(reloj, 1000);
+    // Al volver a la pestaña: datos al momento, sin esperar al siguiente sondeo
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && SESION && Date.now() - ultimaCarga > 2000) cargar(); });
   }
 }
 
@@ -164,8 +167,11 @@ async function iniciar() {
 /* ======================================================================
    Datos
    ====================================================================== */
-async function cargar(forzar) {
+let ultimaCarga = 0;
+// sinPintar: la página de un router se repinta ella misma justo después (así no se pinta dos veces cada 3 s)
+async function cargar(forzar, sinPintar) {
   if (!SESION) return;
+  ultimaCarga = Date.now();
   try {
     const e = await api('/api/estado');
     for (const c of e.clientes) c.equipos = arr(c.equipos).map(x => ({ ...x, clienteNombre: c.nombre, sesiones: arr(x.sesiones), discos: arr(x.discos), historial: arr(x.historial) }));
@@ -174,7 +180,11 @@ async function cargar(forzar) {
     estado = e;
     $('#aviso').hidden = true;
     const v = `${e.actualizado}|${e.clientes.map(c => c.id + c.nombre + c.equipos.map(x => x.id + x.estado + x.ultimo + x.alias + x.sesiones.length).join()).join('|')}`;
-    if (forzar || v !== version) { version = v; render(); }
+    if (forzar || v !== version) {
+      version = v;
+      const r = rutaActual();
+      if (sinPintar && r.vista === 'equipo' && equipo(r.id)) pintarNav(r); else render();
+    }
     luz(nuevo);
     reloj();
   } catch (err) {

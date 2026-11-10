@@ -114,7 +114,7 @@ function preparar() {
   for (const c of CLIENTES) {
     const cli = q('SELECT id, clave FROM clientes WHERE nombre = ?').get(c.nombre); if (!cli) continue;
     for (const e of c.equipos) {
-      const fila = q("SELECT id FROM equipos WHERE cliente_id = ? AND nombre = ? AND tipo = 'windows'").get(cli.id, e.nombre); if (!fila) continue;
+      const fila = q("SELECT id FROM equipos WHERE cliente_id = ? AND nombre = ? AND tipo IN ('windows', 'linux', 'proxmox')").get(cli.id, e.nombre); if (!fila) continue;
       const p = PERFILES[e.perfil];
       equiposDemo.push({
         id: fila.id, cliente: cli.id, cfg: e, p, arranque: Date.now() - entre(3, 40) * 864e5,
@@ -140,11 +140,11 @@ function sembrar() {
         const id = Number(r.lastInsertRowid);
         if (e.caido) q('UPDATE equipos SET datos = ? WHERE id = ?').run(JSON.stringify(informe({ cfg: e, p, arranque: ahora - 9 * 864e5, discos: p.discos.map(([u, et, tot, pct]) => ({ u, et, tot, pct })), sesiones: [] }, ahora - 47 * 60000)), id);
         // Métricas: 5 min hasta hace 7 días, 1 min después
-        const ins = q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, ?, ?)');
+        const ins = q('INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, ?, ?)');
         const maxDisco = Math.max(...p.discos.map(d => d[3])) + (e.alto === 'disco' ? 22 : 0);
         // Tráfico de red de los Proxmox (24 h, por minuto) para la pestaña Red
         if (e.perfil === 'proxmox') {
-          const insT = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
+          const insT = q('INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
           for (let t = ahora - 864e5; t < ahora - 60000; t += 60000) {
             const j = jornada(t) * 0.8 + 0.2;
             for (const n of ['vmbr0', 'enp3s0']) { const r = Math.round(6e6 * j * entre(0.5, 1.5)), x = Math.round(2.5e6 * j * entre(0.5, 1.5)); insT.run(id, t, n, r, x, r, x); }
@@ -200,8 +200,8 @@ function sembrarRouters() {
       const p = PERFILES[perfil], creado = ahora - 32 * 864e5;
       if (!p.cpu) p.cpu = 8;
       q('UPDATE equipos SET creado = ? WHERE id = ?').run(creado, id);
-      const insM = q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, NULL, ?)');
-      const insT = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const insM = q('INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco, resumen) VALUES (?, ?, ?, ?, NULL, ?)');
+      const insT = q('INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       const conHist = p.interfaces.filter(i => i[3] > 0).slice(0, 4);
       for (let t = creado; t < ahora - 60000;) {
         const reciente = t > ahora - 864e5, j = jornada(t) * 0.82 + 0.18;

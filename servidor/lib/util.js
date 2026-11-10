@@ -26,4 +26,15 @@ function duracion(ms) {
 const html = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const nf = new Intl.NumberFormat('es', { maximumFractionDigits: 1 });
 
-module.exports = { aleatorio, log, iguales, duracion, html, nf };
+// Series en vivo de un equipo de red (tráfico por interfaz y latencia): enteras, o solo los puntos posteriores a "desde".
+// "claves" lista las series que siguen existiendo, para que la página quite las que ya no están.
+function seriesDesde(r, desde) {
+  const d = Number(desde) || 0;
+  const corta = s => d ? s.filter(p => p[0] > d) : s;
+  const serie = {}, latencia = {};
+  for (const [k, s] of r.serie) serie[k] = corta(s);
+  for (const [k, x] of r.lat) latencia[k] = corta(x.serie);
+  return d ? { serie, latencia, desde: d, claves: { serie: Object.keys(serie), latencia: Object.keys(latencia) } } : { serie, latencia };
+}
+
+module.exports = { aleatorio, log, iguales, duracion, html, nf, seriesDesde };

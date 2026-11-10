@@ -5,7 +5,7 @@ const { q } = require('./db');
 const flota = require('./flota');
 const { Conexion, segundos } = require('./routeros');
 const { cifrar, descifrar } = require('./secreto');
-const { log } = require('./util');
+const { log, seriesDesde } = require('./util');
 const sonda = require('./sonda');
 
 const RAPIDO = 3000, LENTO = 15000, REINTENTO = 5000, CAIDO = 10000;      // cada 3 s mientras alguien mira el router; si no, cada 15 s
@@ -160,7 +160,7 @@ async function sondear(r) {
   // Historial: una fila por interfaz y minuto (solo las que tienen tráfico o están arriba)
   const min = Math.floor(ahora / 60000);
   if (r.minuto && min !== r.minuto) {
-    const ins = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const ins = q('INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
     let n = 0;
     for (const [nombre, a] of r.acum) {
       if (!a.n || n >= 48) continue;
@@ -276,17 +276,14 @@ function wanDeRutas(rutas) {
 }
 
 // ---------------------------------------------------------------- consultas de la web
-function vivo(id) {
+// "desde": la página ya tiene los puntos hasta esa hora y solo recibe los nuevos (incremental: el navegador junta y recorta)
+function vivo(id, desde) {
   const r = routers.get(id); if (!r) return null;
   const antes = r.observado;
   r.observado = Date.now();
   // Si nadie miraba, se adelanta la próxima consulta para pasar a modo rápido
   if (Date.now() - antes > 20000 && !r.ocupado) { clearTimeout(r.temporizador); r.temporizador = setTimeout(() => ciclo(r), 200); }
-  const serie = {};
-  for (const [k, s] of r.serie) serie[k] = s;
-  const latencia = {};
-  for (const [k, x] of r.lat) latencia[k] = x.serie;
-  return { serie, latencia, rapido: RAPIDO, config: publica(leerConfig(id)) };
+  return { ...seriesDesde(r, desde), rapido: RAPIDO, ventana: VENTANA, config: publica(leerConfig(id)) };
 }
 
 const SECCIONES = {

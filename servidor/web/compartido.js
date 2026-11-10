@@ -137,4 +137,6 @@ $('#btnTema').addEventListener('click', () => {
   try { localStorage.setItem('tema', document.documentElement.dataset.tema); } catch { }
 });
 pintar(); cargar();
-setInterval(cargar, 15000);
+// Con la pestaña oculta no se consulta; al volver, se pone al día enseguida
+setInterval(() => { if (!document.hidden) cargar(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - recibido > 5000) cargar(); });

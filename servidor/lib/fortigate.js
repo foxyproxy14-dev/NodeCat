@@ -7,7 +7,7 @@ const flota = require('./flota');
 const { FortiOS } = require('./fortios');
 const sonda = require('./sonda');
 const { cifrar, descifrar } = require('./secreto');
-const { log } = require('./util');
+const { log, seriesDesde } = require('./util');
 
 const RAPIDO = 3000, LENTO = 15000, REINTENTO = 5000, CAIDO = 10000;
 const VENTANA = 6 * 60 * 1000;
@@ -150,7 +150,7 @@ async function sondear(r) {
   }
   const min = Math.floor(ahora / 60000);
   if (r.minuto && min !== r.minuto) {
-    const ins = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const ins = q('INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
     let n = 0;
     for (const [nombre, ac] of r.acum) {
       const it = interfaces.find(x => x.nombre === nombre);
@@ -196,13 +196,11 @@ async function sondear(r) {
 }
 
 // ---------------------------------------------------------------- consultas de la web
-function vivo(id) {
+function vivo(id, desde) {
   const r = equipos.get(id); if (!r) return null;
   const antes = r.observado; r.observado = Date.now();
   if (Date.now() - antes > 20000 && !r.ocupado) { clearTimeout(r.temporizador); r.temporizador = setTimeout(() => ciclo(r), 200); }
-  const serie = {}; for (const [k, s] of r.serie) serie[k] = s;
-  const latencia = {}; for (const [k, x] of r.lat) latencia[k] = x.serie;
-  return { serie, latencia, rapido: RAPIDO, config: publica(leerConfig(id)) };
+  return { ...seriesDesde(r, desde), rapido: RAPIDO, ventana: VENTANA, config: publica(leerConfig(id)) };
 }
 
 const fecha = s => s ? new Date(Number(s) * 1000).toISOString() : '';

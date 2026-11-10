@@ -1,6 +1,6 @@
 'use strict';
 // Clientes, equipos, informes de los agentes, estado en vivo e historial.
-const { q, transaccion } = require('./db');
+const { q, transaccion, ajustes, compactar } = require('./db');
 const { aleatorio, log, duracion } = require('./util');
 const config = require('./config');
 
@@ -62,7 +62,8 @@ const cliente = id => q('SELECT * FROM clientes WHERE id = ?').get(id);
 const clientes = () => q('SELECT c.id, c.nombre, c.notas, c.creado, c.grupo_id, g.nombre AS grupo FROM clientes c LEFT JOIN grupos g ON g.id = c.grupo_id ORDER BY c.nombre').all();
 
 // ---------------------------------------------------------------- equipos
-const equipo = id => q('SELECT * FROM equipos WHERE id = ?').get(id);
+// Sin la columna datos (el último informe en JSON, que puede pesar varios KB): para eso está el estado en memoria
+const equipo = id => q('SELECT id, cliente_id, tipo, nombre, alias, creado, ultimo_contacto, version_agente, ip, intervalo, config, sede, instalacion, desinstalado FROM equipos WHERE id = ?').get(id);
 function editarEquipo(id, { alias, cliente_id, sede }) {
   const e = equipo(id); if (!e) throw new Error('Ese equipo ya no existe.');
   if (cliente_id != null && cliente_id !== e.cliente_id) {
@@ -89,14 +90,30 @@ function borrarEquipo(id) {
   if (e && esAgente(e.tipo) && !e.desinstalado) q('INSERT OR REPLACE INTO bajas (cliente_id, nombre, instalacion, desde) VALUES (?, ?, ?, ?)').run(e.cliente_id, e.nombre, e.instalacion || '', Date.now());
   q('DELETE FROM traslados WHERE equipo_id = ?').run(id);
   q('DELETE FROM apps_personal WHERE equipo_id = ?').run(id);
-  q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); require('./sonda').olvidar(id);
+  q('DELETE FROM equipos WHERE id = ?').run(id); vivo.delete(id); sucios.delete(id); require('./sonda').olvidar(id);
 }
 
 // ---------------------------------------------------------------- estado en memoria
 // Por equipo: la fila de la base, el último informe y la última hora de CPU y memoria (para las miniaturas)
 const vivo = new Map();
+// El último informe y la hora del último contacto se guardan en la base como mucho cada minuto (y siempre al detener NodeCat):
+// la memoria manda. Así un router que se lee cada 3-15 s no reescribe su JSON completo en cada lectura.
+const GUARDAR_CADA = 60000;
+const sucios = new Set();
+function guardarPendientes() {
+  if (!sucios.size) return;
+  const ids = [...sucios]; sucios.clear();
+  const upd = q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ? WHERE id = ?');
+  transaccion(() => { for (const id of ids) { const v = vivo.get(id); if (v) upd.run(v.ultimo_contacto, v.version_agente, v.ip, v.intervalo, v.datos ? JSON.stringify(v.datos) : null, id); } });
+}
+function guardarUno(id) {
+  if (!sucios.delete(id)) return;
+  const v = vivo.get(id);
+  if (v) q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ? WHERE id = ?').run(v.ultimo_contacto, v.version_agente, v.ip, v.intervalo, v.datos ? JSON.stringify(v.datos) : null, id);
+}
 function cargarVivo(id) {
-  const e = equipo(id);
+  guardarUno(id);   // lo pendiente primero, para no volver a leer de la base algo más viejo que la memoria
+  const e = q('SELECT * FROM equipos WHERE id = ?').get(id);
   if (!e) { vivo.delete(id); return; }
   const previo = vivo.get(id);
   let sonda = null; if (!esAgente(e.tipo) && e.config) { try { sonda = JSON.parse(e.config).sonda || null; } catch { } }
@@ -105,9 +122,9 @@ function cargarVivo(id) {
 function arrancar() {
   for (const { id } of q('SELECT id FROM equipos').all()) cargarVivo(id);
   const desde = Date.now() - HORA;
-  for (const m of q('SELECT equipo_id, t, cpu, ram FROM metricas WHERE t >= ? AND resumen = 0 ORDER BY t').all(desde)) {
-    const v = vivo.get(m.equipo_id); if (v) { v.hora.push({ t: m.t, cpu: m.cpu, ram: m.ram }); v.ultimaMuestra = m.t; }
-  }
+  // Por equipo, para usar la clave (equipo_id, t) en lugar de recorrer toda la tabla
+  const ultimaHora = q('SELECT t, cpu, ram FROM metricas WHERE equipo_id = ? AND t >= ? AND resumen = 0 ORDER BY t');
+  for (const v of vivo.values()) for (const m of ultimaHora.all(v.id, desde)) { v.hora.push({ t: m.t, cpu: m.cpu, ram: m.ram }); v.ultimaMuestra = m.t; }
   // Estado inicial sin generar avisos: quien estaba sin respuesta lo sigue estando
   const ahora = Date.now();
   for (const v of vivo.values()) v.caido = v.ultimo_contacto ? ahora - v.ultimo_contacto > limite(v) : false;
@@ -222,7 +239,7 @@ function recibir(clave, c, ip) {
     const f = q(`SELECT id FROM equipos WHERE cliente_id = ? AND ${EN_AGENTES} AND nombre = ?`).get(cli.id, nombre);
     if (f && (d.cpu != null || d.ramPct != null) && !q('SELECT 1 FROM metricas WHERE equipo_id = ? AND t BETWEEN ? AND ?').get(f.id, d.hora - 50000, d.hora + 50000)) {
       const disco = d.discos.length ? Math.max(...d.discos.map(x => x.pct || 0)) : null;
-      q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(f.id, Math.round(d.hora), d.cpu, d.ramPct, disco);
+      q('INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(f.id, Math.round(d.hora), d.cpu, d.ramPct, disco);
     }
     return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: cli.nombre, atrasado: true };
   }
@@ -263,27 +280,35 @@ function recibir(clave, c, ip) {
   const previo = vivo.get(id);
   const antes = previo && previo.datos;
 
+  // Proxmox: el agente 1.2 solo manda las partes de "pve" que cambiaron; las demás se conservan del informe anterior
+  if (d.pve && antes && antes.pve && c.pve && c.pve.parcial) d.pve = { ...antes.pve, ...d.pve };
+  // Cambios de fondo (equipo nuevo, otra plataforma, reinstalación): se guardan al momento y se recarga la fila.
+  // Lo de cada informe (datos, hora, IP) queda en memoria y se guarda con el resto cada minuto.
+  const deFondo = !previo || nuevo || previo.tipo !== plataforma || previo.desinstalado || (instalacion && instalacion !== previo.instalacion);
   transaccion(() => {
-    q('UPDATE equipos SET tipo = ? WHERE id = ? AND tipo != ?').run(plataforma, id, plataforma);   // p. ej. un Linux que pasó a ser Proxmox
-    q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ?, desinstalado = NULL, instalacion = COALESCE(NULLIF(?, \'\'), instalacion) WHERE id = ?')
-      .run(ahora, txt(c.version, 20), txt(ip, 60), intervalo, JSON.stringify(d), instalacion, id);
+    if (deFondo) {
+      q('UPDATE equipos SET tipo = ? WHERE id = ? AND tipo != ?').run(plataforma, id, plataforma);   // p. ej. un Linux que pasó a ser Proxmox
+      q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = ?, datos = ?, desinstalado = NULL, instalacion = COALESCE(NULLIF(?, \'\'), instalacion) WHERE id = ?')
+        .run(ahora, txt(c.version, 20), txt(ip, 60), intervalo, JSON.stringify(d), instalacion, id);
+    }
     if (previo && previo.desinstalado) evento(id, 'nuevo', 'El agente se volvió a instalar.', ahora);
     if (nuevo) evento(id, 'nuevo', `El agente empezó a informar desde ${ip}.`, ahora);
     if (antes && d.arranque && antes.arranque && Math.abs(d.arranque - antes.arranque) > 120000 && d.arranque > antes.arranque)
       evento(id, 'reinicio', 'El equipo se reinició.', d.arranque);
     if (!d.errorSesiones) seguirSesiones(id, d.sesiones, ahora);
   });
-  cargarVivo(id);
+  if (deFondo) cargarVivo(id);
+  else { Object.assign(previo, { ultimo_contacto: ahora, version_agente: txt(c.version, 20), ip: txt(ip, 60), intervalo, datos: d }); sucios.add(id); }
   const v = vivo.get(id);
   // Una muestra por minuto como mucho
   if (ahora - v.ultimaMuestra >= 55000 && (d.cpu != null || d.ramPct != null || d.discos.length)) {
     const disco = d.discos.length ? Math.max(...d.discos.map(x => x.pct || 0)) : null;
-    q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(id, ahora, d.cpu, d.ramPct, disco);
+    q('INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, ?)').run(id, ahora, d.cpu, d.ramPct, disco);
     v.hora.push({ t: ahora, cpu: d.cpu, ram: d.ramPct });
     v.ultimaMuestra = ahora;
     // Tráfico de red del servidor: una fila por minuto e interfaz (sirve para los gráficos y los totales de 24 h)
     if (d.red.length) {
-      const ins = q('INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      const ins = q('INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max) VALUES (?, ?, ?, ?, ?, ?, ?)');
       for (const i of d.red.slice(0, 12)) if (i.rx != null) ins.run(id, ahora, i.nombre, i.rx, i.tx, i.rx, i.tx);
     }
   }
@@ -329,7 +354,6 @@ function actualizarRouter(id, d, ip, version) {
   const previo = vivo.get(id); if (!previo) return;
   const antes = previo.datos;
   transaccion(() => {
-    q('UPDATE equipos SET ultimo_contacto = ?, version_agente = ?, ip = ?, intervalo = 30, datos = ? WHERE id = ?').run(ahora, version || '', ip || '', JSON.stringify(d), id);
     if (antes && d.arranque && antes.arranque && d.arranque - antes.arranque > 120000) evento(id, 'reinicio', 'El router se reinició.', d.arranque);
     // Cada enlace WAN por separado (un FortiGate con SD-WAN puede tener varios)
     for (const wn of wansDe(d)) {
@@ -338,11 +362,13 @@ function actualizarRouter(id, d, ip, version) {
         evento(id, wn.activa ? 'wan-vuelta' : 'wan-caida', wn.activa ? `El enlace WAN (${wn.interfaz}) volvió.` : `El enlace WAN (${wn.interfaz}) se cayó.`, ahora);
     }
   });
-  cargarVivo(id);
-  const v = vivo.get(id);
+  // En memoria; a la base, con el guardado de cada minuto
+  const v = previo;
+  Object.assign(v, { ultimo_contacto: ahora, version_agente: version || '', ip: ip || '', intervalo: 30, datos: d, sinRespuesta: false });
+  sucios.add(id);
   v.errorConexion = null;
   if (ahora - v.ultimaMuestra >= 55000 && d.cpu != null) {
-    q('INSERT INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, NULL)').run(id, ahora, d.cpu, d.ramPct);
+    q('INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco) VALUES (?, ?, ?, ?, NULL)').run(id, ahora, d.cpu, d.ramPct);
     v.hora.push({ t: ahora, cpu: d.cpu, ram: d.ramPct }); v.ultimaMuestra = ahora;
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
@@ -369,7 +395,7 @@ function evento(equipoId, tipo, detalle, t = Date.now()) {
 
 // Inicios y cierres de sesión: compara lo que informa el agente con las sesiones abiertas
 function seguirSesiones(id, sesiones, ahora) {
-  const abiertas = q('SELECT id, sid, usuario, estado FROM sesiones WHERE equipo_id = ? AND fin IS NULL').all(id);
+  const abiertas = q('SELECT id, sid, usuario, estado, origen FROM sesiones WHERE equipo_id = ? AND fin IS NULL').all(id);
   const clave = (u, s) => `${String(u).toLowerCase()}|${s}`;
   const vistas = new Map(sesiones.map(s => [clave(s.usuario, s.id), s]));
   for (const a of abiertas) {
@@ -377,6 +403,8 @@ function seguirSesiones(id, sesiones, ahora) {
     if (!s) { q('UPDATE sesiones SET fin = ? WHERE id = ?').run(ahora, a.id); continue; }
     vistas.delete(clave(a.usuario, a.sid));
     const desconecta = a.estado === 'activa' && s.estado === 'desconectada' ? 1 : 0;
+    // Solo si algo cambió: la hora del último informe ya está en el equipo (al caer, las sesiones se cierran con ella)
+    if (s.estado === a.estado && (!s.equipo || s.equipo === a.origen)) continue;
     q('UPDATE sesiones SET visto = ?, estado = ?, origen = COALESCE(NULLIF(?, \'\'), origen), desconexiones = desconexiones + ? WHERE id = ?')
       .run(ahora, s.estado, s.equipo, desconecta, a.id);
   }
@@ -405,7 +433,7 @@ function vigilar() {
     if (ahora - v.ultimo_contacto > limite(v)) {
       v.caido = true;
       evento(v.id, 'caida', 'Dejó de responder.', v.ultimo_contacto + limite(v));
-      q('UPDATE sesiones SET fin = visto WHERE equipo_id = ? AND fin IS NULL').run(v.id);
+      q('UPDATE sesiones SET fin = MAX(COALESCE(visto, inicio), ?) WHERE equipo_id = ? AND fin IS NULL').run(v.ultimo_contacto, v.id);
       log(`${v.nombre} dejó de responder.`);
       avisar('caida', v);
     }
@@ -473,7 +501,7 @@ function metricas(equipoId, rango) {
 function trafico(equipoId, rango, interfaz) {
   const dur = RANGOS[rango] || DIA, desde = Date.now() - dur;
   const paso = Math.max(60000, Math.ceil(dur / 360 / 60000) * 60000);
-  const interfaces = q('SELECT DISTINCT interfaz FROM trafico WHERE equipo_id = ? AND t >= ?').all(equipoId, desde).map(r => r.interfaz);
+  const interfaces = interfacesDe(equipoId, desde);
   const puntos = interfaz ? q(`SELECT (t / ${paso}) * ${paso} AS t, ROUND(AVG(rx)) AS rx, ROUND(AVG(tx)) AS tx, MAX(rx_max) AS rxMax, MAX(tx_max) AS txMax
     FROM trafico WHERE equipo_id = ? AND interfaz = ? AND t >= ? GROUP BY t / ${paso} ORDER BY 1`).all(equipoId, interfaz, desde) : [];
   return { desde, paso, interfaz, interfaces, puntos };
@@ -522,31 +550,53 @@ function eventosRecientes(sesion, limiteN = 60) {
   return q(sql).all(...params);
 }
 
+// Interfaces con tráfico guardado de un equipo desde una hora: se salta de una interfaz a la siguiente por la clave
+// (equipo_id, interfaz, t) en lugar de recorrer todas las filas del equipo
+function interfacesDe(equipoId, desde = 0) {
+  const sig = q('SELECT interfaz FROM trafico WHERE equipo_id = ? AND interfaz > ? ORDER BY interfaz LIMIT 1');
+  const hay = q('SELECT 1 FROM trafico WHERE equipo_id = ? AND interfaz = ? AND t >= ? LIMIT 1');
+  const l = []; let r = sig.get(equipoId, '');
+  for (let n = 0; r && n < 2000; n++) { if (!desde || hay.get(equipoId, r.interfaz, desde)) l.push(r.interfaz); r = sig.get(equipoId, r.interfaz); }
+  return l;
+}
+
 // ---------------------------------------------------------------- mantenimiento
 // Detalle por minuto durante 7 días; después, promedios de 5 minutos durante 400 días.
+// Va equipo por equipo (e interfaz por interfaz) por la clave de cada tabla, y solo mira la franja desde el corte anterior:
+// así no recorre las tablas enteras cada hora. El corte cae en una frontera de 5 minutos para no partir un bloque en dos.
 function mantenimiento() {
-  const corte = Date.now() - 7 * DIA, paso = 300000;
+  const paso = 300000, corte = Math.floor((Date.now() - 7 * DIA) / paso) * paso, viejo = Date.now() - 400 * DIA;
+  const previo = Number(ajustes.leer('mantenimientoCorte', 0)) || 0;
+  const desde = previo ? previo - DIA : 0;     // un día de margen; la primera vez, desde el principio
+  const ids = q('SELECT id FROM equipos').all().map(r => r.id);
+  const resM = q(`INSERT OR IGNORE INTO metricas (equipo_id, t, cpu, ram, disco, resumen)
+    SELECT equipo_id, (t / ${paso}) * ${paso}, ROUND(AVG(cpu)), ROUND(AVG(ram)), MAX(disco), 1 FROM metricas
+    WHERE equipo_id = ? AND t >= ? AND t < ? AND resumen = 0 GROUP BY t / ${paso}`);
+  const borM = q('DELETE FROM metricas WHERE equipo_id = ? AND t >= ? AND t < ? AND resumen = 0');
+  const resT = q(`INSERT OR IGNORE INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen)
+    SELECT equipo_id, (t / ${paso}) * ${paso}, interfaz, ROUND(AVG(rx)), ROUND(AVG(tx)), MAX(rx_max), MAX(tx_max), 1 FROM trafico
+    WHERE equipo_id = ? AND interfaz = ? AND t >= ? AND t < ? AND resumen = 0 GROUP BY t / ${paso}`);
+  const borT = q('DELETE FROM trafico WHERE equipo_id = ? AND interfaz = ? AND t >= ? AND t < ? AND resumen = 0');
+  const viejoM = q('DELETE FROM metricas WHERE equipo_id = ? AND t < ?');
+  const viejoT = q('DELETE FROM trafico WHERE equipo_id = ? AND interfaz = ? AND t < ?');
+  for (const id of ids) {
+    transaccion(() => {
+      resM.run(id, desde, corte); borM.run(id, desde, corte); viejoM.run(id, viejo);
+      for (const i of interfacesDe(id)) { resT.run(id, i, desde, corte); borT.run(id, i, desde, corte); viejoT.run(id, i, viejo); }
+    });
+  }
   transaccion(() => {
-    q(`INSERT INTO metricas (equipo_id, t, cpu, ram, disco, resumen)
-       SELECT equipo_id, (t / ${paso}) * ${paso}, ROUND(AVG(cpu)), ROUND(AVG(ram)), MAX(disco), 1 FROM metricas
-       WHERE resumen = 0 AND t < ? GROUP BY equipo_id, t / ${paso}`).run(corte);
-    q('DELETE FROM metricas WHERE resumen = 0 AND t < ?').run(corte);
-    q(`INSERT INTO trafico (equipo_id, t, interfaz, rx, tx, rx_max, tx_max, resumen)
-       SELECT equipo_id, (t / ${paso}) * ${paso}, interfaz, ROUND(AVG(rx)), ROUND(AVG(tx)), MAX(rx_max), MAX(tx_max), 1 FROM trafico
-       WHERE resumen = 0 AND t < ? GROUP BY equipo_id, interfaz, t / ${paso}`).run(corte);
-    q('DELETE FROM trafico WHERE resumen = 0 AND t < ?').run(corte);
-    const viejo = Date.now() - 400 * DIA;
-    q('DELETE FROM metricas WHERE t < ?').run(viejo);
-    q('DELETE FROM trafico WHERE t < ?').run(viejo);
     q('DELETE FROM eventos WHERE t < ?').run(viejo);
     q('DELETE FROM sesiones WHERE inicio < ? AND fin IS NOT NULL').run(viejo);
   });
+  ajustes.guardar('mantenimientoCorte', corte);
+  compactar();
 }
 
 module.exports = {
   AGENTES, esAgente, detallesPve,
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
-  INTERVALO_AGENTE, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
+  INTERVALO_AGENTE, GUARDAR_CADA, guardarPendientes, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
   visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
 };

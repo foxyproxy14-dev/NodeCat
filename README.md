@@ -155,6 +155,8 @@ En la página del cliente, **Descargar agente** tiene cuatro opciones:
 
 Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. Desde la versión 1.1.0 el agente de Linux/Proxmox se actualiza solo cuando NodeCat tiene una versión nueva. Para quitarlo: `sudo nodecat-agente desinstalar`.
 
+El agente consume poco. Lee la configuración de las VM y los CT de los archivos de `/etc/pve` (solo lectura) y usa `pvesh` solo para lo que no está ahí. Las lecturas lentas (apps, copias, nodo y SMART) se hacen en segundo plano cada pocos minutos, y solo envía lo que cambió. `smartctl` no despierta los discos dormidos.
+
 Si el cliente tiene hipervisores y también servidores, la lista los muestra en dos grupos (**Hipervisores** y **Servidores y VM**), igual que las sedes.
 
 ## Logs de FortiGate

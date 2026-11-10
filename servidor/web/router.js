@@ -103,12 +103,31 @@ async function pedirVivo() {
   if (r.vista !== 'equipo' || r.id !== id || !SESION) return;
   if (!document.hidden) {
     try {
-      rt.vivo = await api(`/api/routers/${id}/vivo`);
-      await cargar();          // estado general: CPU, interfaces, WAN…
+      rt.vivo = juntarVivo(rt.vivo, await api(`/api/routers/${id}/vivo${rt.vivo && rt.vivo.hasta ? '?desde=' + rt.vivo.hasta : ''}`));
+      await cargar(false, true);   // estado general: CPU, interfaces, WAN… (sin pintar: se pinta justo abajo)
       if (rutaActual().id === id) { vistaRouter(id); if (!LOCALES_RT.includes(rt.pestana) && !ESTATICAS_RT.includes(rt.pestana)) cargarSeccion(); }
     } catch (e) { if (e.login) return; }
   }
   rt.temporizador = setTimeout(pedirVivo, 3000);
+}
+// Series en vivo: la primera vez llegan enteras y después solo los puntos nuevos ("desde"), que se juntan aquí
+// y se recortan a la misma ventana que guarda NodeCat (6 min de tráfico, 1 h de latencia)
+function juntarVivo(viejo, nuevo) {
+  const ultimo = v => { let m = 0; for (const g of [v.serie, v.latencia]) for (const s of Object.values(g || {})) if (s.length && s[s.length - 1][0] > m) m = s[s.length - 1][0]; return m; };
+  if (!nuevo.desde || !viejo) { nuevo.hasta = ultimo(nuevo); return nuevo; }
+  const unir = (a, b, claves, ventana) => {
+    const o = {};
+    for (const k of claves) {
+      const l = (a[k] || []).concat(b[k] || []);
+      const fin = l.length ? l[l.length - 1][0] : 0;
+      let i = 0; while (i < l.length && l[i][0] < fin - ventana) i++;
+      o[k] = i ? l.slice(i) : l;
+    }
+    return o;
+  };
+  const r = { ...nuevo, serie: unir(viejo.serie || {}, nuevo.serie || {}, nuevo.claves.serie, nuevo.ventana || 360000), latencia: unir(viejo.latencia || {}, nuevo.latencia || {}, nuevo.claves.latencia, 3600e3) };
+  r.hasta = Math.max(viejo.hasta || 0, ultimo(r));
+  return r;
 }
 // Secciones que casi no cambian: se piden al abrirlas y cada minuto
 const ESTATICAS_RT = ['fg-licencias', 'fg-ha', 'fg-rutas', 'ip', 'dns', 'bridges', 'redeswifi', 'dhcpserv', 'pools', 'wgif', 'tuneles', 'nat', 'mangle', 'paquetes', 'servicios', 'scripts', 'tareas', 'reloj', 'logging', 'snmp', 'archivos', 'contenedores', 'usuarios'];

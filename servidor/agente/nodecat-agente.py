@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Agente de NodeCat para Linux y Proxmox VE.
 # Solo lee: CPU, memoria, discos, red, temperatura, sesiones SSH y, en Proxmox, las VM, los
-# contenedores LXC y los almacenamientos (con pvesh, la API local; no hace falta token).
+# contenedores LXC y los almacenamientos (con pvesh, la API local, y los archivos de /etc/pve; no hace falta token).
 # Envía un informe por HTTPS cada 30 segundos. Sin dependencias: solo Python 3 de la distribución.
-import json, os, re, socket, subprocess, sys, threading, time, urllib.request, urllib.error, uuid, shutil
+import hashlib, json, os, re, socket, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error, uuid, shutil
 
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 CONFIG = '/etc/nodecat-agente.json'
 CARPETA = '/opt/nodecat-agente'
 SERVICIO = 'nodecat-agente'
@@ -203,22 +203,46 @@ def ip_de_config(cfg):
     return None
 
 
+def ips_lxc(nodo, vmid):
+    # lxc-info (programa en C, inmediato) en lugar de pvesh (Perl, ~0,3 s de CPU por llamada); si no está, pvesh
+    if shutil.which('lxc-info'):
+        try:
+            l = [x.strip() for x in cmd(['lxc-info', '-n', str(vmid), '-i', '-H'], 5).splitlines()]
+            return [x for x in l if re.match(r'^\d+\.\d+\.\d+\.\d+$', x) and not x.startswith('127.')]
+        except Exception:
+            pass
+    ips = []
+    for i in pvesh(f'/nodes/{nodo}/lxc/{vmid}/interfaces', tiempo=10) or []:
+        inet = i.get('inet') or ''
+        if inet and not inet.startswith('127.'):
+            ips.append(inet.split('/')[0])
+    return ips
+
+
+_ips_qemu = {}   # vmid → (hora, ips): el agente invitado se consulta cada 10 min por VM (es una llamada lenta)
+def ips_qemu(nodo, vmid):
+    ya = _ips_qemu.get(vmid)
+    if ya and time.time() - ya[0] < 600:
+        return ya[1]
+    ips = []
+    r = pvesh(f'/nodes/{nodo}/qemu/{vmid}/agent/network-get-interfaces', tiempo=10) or {}
+    for i in r.get('result', []):
+        if i.get('name') == 'lo':
+            continue
+        for a in i.get('ip-addresses', []):
+            if a.get('ip-address-type') == 'ipv4' and not a['ip-address'].startswith(('127.', '169.254.')):
+                ips.append(a['ip-address'])
+    _ips_qemu[vmid] = (time.time(), ips)
+    return ips
+
+
 def ips_invitado(nodo, tipo, vmid, cfg):
     ips = []
     try:
         if tipo == 'lxc':
-            for i in pvesh(f'/nodes/{nodo}/lxc/{vmid}/interfaces', tiempo=10) or []:
-                inet = i.get('inet') or ''
-                if inet and not inet.startswith('127.'):
-                    ips.append(inet.split('/')[0])
+            ips = ips_lxc(nodo, vmid)
         elif str(cfg.get('agent', '')).startswith(('1', 'enabled=1')):
-            r = pvesh(f'/nodes/{nodo}/qemu/{vmid}/agent/network-get-interfaces', tiempo=10) or {}
-            for i in r.get('result', []):
-                if i.get('name') == 'lo':
-                    continue
-                for a in i.get('ip-addresses', []):
-                    if a.get('ip-address-type') == 'ipv4' and not a['ip-address'].startswith(('127.', '169.254.')):
-                        ips.append(a['ip-address'])
+            ips = ips_qemu(nodo, vmid)
     except Exception:
         pass
     fija = ip_de_config(cfg)
@@ -272,13 +296,44 @@ class Lento:
 lento = Lento()
 
 
+def leer_conf(nodo, tipo, vmid):
+    """Configuración de una VM/CT leída del archivo de /etc/pve (solo lectura, sin lanzar pvesh). Mismo formato que pvesh config."""
+    carpeta = 'qemu-server' if tipo == 'qemu' else 'lxc'
+    with open(f'/etc/pve/nodes/{nodo}/{carpeta}/{vmid}.conf', encoding='utf-8', errors='replace') as f:
+        texto = f.read()
+    cfg, notas = {}, []
+    for linea in texto.splitlines():
+        if linea.startswith('['):
+            break   # instantáneas y cambios pendientes: no son la configuración actual
+        if linea.startswith('#'):
+            notas.append(urllib.parse.unquote(linea[1:]))   # las notas van como comentarios, con %XX para lo especial
+            continue
+        k, sep, v = linea.partition(':')
+        if sep and k.strip():
+            cfg[k.strip()] = v.strip()
+    if notas:
+        cfg['description'] = '\n'.join(notas)
+    return cfg
+
+
+def config_vm(nodo, tipo, vmid):
+    try:
+        return leer_conf(nodo, tipo, vmid)
+    except Exception:
+        try:
+            return pvesh(f'/nodes/{nodo}/{tipo}/{vmid}/config', tiempo=10) or {}
+        except Exception:
+            return {}
+
+
 def leer_apps(nodo, vms):
     l = []
+    vivos = {v['id'] for v in vms if v.get('estado') == 'running'}
+    for k in list(_ips_qemu):   # una VM que se apagó o reinició vuelve a preguntar sus IP
+        if k not in vivos:
+            _ips_qemu.pop(k, None)
     for v in vms:
-        try:
-            cfg = pvesh(f"/nodes/{nodo}/{v['tipo']}/{v['id']}/config", tiempo=10) or {}
-        except Exception:
-            cfg = {}
+        cfg = config_vm(nodo, v['tipo'], v['id'])
         ips = ips_invitado(nodo, v['tipo'], v['id'], cfg) if v.get('estado') == 'running' else ([ip_de_config(cfg)] if ip_de_config(cfg) else [])
         a = app_de(v['nombre'], cfg, ips)
         l.append({'id': v['id'], 'nombre': v['nombre'], 'tipo': v['tipo'], 'estado': v['estado'], 'ips': ips, 'so': cfg.get('ostype'),
@@ -314,15 +369,19 @@ def leer_copias(nodo):
     return {'archivos': archivos[:400], 'trabajos': trabajos[:40], 'tareas': tareas, 'almacenes': almacenes}
 
 
+_smart = {}   # disco → últimos datos SMART (se reutilizan mientras el disco duerme)
 def leer_smart(disco):
-    """Datos SMART de solo lectura (temperatura, ciclos, horas encendido, errores CRC). Requiere smartctl."""
+    """Datos SMART de solo lectura (temperatura, ciclos, horas encendido, errores CRC). Requiere smartctl.
+    Con -n standby no despierta un disco dormido: en ese caso se devuelven los últimos datos leídos."""
     if not disco or not re.match(r'^/dev/[\w/-]+$', disco) or not shutil.which('smartctl'):
         return {}
     try:
-        r = subprocess.run(['smartctl', '-A', '-H', '-j', disco], capture_output=True, text=True, timeout=20)
+        r = subprocess.run(['smartctl', '-n', 'standby', '-A', '-H', '-j', disco], capture_output=True, text=True, timeout=20)
         j = json.loads(r.stdout or '{}')
     except Exception:
-        return {}
+        return _smart.get(disco, {})
+    if (j.get('power_mode') or {}).get('is_standby') or (r.returncode & 2 and not j.get('smart_status')):
+        return _smart.get(disco, {})
     o = {}
     t = (j.get('temperature') or {}).get('current')
     if t is not None:
@@ -344,6 +403,8 @@ def leer_smart(disco):
     st = j.get('smart_status')
     if st is not None:
         o['smartOk'] = bool(st.get('passed'))
+    if o:
+        _smart[disco] = o
     return o
 
 
@@ -435,12 +496,30 @@ def leer_red_host():
     return {'interfaces': l[:80], 'puertaEnlace': gw, 'dns': dns[:3], 'dominio': dominio, 'latencia': lat, 'host': socket.gethostname()}
 
 
+_pveversion = [0, None]
+_enviado = {}   # parte de "pve" → (huella, hora): solo se manda lo que cambió (y todo cada 15 min)
+def solo_cambios(pve):
+    ahora, o = time.time(), {'parcial': True}
+    for k, v in pve.items():
+        h = hashlib.sha1(json.dumps(v, sort_keys=True, default=str).encode()).hexdigest()
+        ya = _enviado.get(k)
+        if not ya or ya[0] != h or ahora - ya[1] > 900:
+            o[k] = v
+            _enviado[k] = (h, ahora)
+    return o
+
+
 def proxmox(nodo):
     datos = {'hipervisor': 'proxmox'}
-    try:
-        datos['so'] = 'Proxmox VE ' + cmd(['pveversion'], 10).split('/')[1].strip()
-    except Exception:
-        pass
+    # pveversion (Perl, lento) cambia solo al actualizar Proxmox: se pregunta cada hora
+    if time.time() - _pveversion[0] > 3600 or not _pveversion[1]:
+        try:
+            _pveversion[1] = 'Proxmox VE ' + cmd(['pveversion'], 10).split('/')[1].strip()
+        except Exception:
+            pass
+        _pveversion[0] = time.time()
+    if _pveversion[1]:
+        datos['so'] = _pveversion[1]
     try:
         rec = pvesh('/cluster/resources')
         vms, almacen = [], []
@@ -465,7 +544,7 @@ def proxmox(nodo):
                'copias': lento.obtener('copias', 300, lambda: leer_copias(nodo)),
                'nodo': lento.obtener('nodo', 300, lambda: leer_nodo(nodo)),
                'red': lento.obtener('red', 60, leer_red_host)}
-        datos['pve'] = {k: v for k, v in pve.items() if v is not None}
+        datos['pve'] = solo_cambios({k: v for k, v in pve.items() if v is not None})
     except Exception as e:
         datos['errorVms'] = str(e)
     return datos
