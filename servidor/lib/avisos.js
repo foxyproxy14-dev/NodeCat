@@ -14,7 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
-  wan: true, firmware: true, fgSeguridad: true, nuevos: true,
+  wan: true, firmware: true, fgSeguridad: true, nuevos: true, vms: true, vmMin: 2,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -49,7 +49,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false,
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false, vms: o.vms !== false, vmMin: rango(o, 'vmMin', 0, 120),
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
@@ -231,7 +231,10 @@ async function vigilarBots() {
 const cola = [], recientes = [];
 let enviando = false;
 // Un aviso sale por Telegram (si está activado) y como notificación a los dispositivos de las cuentas que deben recibirlo
-const TIPO_REGLA = { caida: 'caidas', cpu: 'recursos', ram: 'recursos', disco: 'recursos', wan: 'red', firmware: 'versiones' };
+const TIPO_REGLA = { caida: 'caidas', cpu: 'recursos', ram: 'recursos', disco: 'recursos', wan: 'red', firmware: 'versiones', vm: 'vms' };
+// VM que se vieron encendidas (solo se avisa si una VM que estaba encendida se apaga; las que siempre están apagadas no avisan)
+const vmsEncendidas = new Set();
+const ESTADO_VM = { stopped: 'apagada', paused: 'en pausa', saved: 'guardada (estado guardado)', suspended: 'suspendida', stopping: 'apagándose' };
 const canalActivo = () => A.activo || push().hay();
 const push = () => require('./push');
 function encolar(texto, clienteId, soloBot, extra) {
@@ -350,6 +353,20 @@ function evaluar(forzar) {
       regla(`${s}|wan|${wan.interfaz}`, A.wan, !wan.activa, wan.activa, 0,
         () => `🔴 <b>${hs}: se cayó el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEl equipo sigue respondiendo (quizá por otro enlace).`,
         t => `🟢 <b>${hs}: volvió el enlace WAN ${H(wan.interfaz)}</b>${hc}\nEstuvo caído ${duracion(t)}.`, ahora, primera, e.cliente);
+    }
+    // Máquinas virtuales de un hipervisor (Proxmox, Hyper-V) que estaban encendidas y se apagan
+    if (vivo && Array.isArray(e.vms) && e.vms.length && !e.errorVms) {
+      const actuales = new Set();
+      for (const vm of e.vms.slice(0, 500)) {
+        const k = `${s}|vm|${vm.id || vm.nombre}`, n = H(vm.nombre || vm.id), tipoVm = vm.tipo === 'lxc' ? 'el contenedor' : 'la VM';
+        actuales.add(k);
+        const enc = vm.estado === 'running' || vm.estado === 'starting';
+        if (enc) vmsEncendidas.add(k);
+        regla(k, A.vms !== false, enc ? false : vmsEncendidas.has(k) ? true : null, enc, A.vmMin == null ? 2 : A.vmMin,
+          () => `🔴 <b>${hs}: ${tipoVm} ${n} se apagó</b>${hc}\nEstado: ${H((ESTADO_VM[vm.estado] || vm.estado || 'apagada').replace(/a\b/, vm.tipo === 'lxc' ? 'o' : 'a'))}.`,
+          t => `🟢 <b>${hs}: ${tipoVm} ${n} volvió a encenderse</b>${hc}\nEstuvo ${vm.tipo === 'lxc' ? 'apagado' : 'apagada'} ${duracion(t)}.`, ahora, primera, e.cliente, true);
+      }
+      for (const k of [...vmsEncendidas]) if (k.startsWith(s + '|vm|') && !actuales.has(k)) { vmsEncendidas.delete(k); estados.delete(k); }
     }
     // Versión nueva de RouterOS / FortiOS: un aviso por versión (sin recordatorios); cuando se actualiza, se confirma
     const fw = vivo && !flota.esAgente(e.tipo) && e.red ? e.red.actualizacion : undefined;

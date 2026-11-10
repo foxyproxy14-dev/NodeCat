@@ -1706,6 +1706,7 @@ async function notificaciones() {
       <div class="regla"><label>${marca('ram', n.ram)} Memoria por encima del</label> ${num('ramUmbral', n.ramUmbral, 50, 100, 'Umbral de memoria')} % durante ${num('ramMin', n.ramMin, 0, 240, 'Minutos de memoria alta')} min</div>
       <div class="regla"><label>${marca('disco', n.disco)} Disco por encima del</label> ${num('discoUmbral', n.discoUmbral, 50, 100, 'Umbral de disco')} %</div>
       <div class="regla"><label>${marca('firmware', n.firmware !== false)} Hay una versión nueva de RouterOS o FortiOS para un equipo de red</label></div>
+      <div class="regla"><label>${marca('vms', n.vms !== false)} Una VM o contenedor de un hipervisor que estaba encendido se apaga durante</label> ${num('vmMin', n.vmMin == null ? 2 : n.vmMin, 0, 120, 'Minutos apagada')} min, y cuando vuelve</div>
       <div class="regla"><label>${marca('nuevos', n.nuevos !== false)} Se agrega un equipo nuevo a un cliente (se instala un agente o se agrega un equipo de red) o se reinstala un agente</label></div>
       <div class="regla"><label>${marca('fgSeguridad', n.fgSeguridad !== false)} Pasa algo importante en un FortiGate con logs activados: intentos de acceso fallidos, cuentas creadas o borradas, ataques, virus, reinicios, cambios de configuración</label></div>
       <div class="regla"><label>${marca('resumen', n.resumen)} Resumen diario por cliente a las</label> <input type="time" name="resumenHora" value="${esc(n.resumenHora)}" aria-label="Hora del resumen"><button class="btn" type="button" data-resumen>Enviar ahora</button></div>
@@ -1796,8 +1797,8 @@ async function notificaciones() {
   f.onsubmit = async ev => {
     ev.preventDefault();
     const d = { token: f.token.value, chats: f.chats.value, resumenHora: f.resumenHora.value, recordarHoras: +f.recordarHoras.value, porCliente: {} };
-    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'nuevos', 'resumen']) d[k] = f[k].checked;
-    for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral']) d[k] = +f[k].value;
+    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'nuevos', 'vms', 'resumen']) d[k] = f[k].checked;
+    for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral', 'vmMin']) d[k] = +f[k].value;
     for (const c of estado.clientes) { const x = f['pc-' + c.id]; if (x && x.value.trim()) d.porCliente[c.id] = x.value; }
     try { await enviar('/api/notificaciones', 'PUT', d); dlg.close(); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }
     catch (x) { if (!x.login) error(x.message); }

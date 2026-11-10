@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.17.3 (noviembre de 2026)
+
+- Aviso cuando una **VM o un contenedor LXC** de un hipervisor (Proxmox o Hyper-V) que estaba encendido se apaga, pasado el tiempo elegido (2 min por defecto, para no avisar de un simple reinicio), y otro cuando vuelve a encenderse con cuánto estuvo apagado. Las VM que siempre están apagadas no avisan. Por Telegram y en los dispositivos (tipo "Máquinas virtuales que se apagan"); regla nueva en las notificaciones.
+
 ## 0.17.2 (noviembre de 2026)
 
 - Aviso de **equipo nuevo**: por Telegram y en los dispositivos, cuando un agente se instala por primera vez en un cliente, cuando se agrega un MikroTik o FortiGate, o cuando se reinstala un agente que se había quitado. Dice el equipo, el cliente, el sistema y desde qué IP. Se puede apagar (regla nueva en las notificaciones y tipo "Equipos nuevos o reinstalados" en los dispositivos).
