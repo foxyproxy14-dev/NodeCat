@@ -757,7 +757,8 @@ function tabla(lista, conServidor, vacio) {
 function enlazarTabla() {
   $('#tablaSes').addEventListener('click', e => {
     const o = e.target.closest('[data-orden]');
-    if (o) { const c = o.dataset.orden; orden = { campo: c, asc: orden.campo === c ? !orden.asc : true }; actualizar(); }
+    // Como en el Administrador de tareas: CPU, memoria e inactividad ordenan primero de mayor a menor
+    if (o) { const c = o.dataset.orden; orden = { campo: c, asc: orden.campo === c ? !orden.asc : !['cpu', 'ram', 'inactivo'].includes(c) }; actualizar(); }
   });
 }
 

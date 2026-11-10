@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.16.1 (noviembre de 2026)
+
+- Sesiones: al pulsar CPU, Memoria o Inactiva se ordena primero de mayor a menor, como en el Administrador de tareas (otro clic invierte el orden).
+
 ## 0.16.0 (noviembre de 2026)
 
 - Sesiones por cliente: dentro de un cliente (en su página o en uno de sus equipos), **Sesiones** del menú de arriba muestra solo las de ese cliente, con su número, en `#/c/ID/sesiones`. Desde la pantalla principal sigue mostrando todas. Botón "Ver las de todos los clientes" para salir del filtro.

@@ -1256,3 +1256,4 @@ body.iniciando .inicio-carga { display: grid; }
 #tablaSes table.con-uso .ses-top { min-width: 200px; max-width: 280px; white-space: normal; }
 #tablaSes table.con-uso .dom { display: block; font-size: 11.5px; }
 #tablaSes table.con-uso .dom { margin-left: 0; } .ses-srv .enlace { justify-self: start; text-align: left; }
+#tablaSes th button { cursor: pointer; } #tablaSes th button:hover { color: var(--tinta); text-decoration: underline; text-underline-offset: 3px; }
