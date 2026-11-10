@@ -5,7 +5,7 @@
 # Envía un informe por HTTPS cada 30 segundos. Sin dependencias: solo Python 3 de la distribución.
 import hashlib, json, os, re, socket, subprocess, sys, threading, time, urllib.parse, urllib.request, urllib.error, uuid, shutil
 
-VERSION = '1.2.0'
+VERSION = '1.2.1'
 CONFIG = '/etc/nodecat-agente.json'
 CARPETA = '/opt/nodecat-agente'
 SERVICIO = 'nodecat-agente'
@@ -551,6 +551,23 @@ def proxmox(nodo):
 
 
 # ------------------------------------------------------------------ informe
+def ips_locales():
+    """IPv4 de la red local del equipo (sin la de loopback ni las de Docker y similares)."""
+    try:
+        r = subprocess.run(['ip', '-4', '-o', 'addr', 'show', 'scope', 'global'], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return []
+    l = []
+    for linea in r.stdout.splitlines():
+        p = linea.split()
+        if len(p) < 4 or re.match(r'^(docker|br-|veth|virbr|tailscale|wg|zt|fwpr|fwln|tap)', p[1]):
+            continue
+        ip = p[3].split('/')[0]
+        if not ip.startswith('169.254.') and ip not in l:
+            l.append(ip)
+    return l[:6]
+
+
 def recolectar(c, evento='periodico'):
     nodo = socket.gethostname().split('.')[0]
     o = {'nombre': nodo, 'version': VERSION + '-linux', 'evento': evento, 'hora': int(time.time() * 1000), 'instalacion': c.get('instalacion', ''),
@@ -564,6 +581,7 @@ def recolectar(c, evento='periodico'):
         o['carga'] = round(os.getloadavg()[0], 2)
         o['temperatura'] = temperatura()
         o['red'] = red()
+        o['ipsLocales'] = ips_locales()
     except Exception as e:
         o['errorMetricas'] = str(e)
     o['sesiones'] = sesiones()

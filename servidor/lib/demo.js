@@ -76,7 +76,16 @@ function hipervisor(e, ahora, j) {
   }
   if (e.perfil === 'hyperv') {
     return { hipervisor: 'hyperv', vms: VMS_HV.map(([n, est, cpus, ram, disco], i) => ({ id: 'a1b2c3d4-000' + i, nombre: n, tipo: 'hyperv', estado: est, cpus, cpu: est === 'running' ? Math.round(3 + rnd() * 10 + j * 15) : 0,
-      ram: est === 'running' ? Math.round(ram * GB * (0.6 + rnd() * 0.2)) : 0, ramMax: ram * GB, disco: Math.round(disco * GB * 0.55), discoMax: disco * GB, uptime: est === 'running' ? 11 * 86400 + i * 3600 : 0 })) };
+      ram: est === 'running' ? (i % 2 ? ram * GB : Math.round(ram * GB * (0.6 + rnd() * 0.2))) : 0, ramMax: ram * GB, ramFija: !!(i % 2), disco: Math.round(disco * GB * 0.55), discoMax: disco * GB, uptime: est === 'running' ? 11 * 86400 + i * 3600 : 0,
+      ips: est === 'running' ? ['192.168.10.' + (60 + i)] : [] })),
+      hvRed: { host: 'FT-HYPERV', dominio: 'ferreteria.local', puertaEnlace: '192.168.10.1', dns: ['192.168.10.5', '8.8.8.8'], latencia: { destino: '192.168.10.1', ms: 0.6, max: 1.2, perdida: 0 },
+        interfaces: [
+          { nombre: 'Ethernet', tipo: 'fisica', descripcion: 'Intel(R) Ethernet Controller X550', estado: 'up', velocidad: 10000, duplex: 'full', mtu: 1500, mac: '3c:ec:ef:11:22:01', ips: [], puente: 'Externo LAN', rxTotal: 912 * GB, txTotal: 377 * GB, errores: 0, descartados: 4 },
+          { nombre: 'Ethernet 2', tipo: 'fisica', descripcion: 'Intel(R) Ethernet Controller X550 #2', estado: 'up', velocidad: 1000, duplex: 'full', mtu: 1500, mac: '3c:ec:ef:11:22:02', ips: ['10.10.10.2/24'], puente: null, rxTotal: 12 * GB, txTotal: 9 * GB, errores: 0, descartados: 0 },
+          { nombre: 'Externo LAN', tipo: 'puente', clase: 'External', estado: 'up', mac: '3c:ec:ef:11:22:01', ips: ['192.168.10.4/24'], puertos: ['Ethernet', ...VMS_HV.map(v => v[0])], rxTotal: 410 * GB, txTotal: 120 * GB, errores: 0, descartados: 0 },
+          { nombre: 'Interno Pruebas', tipo: 'puente', clase: 'Internal', estado: 'up', mac: '00:15:5d:0a:01:01', ips: ['172.16.0.1/24'], puertos: [], rxTotal: 0, txTotal: 0, errores: 0, descartados: 0 },
+          ...VMS_HV.map(([n, est], i) => ({ nombre: n + ' · Adaptador de red', tipo: 'invitado', estado: est === 'running' ? 'up' : 'down', mac: '00:15:5d:0a:02:0' + i, ips: est === 'running' ? ['192.168.10.' + (60 + i)] : [], puente: 'Externo LAN', vmid: 'a1b2c3d4-000' + i, puertos: [], rxTotal: 0, txTotal: 0, errores: 0, descartados: 0 }))
+        ] } };
   }
   return {};
 }
@@ -229,7 +238,7 @@ function informe(x, ahora) {
   const ramPct = Math.round(Math.min(99, Math.max(5, p.ram + j * 14 + (rnd() * 8 - 4) + (e.alto === 'ram' ? 30 : 0))));
   return {
     nombre: e.nombre, version: '1.2.0', intervalo: 30, hora: ahora,
-    cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque,
+    cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque, ipsLocales: ['192.168.10.' + (10 + x.id % 200)],
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
     sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12), ...usoSesion(s) })),
     ...hipervisor(e, ahora, j)

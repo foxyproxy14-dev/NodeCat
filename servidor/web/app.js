@@ -696,7 +696,7 @@ function filaEquipo(s) {
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre">${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
@@ -803,6 +803,7 @@ function vistaEquipo(id) {
   $('#ficha').innerHTML = [
     ['Cliente', esc(s.clienteNombre)], s.alias ? ['Nombre del equipo', esc(s.nombre)] : null,
     ['Último informe', s.ultimo ? cuando(s.ultimo) : '—'], ['Agente', s.version ? 'versión ' + esc(s.version) : '—'],
+    s.ipsLocales && s.ipsLocales.length ? ['IP local', s.ipsLocales.map(esc).join(', ')] : null,
     ['Conecta desde', s.ip ? esc(s.ip) : '—'],
     (() => { const l = equipos().filter(x => x.sonda === s.id); return l.length ? ['Hace de sonda para', l.map(x => `<a href="#/e/${x.id}">${esc(x.alias || x.nombre)}</a>`).join(', ')] : null; })()
   ].filter(Boolean).map(([k, v]) => `<div><dt><span>${k}</span></dt><dd style="margin:0">${v}</dd></div>`).join('');
@@ -899,7 +900,7 @@ function pestanasHv(s, vivo, activo) {
   const nav = $('#srvPestanas'), cont = $('#srvPve'), gen = $('#srvGeneral');
   if (!activo) { nav.hidden = true; cont.hidden = true; gen.hidden = false; return; }
   const pve = s.tipo === 'proxmox';
-  const lista = pve ? [['general', 'General'], ['apps', 'Apps'], ['vms', 'VM y LXC'], ['red', 'Red'], ['almacen', 'Almacenamiento'], ['copias', 'Backups'], ['nodo', 'Nodo']] : [['general', 'General'], ['vms', 'Máquinas virtuales']];
+  const lista = pve ? [['general', 'General'], ['apps', 'Apps'], ['vms', 'VM y LXC'], ['red', 'Red'], ['almacen', 'Almacenamiento'], ['copias', 'Backups'], ['nodo', 'Nodo']] : [['general', 'General'], ['vms', 'Máquinas virtuales'], ['red', 'Red']];
   let p = pestanaHv.get(s.id) || 'general'; if (!lista.some(([k]) => k === p)) p = 'general';
   nav.innerHTML = lista.map(([k, t]) => `<button type="button" data-pest="${k}" aria-pressed="${p === k}" class="${p === k ? 'activa' : ''}">${t}</button>`).join('');
   nav.hidden = false;
@@ -908,14 +909,14 @@ function pestanasHv(s, vivo, activo) {
   if (p === 'general') return;
   // Los detalles de Proxmox se piden aparte (pueden ser grandes) y se refrescan cada 30 s
   let d = pveCache.get(s.id);
-  if (pve && (!d || Date.now() - d.t > 30000) && !(d && d.pidiendo)) {
+  if ((pve || p === 'red') && (!d || Date.now() - d.t > 30000) && !(d && d.pidiendo)) {
     pveCache.set(s.id, { ...(d || {}), pidiendo: true });
     api(`/api/equipos/${s.id}/proxmox`).then(r => { pveCache.set(s.id, { t: Date.now(), datos: r }); if (rutaActual().vista === 'equipo' && rutaActual().id === s.id) vistaEquipo(s.id); })
       .catch(() => pveCache.set(s.id, { t: Date.now(), datos: {} }));
   }
   const datos = (pveCache.get(s.id) || {}).datos;
   const html = p === 'vms' ? seccionVms(s, vivo, datos)
-    : !datos ? gatoCargando('Preguntándole a Proxmox…')
+    : !datos ? gatoCargando(pve ? 'Preguntándole a Proxmox…' : 'Leyendo la red…')
     : p === 'apps' ? seccionApps(s, datos) : p === 'red' ? seccionRed(s, datos) : p === 'almacen' ? seccionAlmacen(s, datos) : p === 'copias' ? seccionCopias(s, datos) : seccionNodo(s, datos);
   if (cont.dataset.v !== html) {
     // Se conserva lo escrito en los buscadores y el filtro de categoría al repintar

@@ -184,17 +184,21 @@ function limpiarPve(p) {
       almacenes: arr(n.almacenes, 64).map(a => ({ nombre: txt(a.nombre, 60), tipo: txt(a.tipo, 30), contenido: txt(a.contenido, 120), activo: !!a.activo, compartido: !!a.compartido, usado: num(a.usado, 0, BYTES), total: num(a.total, 0, BYTES), disponible: a.disponible == null ? null : num(a.disponible, 0, BYTES) }))
     };
   }
-  if (p.red && typeof p.red === 'object' && !p.red.error) {
-    const r = p.red;
-    o.red = {
-      interfaces: arr(r.interfaces, 80).map(i => ({ nombre: txt(i.nombre, 30), tipo: txt(i.tipo, 12), estado: txt(i.estado, 12), velocidad: num(i.velocidad, 0, 1e7), duplex: i.duplex ? txt(i.duplex, 10) : null,
-        mtu: num(i.mtu, 0, 70000), mac: txt(i.mac, 20), ips: arr(i.ips, 6).map(x => txt(x, 50)), puente: i.puente ? txt(i.puente, 30) : null, puertos: arr(i.puertos, 40).map(x => txt(x, 30)),
-        vmid: i.vmid ? txt(i.vmid, 12) : null, rxTotal: num(i.rxTotal, 0, BYTES), txTotal: num(i.txTotal, 0, BYTES), descartados: num(i.descartados, 0, BYTES), errores: num(i.errores, 0, BYTES) })),
-      puertaEnlace: r.puertaEnlace ? txt(r.puertaEnlace, 45) : null, dns: arr(r.dns, 3).map(x => txt(x, 45)), dominio: r.dominio ? txt(r.dominio, 80) : null, host: txt(r.host, 63),
-      latencia: r.latencia ? { destino: txt(r.latencia.destino, 45), ms: num(r.latencia.ms, 0, 1e5), max: num(r.latencia.max, 0, 1e5), perdida: num(r.latencia.perdida, 0, 100) } : null
-    };
-  }
+  if (p.red && typeof p.red === 'object' && !p.red.error) o.red = limpiarRed(p.red);
   return o;
+}
+
+// Red de un hipervisor (Proxmox: puentes; Hyper-V: conmutadores virtuales), con las tarjetas y los adaptadores de las VM
+function limpiarRed(r) {
+  const arr = (x, n) => Array.isArray(x) ? x.slice(0, n) : [];
+  return {
+    interfaces: arr(r.interfaces, 120).map(i => ({ nombre: txt(i.nombre, 60), tipo: txt(i.tipo, 12), clase: i.clase ? txt(i.clase, 20) : null, descripcion: i.descripcion ? txt(i.descripcion, 100) : null,
+      estado: txt(i.estado, 12), velocidad: num(i.velocidad, 0, 1e7), duplex: i.duplex ? txt(i.duplex, 10) : null,
+      mtu: num(i.mtu, 0, 70000), mac: txt(i.mac, 20), ips: arr(i.ips, 6).map(x => txt(x, 50)), puente: i.puente ? txt(i.puente, 60) : null, puertos: arr(i.puertos, 60).map(x => txt(x, 60)),
+      vmid: i.vmid ? txt(i.vmid, 40) : null, rxTotal: num(i.rxTotal, 0, BYTES), txTotal: num(i.txTotal, 0, BYTES), descartados: num(i.descartados, 0, BYTES), errores: num(i.errores, 0, BYTES) })),
+    puertaEnlace: r.puertaEnlace ? txt(r.puertaEnlace, 45) : null, dns: arr(r.dns, 3).map(x => txt(x, 45)), dominio: r.dominio ? txt(r.dominio, 80) : null, host: txt(r.host, 63),
+    latencia: r.latencia ? { destino: txt(r.latencia.destino, 45), ms: num(r.latencia.ms, 0, 1e5), max: num(r.latencia.max, 0, 1e5), perdida: num(r.latencia.perdida, 0, 100) } : null
+  };
 }
 
 function limpiarInforme(c) {
@@ -221,8 +225,11 @@ function limpiarInforme(c) {
       id: txt(x.id, 60), nombre: txt(x.nombre, 120), tipo: txt(x.tipo, 12), estado: txt(x.estado, 20), nodo: txt(x.nodo, 63),
       cpu: num(x.cpu, 0, 100), cpus: num(x.cpus, 0, 4096), ram: num(x.ram, 0, BYTES), ramMax: num(x.ramMax, 0, BYTES), disco: num(x.disco, 0, BYTES), discoMax: num(x.discoMax, 0, BYTES),
       uptime: num(x.uptime, 0, 1e10), netin: num(x.netin, 0, BYTES), netout: num(x.netout, 0, BYTES),
-      diskread: num(x.diskread, 0, BYTES), diskwrite: num(x.diskwrite, 0, BYTES), etiquetas: (Array.isArray(x.etiquetas) ? x.etiquetas : []).slice(0, 8).map(t => txt(t, 30))
+      diskread: num(x.diskread, 0, BYTES), diskwrite: num(x.diskwrite, 0, BYTES), etiquetas: (Array.isArray(x.etiquetas) ? x.etiquetas : []).slice(0, 8).map(t => txt(t, 30)),
+      ips: (Array.isArray(x.ips) ? x.ips : []).slice(0, 4).map(t => txt(t, 45)), ramFija: x.ramFija == null ? null : !!x.ramFija
     })).filter(v => v.nombre || v.id),
+    ipsLocales: (Array.isArray(c.ipsLocales) ? c.ipsLocales : []).slice(0, 6).map(t => txt(t, 45)).filter(Boolean),
+    hvRed: c.hvRed && typeof c.hvRed === 'object' && !c.hvRed.error ? limpiarRed(c.hvRed) : null,
     errorVms: c.errorVms ? txt(c.errorVms, 400) : null,
     pve: limpiarPve(c.pve)
   };
@@ -464,12 +471,12 @@ function vistaEquipo(v, ahora) {
     red: esAgente(v.tipo) ? null : d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null, sede: v.sede || null,
     interfaces: esAgente(v.tipo) ? d.red || [] : undefined, nucleos: d.nucleos ?? null, carga: d.carga ?? null, temperatura: d.temperatura ?? null,
     ramCache: d.ramCache ?? null, cpuUsuario: d.cpuUsuario ?? null, cpuSistema: d.cpuSistema ?? null,
-    hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve,
+    hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve, ipsLocales: d.ipsLocales || [],
     historial: v.hora
   };
 }
 /** Detalles de Proxmox de un equipo (aparte de /api/estado porque pueden ser grandes). */
-function detallesPve(id) { const v = vivo.get(id); return (v && v.datos && v.datos.pve) || {}; }
+function detallesPve(id) { const v = vivo.get(id); const d = v && v.datos; if (d && d.hvRed && !d.pve) return { red: d.hvRed }; return (d && d.pve) || {}; }
 function estado(sesion) {
   const ahora = Date.now();
   const cs = visibles(sesion);

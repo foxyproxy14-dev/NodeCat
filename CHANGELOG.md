@@ -1,5 +1,13 @@
 # Cambios
 
+## 0.18.0 (noviembre de 2026)
+
+- **Hyper-V, pestaña Red** (como la de Proxmox): tarjetas físicas, **conmutadores virtuales** (externo, interno o privado, con la IP del host en cada uno), adaptadores de cada VM con su IP y MAC, puerta de enlace, DNS, dominio, latencia y la topología animada. El agente la lee cada 5 minutos en segundo plano.
+- **IP de las VM de Hyper-V** (las que informan los servicios de integración del invitado) en sus tarjetas y en el buscador.
+- **Memoria de las VM de Hyper-V:** con memoria fija se muestra la asignada (Hyper-V no sabe cuánta usa por dentro), en vez de una barra al 100 %; con memoria dinámica, lo que pide la VM.
+- **IP local de cada servidor** (Windows, Linux y Proxmox) en su ficha y al pasar el mouse por su fila, además de la IP desde la que conecta.
+- Agente de Windows 1.5.2 y agente de Linux/Proxmox 1.2.1 (este se actualiza solo).
+
 ## 0.17.3 (noviembre de 2026)
 
 - Aviso cuando una **VM o un contenedor LXC** de un hipervisor (Proxmox o Hyper-V) que estaba encendido se apaga, pasado el tiempo elegido (2 min por defecto, para no avisar de un simple reinicio), y otro cuando vuelve a encenderse con cuánto estuvo apagado. Las VM que siempre están apagadas no avisan. Por Telegram y en los dispositivos (tipo "Máquinas virtuales que se apagan"); regla nueva en las notificaciones.

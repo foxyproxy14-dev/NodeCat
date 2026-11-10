@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.5.1";
+        public const string Version = "1.5.2";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -179,6 +179,31 @@ namespace NodeCat
             return Environment.MachineName;
         }
 
+        // IPv4 de la red local (tarjetas conectadas, sin loopback, APIPA ni adaptadores de VPN)
+        static List<object> IpsLocales()
+        {
+            var l = new List<object>();
+            try
+            {
+                foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback || ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Tunnel) continue;
+                    string d = (ni.Description + " " + ni.Name).ToLowerInvariant();
+                    if (d.Contains("tailscale") || d.Contains("wireguard") || d.Contains("zerotier") || d.Contains("openvpn") || d.Contains("tap-windows") || d.Contains("fortinet") || d.Contains("vpn")) continue;
+                    foreach (var u in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (u.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                        string ip = u.Address.ToString();
+                        if (ip.StartsWith("169.254.") || ip.StartsWith("127.") || l.Contains(ip)) continue;
+                        l.Add(ip);
+                    }
+                }
+            }
+            catch { }
+            return l.Take(6).ToList();
+        }
+
         static Dictionary<string, object> Recolectar(string porQue)
         {
             var o = new Dictionary<string, object>
@@ -203,6 +228,7 @@ namespace NodeCat
             {
                 var m = LectorMetricas.Leer("localhost", control);
                 o["cpu"] = m.Cpu; o["ramPct"] = m.RamPct; o["ramTotal"] = m.RamTotalGB; o["ramUsada"] = m.RamUsadaGB; o["so"] = m.So;
+                o["ipsLocales"] = IpsLocales();
                 o["arranque"] = m.Arranque.HasValue ? (object)Utiles.Ms(m.Arranque.Value) : null;
                 o["discos"] = m.Discos.Select(d => (object)new Dictionary<string, object> {
                     { "unidad", d.Unidad }, { "etiqueta", d.Etiqueta }, { "total", d.TotalGB }, { "libre", d.LibreGB }, { "pct", d.Pct } }).ToList();
@@ -214,6 +240,7 @@ namespace NodeCat
                 o["hipervisor"] = "hyperv";
                 try { o["vms"] = Limite.Ejecutar(() => HyperV.Listar(), 70, "Lectura de Hyper-V", control.HyperV); }
                 catch (Exception ex) { o["errorVms"] = ex.Message; }
+                try { var r = HyperV.Red(); if (r != null) o["hvRed"] = r; } catch { }
             }
             return o;
         }

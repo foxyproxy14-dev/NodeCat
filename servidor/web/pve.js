@@ -117,15 +117,15 @@ function seccionVms(s, vivo, d) {
     const enc = v.estado === 'running', ap = apps.get(String(v.id));
     const rp = v.ramMax ? pct(v.ram || 0, v.ramMax) : 0, dp = v.discoMax && v.disco ? pct(v.disco, v.discoMax) : null;
     const tipo = v.tipo === 'lxc' ? 'LXC' : 'VM';
-    return `<article class="pm-vm ${enc ? '' : 'detenida'}" data-buscar="${esc([v.nombre, v.id, ...(ap && ap.ips || []), ...(v.etiquetas || [])].join(' ').toLowerCase())}" data-est="${enc ? 'on' : 'off'}">
+    return `<article class="pm-vm ${enc ? '' : 'detenida'}" data-buscar="${esc([v.nombre, v.id, ...(ap && ap.ips || []), ...(v.ips || []), ...(v.etiquetas || [])].join(' ').toLowerCase())}" data-est="${enc ? 'on' : 'off'}">
       <header><span class="pm-estado ${k}"><span class="punto ${k}" aria-hidden="true"></span>${t}</span><span class="pm-tipo ${v.tipo === 'lxc' ? 'lxc' : 'vm'}">${tipo}</span>
         <h3>${esc(v.nombre)}</h3>${pve && v.id ? `<span class="pm-id">ID: ${esc(v.id)}</span>` : ''}</header>
       ${(v.etiquetas || []).length ? `<div class="pm-etiquetas">${v.etiquetas.map(e => `<span><i style="background:${colorEtiqueta(e)}"></i>${esc(e)}</span>`).join('')}</div>` : ''}
       <dl class="pm-datos">
         <div><dt>Encendida</dt><dd>${enc && v.uptime ? esc(durTxt(v.uptime * 1000)) : '—'}</dd></div>
-        <div><dt>IP</dt><dd class="mono">${ap && ap.ips && ap.ips.length ? esc(ap.ips[0]) : '—'}</dd></div>
+        <div><dt>IP</dt><dd class="mono">${ap && ap.ips && ap.ips.length ? esc(ap.ips[0]) : v.ips && v.ips.length ? esc(v.ips.join(', ')) : '—'}</dd></div>
         <div class="ancho"><dt>CPU</dt><dd>${enc && v.cpu != null ? `${nf.format(Math.round(v.cpu * 10) / 10)} %` : '0 %'} <small>de ${v.cpus || '?'} ${v.cpus === 1 ? 'núcleo' : 'núcleos'}</small></dd>${barra(enc ? v.cpu || 0 : 0, 'cpu')}</div>
-        <div class="ancho"><dt>Memoria</dt><dd>${enc ? bytesTxt(v.ram) : '0'} <small>/ ${bytesTxt(v.ramMax)}</small></dd>${barra(enc ? rp : 0, 'ram n-' + nivel(rp))}</div>
+        <div class="ancho"><dt>Memoria</dt>${v.ramFija ? `<dd>${bytesTxt(v.ramMax || v.ram)} <small>asignada (fija): Hyper-V no sabe cuánta usa por dentro</small></dd>` : `<dd>${enc ? bytesTxt(v.ram) : '0'} <small>/ ${bytesTxt(v.ramMax)}${v.tipo === 'hyperv' && enc ? ' (memoria dinámica: lo que pide la VM)' : ''}</small></dd>${barra(enc ? rp : 0, 'ram n-' + nivel(rp))}`}</div>
         <div class="ancho"><dt>Disco</dt><dd>${v.disco ? bytesTxt(v.disco) + ' <small>/ ' + bytesTxt(v.discoMax) + '</small>' : `<small>${bytesTxt(v.discoMax)} asignado</small>`}</dd>${dp != null ? barra(dp, 'dsk n-' + nivel(dp)) : ''}</div>
         ${v.diskread != null || v.netin != null ? `<div><dt>E/S de disco</dt><dd class="pm-io"><span class="b">↓ ${bytesTxt(v.diskread || 0)}</span><span class="s">↑ ${bytesTxt(v.diskwrite || 0)}</span></dd></div>
         <div><dt>E/S de red</dt><dd class="pm-io"><span class="b">↓ ${bytesTxt(v.netin || 0)}</span><span class="s">↑ ${bytesTxt(v.netout || 0)}</span></dd></div>` : ''}
@@ -154,8 +154,8 @@ function filtrarVms(cont, s) {
 
 /* ---------------- Red ---------------- */
 function seccionRed(s, d) {
-  const r = d.red;
-  if (!r) return `<div class="vacio">${d.nodo ? 'Este agente todavía no informa la red del host. Se actualiza solo a la versión nueva en unos minutos.' : gatoCargando('Leyendo la red…')}</div>`;
+  const r = d.red, hv = s.tipo !== 'proxmox', PUENTE = hv ? 'Conmutador' : 'Puente', PUENTES = hv ? 'Conmutadores virtuales' : 'Puentes';
+  if (!r) return `<div class="vacio">${hv ? 'Este agente todavía no informa la red de Hyper-V. Instala el agente de Windows 1.5.2 o más nuevo en el host; la red se lee cada 5 minutos.' : d.nodo ? 'Este agente todavía no informa la red del host. Se actualiza solo a la versión nueva en unos minutos.' : gatoCargando('Leyendo la red…')}</div>`;
   const ifz = r.interfaces || [];
   const fis = ifz.filter(i => i.tipo === 'fisica'), pts = ifz.filter(i => i.tipo === 'puente'), inv = ifz.filter(i => i.tipo === 'invitado');
   const up = i => i.estado === 'up' || i.estado === 'unknown';
@@ -180,14 +180,14 @@ function seccionRed(s, d) {
   const tarjetaIfz = i => {
     const g = i.vmid ? nombres.get(String(i.vmid)) : null;
     return `<article class="pm-ifz ${up(i) ? '' : 'pm-caida'}">
-      <header><span class="pm-ifz-ico ${i.tipo}">${icoPm.red}</span><div><h4>${esc(i.nombre)}</h4><small>${i.tipo === 'fisica' ? 'Física' : i.tipo === 'puente' ? 'Puente' : g ? `${g.tipo === 'lxc' ? 'LXC' : 'VM'} ${esc(i.vmid)} · ${esc(g.nombre)}` : 'Virtual'}</small></div>
+      <header><span class="pm-ifz-ico ${i.tipo}">${icoPm.red}</span><div><h4>${esc(hv && i.tipo === 'invitado' ? (g ? g.nombre : i.nombre.split(' · ')[0]) : i.nombre)}</h4><small>${i.tipo === 'fisica' ? (i.descripcion ? esc(i.descripcion) : 'Física') : i.tipo === 'puente' ? (i.clase ? `${PUENTE} ${esc({ External: 'externo', Internal: 'interno', Private: 'privado' }[i.clase] || i.clase)}` : PUENTE) : g ? (hv ? esc(i.nombre.split(' · ')[1] || 'Adaptador de red') : `${g.tipo === 'lxc' ? 'LXC' : 'VM'} ${esc(i.vmid)} · ${esc(g.nombre)}`) : 'Virtual'}</small></div>
         <span class="pm-estado ${up(i) ? 'ok' : 'caido'}"><span class="punto ${up(i) ? 'ok' : 'caido'}" aria-hidden="true"></span>${up(i) ? 'Activa' : 'Caída'}</span></header>
       <dl>
         ${i.ips && i.ips.length ? `<div class="ancho"><dt>IP</dt><dd class="mono">${esc(i.ips.join(', '))}</dd></div>` : ''}
         <div><dt>Velocidad</dt><dd>${i.velocidad ? (i.velocidad >= 1000 ? `${nf.format(i.velocidad / 1000)} Gb/s` : `${i.velocidad} Mb/s`) : '—'}${i.duplex ? ` <small>${esc(i.duplex)}</small>` : ''}</dd></div>
         <div><dt>MTU</dt><dd>${i.mtu || '—'}</dd></div>
         ${i.tipo === 'puente' && i.puertos.length ? `<div class="ancho"><dt>Puertos</dt><dd>${esc(i.puertos.filter(p => !/^(veth|tap|fw)/.test(p)).join(', ') || '—')}${i.puertos.some(p => /^(veth|tap)/.test(p)) ? ` <small>y ${plural(i.puertos.filter(p => /^(veth|tap)/.test(p)).length, 'invitado', 'invitados')}</small>` : ''}</dd></div>` : ''}
-        ${i.puente ? `<div><dt>Puente</dt><dd>${esc(i.puente)}</dd></div>` : ''}
+        ${i.puente ? `<div><dt>${PUENTE}</dt><dd>${esc(i.puente)}</dd></div>` : ''}
         ${i.mac ? `<div class="ancho"><dt>MAC</dt><dd class="mono">${esc(i.mac)}</dd></div>` : ''}
         <div class="ancho"><dt>Recibido / enviado</dt><dd class="pm-io"><span class="b">↓ ${bytesTxt(i.rxTotal)}</span><span class="s">↑ ${bytesTxt(i.txTotal)}</span></dd></div>
         ${i.errores || i.descartados ? `<div class="ancho"><dt>Errores / descartados</dt><dd>${nf.format(i.errores)} / ${nf.format(i.descartados)}</dd></div>` : ''}
@@ -201,7 +201,7 @@ function seccionRed(s, d) {
         <div class="pm-trafico"><div><span class="b">↓ Recibido</span><b>${puntos.length ? bytesTxt(totRx) : '—'}</b></div><div><span class="s">↑ Enviado</span><b>${puntos.length ? bytesTxt(totTx) : '—'}</b></div></div>
         <p class="pm-pie">${elegida ? `En ${esc(elegida)}` : 'Midiendo…'}</p></section>
       <section class="pm-losa"><h3>Interfaces activas</h3><div class="pm-grande">${fisUp + ptsUp}</div>
-        <div class="hv-chips"><span class="chip-hv">${fisUp} de ${fis.length} físicas</span><span class="chip-hv vm">${ptsUp} ${ptsUp === 1 ? 'puente' : 'puentes'}</span>${inv.length ? `<span class="chip-hv lxc">${inv.length} de invitados</span>` : ''}</div></section>
+        <div class="hv-chips"><span class="chip-hv">${fisUp} de ${fis.length} físicas</span><span class="chip-hv vm">${ptsUp} ${hv ? (ptsUp === 1 ? 'conmutador' : 'conmutadores') : (ptsUp === 1 ? 'puente' : 'puentes')}</span>${inv.length ? `<span class="chip-hv lxc">${inv.length} de invitados</span>` : ''}</div></section>
       <section class="pm-losa"><h3>Estado de la red</h3><span class="chip-hv ${estN}" style="margin:0 0 8px">${estN === 'ok' ? 'Sin problemas' : estN === 'aviso' ? 'Revisar' : 'Con fallas'}</span>
         <div class="pm-filas"><span>Pérdida</span><b>${lat ? nf.format(lat.perdida) + ' %' : '—'}</b><span>Host</span><b>${esc(r.host || '—')}</b>${r.dominio ? `<span>Dominio</span><b>${esc(r.dominio)}</b>` : ''}<span>DNS</span><b>${esc((r.dns || []).join(', ') || '—')}</b><span>Errores</span><b>${nf.format(errores)}${desc ? ` <small>(${nf.format(desc)} descartados)</small>` : ''}</b></div></section>
       <section class="pm-losa"><h3>Latencia</h3><div class="pm-grande ${latN}">${lat && lat.ms != null ? nf.format(lat.ms) : '—'}<i>ms</i></div>
@@ -210,9 +210,9 @@ function seccionRed(s, d) {
     <section class="pm-caja"><div class="pm-caja-cab"><h3>Tráfico de red</h3>${opc.length > 1 ? `<select class="selector" data-pm="red-ifz" aria-label="Interfaz">${opc.map(o => `<option ${o === elegida ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>` : ''}
       <span class="pm-leyenda"><i class="b"></i>Recibido <i class="s"></i>Enviado</span></div>
       <div class="pm-grafico" data-pm-grafico></div></section>
-    <section class="pm-caja"><div class="pm-caja-cab"><h3>Topología de la red</h3><span class="tenue">Así se conectan las tarjetas, los puentes y las VM y LXC</span></div>
+    <section class="pm-caja"><div class="pm-caja-cab"><h3>Topología de la red</h3><span class="tenue">Así se conectan las tarjetas, ${hv ? 'los conmutadores y las VM' : 'los puentes y las VM y LXC'}</span></div>
       ${topologia(s, r, fis, pts, inv, nombres, up)}</section>
-    ${grupo('Interfaces físicas', fis)}${grupo('Puentes', pts)}${grupo('Interfaces de VM y LXC', inv)}`;
+    ${grupo('Interfaces físicas', fis)}${grupo(PUENTES, pts)}${grupo(hv ? 'Adaptadores de las VM' : 'Interfaces de VM y LXC', inv)}`;
 }
 // Gráfico de 24 h (recibido y enviado) con cruz y globo al pasar el mouse
 function graficoRed(el, s) {
@@ -258,9 +258,9 @@ function topologia(s, r, fis, pts, inv, nombres, up) {
   return `<div class="pm-topo"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Topología: ${fis.length} interfaces físicas, ${pts.length} puentes y ${guests.length} interfaces de VM y LXC">
     ${lineas}
     ${fis.map(f => nodo(col[0], posF.get(f.nombre), 110, f.nombre, up(f) ? (f.velocidad ? (f.velocidad >= 1000 ? f.velocidad / 1000 + ' Gb/s' : f.velocidad + ' Mb/s') : 'activa') : 'caída', 'fisica ' + (up(f) ? '' : 'caido'))).join('')}
-    <g class="pm-nodo host"><rect x="${col[1] - 70}" y="${yHost - 30}" width="140" height="60" rx="12"/><text x="${col[1]}" y="${yHost - 4}" text-anchor="middle">PROXMOX</text><text class="sub" x="${col[1]}" y="${yHost + 14}" text-anchor="middle">${esc(r.host || s.nombre)}</text></g>
-    ${pts.map(p => nodo(col[2], posP.get(p.nombre), 110, p.nombre, (p.ips && p.ips[0]) || 'puente', 'puente ' + (up(p) ? '' : 'caido'))).join('')}
-    ${guests.map(({ i, g }, k) => nodo(col[3], yDe(k, guests.length), 150, g ? g.nombre : i.nombre, `${g ? (g.tipo === 'lxc' ? 'LXC ' : 'VM ') : ''}${i.vmid || ''}`, (g && g.tipo === 'lxc' ? 'lxc ' : 'vm ') + (up(i) && (!g || g.estado === 'running') ? '' : 'caido'))).join('')}
+    <g class="pm-nodo host"><rect x="${col[1] - 70}" y="${yHost - 30}" width="140" height="60" rx="12"/><text x="${col[1]}" y="${yHost - 4}" text-anchor="middle">${s.tipo === 'proxmox' ? 'PROXMOX' : 'HYPER-V'}</text><text class="sub" x="${col[1]}" y="${yHost + 14}" text-anchor="middle">${esc(r.host || s.nombre)}</text></g>
+    ${pts.map(p => nodo(col[2], posP.get(p.nombre), 130, p.nombre, (p.ips && p.ips[0]) || (s.tipo === 'proxmox' ? 'puente' : ({ External: 'externo', Internal: 'interno', Private: 'privado' }[p.clase] || 'conmutador')), 'puente ' + (up(p) ? '' : 'caido'))).join('')}
+    ${guests.map(({ i, g }, k) => nodo(col[3], yDe(k, guests.length), 150, g ? g.nombre : i.nombre, s.tipo === 'proxmox' ? `${g ? (g.tipo === 'lxc' ? 'LXC ' : 'VM ') : ''}${i.vmid || ''}` : ((i.ips && i.ips[0]) || 'VM'), (g && g.tipo === 'lxc' ? 'lxc ' : 'vm ') + (up(i) && (!g || g.estado === 'running') ? '' : 'caido'))).join('')}
     ${inv.length > guests.length ? `<text class="pm-mas" x="${col[3]}" y="${H - 6}" text-anchor="middle">y ${inv.length - guests.length} más</text>` : ''}
   </svg></div>`;
 }
