@@ -206,7 +206,10 @@ function limpiarInforme(c) {
     })),
     sesiones: (Array.isArray(c.sesiones) ? c.sesiones : []).slice(0, 500).map(x => ({
       usuario: txt(x.usuario, 100), dominio: txt(x.dominio, 100), id: num(x.id, 0, 1e7), estado: txt(x.estado, 20),
-      estadoTexto: txt(x.estadoTexto, 40), equipo: txt(x.equipo, 100), inicio: num(x.inicio, 0, 9e15), inactivo: num(x.inactivo, 0, 1e7)
+      estadoTexto: txt(x.estadoTexto, 40), equipo: txt(x.equipo, 100), inicio: num(x.inicio, 0, 9e15), inactivo: num(x.inactivo, 0, 1e7),
+      // Consumo de la sesión (agente de Windows 1.5 o más nuevo)
+      cpu: x.cpu == null ? null : num(x.cpu, 0, 100), ram: x.ram == null ? null : num(x.ram, 0, BYTES), procesos: x.procesos == null ? null : num(x.procesos, 0, 1e5),
+      top: (Array.isArray(x.top) ? x.top : []).slice(0, 3).map(t => ({ nombre: txt(t.nombre, 60), cpu: t.cpu == null ? null : num(t.cpu, 0, 100), ram: num(t.ram, 0, BYTES), cantidad: num(t.cantidad, 0, 1e5) }))
     })).filter(s => s.usuario),
     // Hipervisor (Proxmox o Hyper-V): sus máquinas virtuales y contenedores, y los almacenamientos
     nucleos: num(c.nucleos, 0, 4096), carga: num(c.carga, 0, 1e4), temperatura: num(c.temperatura, -50, 150),

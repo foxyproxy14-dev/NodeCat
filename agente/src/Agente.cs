@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.4.0";
+        public const string Version = "1.5.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -188,9 +188,15 @@ namespace NodeCat
             try
             {
                 var ses = Limite.Ejecutar(() => Wts.Listar("localhost", control.Equipos), 20, "Lectura de sesiones", control.Wts);
-                o["sesiones"] = ses.Select(s => (object)new Dictionary<string, object> {
-                    { "usuario", s.Usuario }, { "dominio", s.Dominio }, { "id", s.Id }, { "estado", s.Estado }, { "estadoTexto", s.EstadoTexto },
-                    { "equipo", s.Equipo }, { "inicio", s.Inicio.HasValue ? (object)Utiles.Ms(s.Inicio.Value) : null }, { "inactivo", s.InactivoMin } }).ToList();
+                Dictionary<int, ProcesosSesion.Uso> uso = null;
+                try { uso = ProcesosSesion.Medir(); } catch { }
+                o["sesiones"] = ses.Select(s => {
+                    var d = new Dictionary<string, object> {
+                        { "usuario", s.Usuario }, { "dominio", s.Dominio }, { "id", s.Id }, { "estado", s.Estado }, { "estadoTexto", s.EstadoTexto },
+                        { "equipo", s.Equipo }, { "inicio", s.Inicio.HasValue ? (object)Utiles.Ms(s.Inicio.Value) : null }, { "inactivo", s.InactivoMin } };
+                    ProcesosSesion.Uso u;
+                    if (uso != null && uso.TryGetValue(s.Id, out u)) { d["cpu"] = u.Cpu; d["ram"] = u.Ram; d["procesos"] = u.Procesos; d["top"] = u.Top; }
+                    return (object)d; }).ToList();
             }
             catch (Exception ex) { o["errorSesiones"] = ex.Message; o["sesiones"] = new List<object>(); }
             try

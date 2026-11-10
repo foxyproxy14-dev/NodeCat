@@ -231,9 +231,19 @@ function informe(x, ahora) {
     nombre: e.nombre, version: '1.2.0', intervalo: 30, hora: ahora,
     cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque,
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
-    sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12) })),
+    sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12), ...usoSesion(s) })),
     ...hipervisor(e, ahora, j)
   };
+}
+
+// Consumo por sesión (como lo informa el agente 1.5): CPU, memoria y los programas que más usan
+const PROGRAMAS = [['chrome', 9, 900e6], ['EXCEL', 1, 320e6], ['OUTLOOK', 1, 280e6], ['msedge', 6, 600e6], ['Teams', 3, 450e6], ['sapgui', 1, 210e6], ['WINWORD', 1, 180e6], ['AcroRd32', 2, 150e6]];
+function usoSesion(s) {
+  if (!s.perfilUso) { const k = Math.floor(rnd() * PROGRAMAS.length); s.perfilUso = [PROGRAMAS[k], PROGRAMAS[(k + 1 + Math.floor(rnd() * 3)) % PROGRAMAS.length], PROGRAMAS[(k + 4) % PROGRAMAS.length]]; s.peso = 0.4 + rnd() * 1.6; }
+  const activa = s.estado === 'activa';
+  const top = s.perfilUso.map(([n, k, r], i) => ({ nombre: n, cantidad: k, cpu: activa ? Math.round((i === 0 ? 3 + rnd() * 9 : rnd() * 2.5) * s.peso * 10) / 10 : 0, ram: Math.round(r * s.peso * (0.8 + rnd() * 0.4)) }));
+  const ram = top.reduce((n, x) => n + x.ram, 0) + 260e6;
+  return { cpu: Math.round((top.reduce((n, x) => n + x.cpu, 0) + (activa ? rnd() : 0)) * 10) / 10, ram, procesos: 30 + top.reduce((n, x) => n + x.cantidad, 0) + Math.floor(s.peso * 10), top };
 }
 
 // Las sesiones van cambiando: entra gente, alguien se desconecta, otros cierran

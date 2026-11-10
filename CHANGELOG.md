@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.15.0 (noviembre de 2026)
+
+- CPU y memoria de cada sesión de Escritorio remoto, con los programas que más usa cada una (agrupados: "chrome ×9"). Columnas nuevas, ordenables, en las sesiones del servidor y en la página Sesiones. El agente lo calcula una vez por informe recorriendo los procesos (la CPU, por diferencia con el informe anterior), así que casi no consume.
+- Agente de Windows 1.5.0. Para verlo hay que reinstalar el agente (con el comando de PowerShell es un paso).
+
 ## 0.14.0 (noviembre de 2026)
 
 Revisión de consumo de recursos. No cambia ninguna función y todo sigue siendo de solo lectura en los equipos. Medido en modo demo con 21 equipos:

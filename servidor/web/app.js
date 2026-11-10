@@ -712,18 +712,25 @@ function vistaSesiones() {
 }
 
 function tabla(lista, conServidor, vacio) {
-  const val = (s, c) => c === 'inicio' || c === 'inactivo' || c === 'id' ? (s[c] == null ? -1 : s[c]) : String(s[c] == null ? '' : s[c]).toLowerCase();
+  const val = (s, c) => ['inicio', 'inactivo', 'id', 'cpu', 'ram'].includes(c) ? (s[c] == null ? -1 : s[c]) : String(s[c] == null ? '' : s[c]).toLowerCase();
+  // CPU y memoria por sesión: solo si algún agente lo informa (Windows 1.5 o más nuevo)
+  const conUso = lista.some(s => s.ram != null);
+  const mb = b => b >= 1073741824 ? `${nf.format(Math.round(b / 1073741824 * 10) / 10)} GB` : `${nf.format(Math.round(b / 1048576))} MB`;
+  const usoCpu = s => s.cpu == null ? (s.ram != null ? '<span class="tenue" title="Se calcula a partir del segundo informe">…</span>' : '<span class="tenue">—</span>') : `<span class="ses-uso"><b class="${s.cpu >= 50 ? 'alto' : ''}">${nf.format(s.cpu)} %</b><span class="ses-barra"><i style="width:${Math.min(100, s.cpu)}%"></i></span></span>`;
+  const usoRam = s => s.ram == null ? '<span class="tenue">—</span>' : `<span class="ses-uso"><b>${mb(s.ram)}</b>${s.procesos ? `<small>${s.procesos} procesos</small>` : ''}</span>`;
+  const usoTop = s => s.top && s.top.length ? `<span class="ses-top">${s.top.map(t => `<span title="${esc(t.nombre)}: ${t.cpu != null ? nf.format(t.cpu) + ' % de CPU, ' : ''}${mb(t.ram)}${t.cantidad > 1 ? `, ${t.cantidad} procesos` : ''}">${esc(t.nombre)}${t.cantidad > 1 ? `<small>×${t.cantidad}</small>` : ''}</span>`).join('')}</span>` : '<span class="tenue">—</span>';
   const filas = [...lista].sort((a, b) => { const va = val(a, orden.campo), vb = val(b, orden.campo); return (va < vb ? -1 : va > vb ? 1 : 0) * (orden.asc ? 1 : -1); });
   const t = $('#tablaSes');
   if (!filas.length) { t.innerHTML = `<div class="vacio gato-vacio">${vacio}</div>`; return; }
   const col = (c, txt) => `<th aria-sort="${orden.campo === c ? (orden.asc ? 'ascending' : 'descending') : 'none'}"><button type="button" data-orden="${c}">${txt}${orden.campo === c ? `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="${orden.asc ? 'M5 2 9 8H1z' : 'M5 8 9 2H1z'}" fill="currentColor"/></svg>` : ''}</button></th>`;
   t.innerHTML = `<table><thead><tr>
-    ${col('usuario', 'Persona')}${conServidor ? col('servidor', 'Servidor') + col('cliente', 'Cliente') : ''}${col('estado', 'Estado')}${col('equipo', 'Conectada desde')}${col('inactivo', 'Inactiva')}${col('inicio', 'Entró')}${col('id', 'ID')}
+    ${col('usuario', 'Persona')}${conServidor ? col('servidor', 'Servidor') + col('cliente', 'Cliente') : ''}${col('estado', 'Estado')}${conUso ? col('cpu', 'CPU') + col('ram', 'Memoria') + '<th>Lo que más usa</th>' : ''}${col('equipo', 'Conectada desde')}${col('inactivo', 'Inactiva')}${col('inicio', 'Entró')}${col('id', 'ID')}
     </tr></thead><tbody>
     ${filas.map(s => `<tr>
         <td><span class="usr">${esc(s.usuario)}</span>${s.dominio ? `<span class="dom">${esc(s.dominio)}</span>` : ''}</td>
         ${conServidor ? `<td><button type="button" class="enlace" data-eq="${s.equipoId}">${esc(s.servidor)}</button></td><td class="tenue">${esc(s.cliente)}</td>` : ''}
         <td><span class="estado-ses"><span class="punto ${esc(s.estado)}" aria-hidden="true"></span>${esc(s.estadoTexto || s.estado)}</span></td>
+        ${conUso ? `<td>${usoCpu(s)}</td><td>${usoRam(s)}</td><td>${usoTop(s)}</td>` : ''}
         <td>${s.equipo ? esc(s.equipo) : '<span class="tenue">—</span>'}</td>
         <td>${inactivo(s.inactivo, s.estado)}</td>
         <td>${cuando(s.inicio)}</td>
