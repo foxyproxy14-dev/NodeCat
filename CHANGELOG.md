@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.17.1 (noviembre de 2026)
+
+- Los hipervisores llevan una etiqueta (Hyper-V o Proxmox) junto al nombre, y su línea empieza por las VM encendidas.
+- El grupo **Hipervisores** aparece también cuando el cliente solo tiene hipervisores (antes solo si además tenía otros servidores).
+
 ## 0.17.0 (noviembre de 2026)
 
 - **Notificaciones en el teléfono o la PC** (Web Push), aunque NodeCat esté cerrado. Se activan en el menú de la cuenta → **Notificaciones en este dispositivo**. Al tocarlas se abre el equipo del problema.

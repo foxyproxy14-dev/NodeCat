@@ -77,9 +77,9 @@ function porSede(lista, fila, cuenta, separar) {
 const esHipervisor = e => e.tipo === 'proxmox' || !!e.hipervisor;
 function porRol(l, fila, dentro) {
   const hv = l.filter(esHipervisor), resto = l.filter(e => !esHipervisor(e));
-  if (!hv.length || !resto.length) return l.map(fila).join('');
+  if (!hv.length) return l.map(fila).join('');
   const cab = (t, tx) => `<div class="fila-grupo rol${dentro ? ' dentro' : ''}"><b>${t}</b><span>${tx}</span></div>`;
-  return cab('Hipervisores', plural(hv.length, 'hipervisor', 'hipervisores')) + hv.map(fila).join('') + cab('Servidores y VM', plural(resto.length, 'servidor', 'servidores')) + resto.map(fila).join('');
+  return cab('Hipervisores', plural(hv.length, 'hipervisor', 'hipervisores')) + hv.map(fila).join('') + (resto.length ? cab('Servidores y VM', plural(resto.length, 'servidor', 'servidores')) + resto.map(fila).join('') : '');
 }
 const SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['aviso', 'Se reinició'], 'wan-caida': ['caido', 'Se cayó un enlace a Internet'], 'wan-vuelta': ['ok', 'Volvió el enlace a Internet'] };
 

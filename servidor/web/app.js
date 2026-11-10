@@ -611,10 +611,10 @@ function porSede(lista, fila, cab, cuenta, separar) {
 const esHipervisor = e => e.tipo === 'proxmox' || !!e.hipervisor;
 function porRol(l, fila, dentro) {
   const hv = l.filter(esHipervisor), resto = l.filter(e => !esHipervisor(e));
-  if (!hv.length || !resto.length) return l.map(fila).join('');
+  if (!hv.length) return l.map(fila).join('');
   const cab = (t, n, tx) => `<div class="fila-grupo rol${dentro ? ' dentro' : ''}"><b>${t}</b><span>${tx(n)}</span></div>`;
   return cab('Hipervisores', hv.length, n => plural(n, 'hipervisor', 'hipervisores')) + hv.map(fila).join('')
-    + cab('Servidores y VM', resto.length, n => plural(n, 'servidor', 'servidores')) + resto.map(fila).join('');
+    + (resto.length ? cab('Servidores y VM', resto.length, n => plural(n, 'servidor', 'servidores')) + resto.map(fila).join('') : '');
 }
 function vistaCliente(id) {
   const c = cliente(id), todosCli = c.equipos;
@@ -688,14 +688,15 @@ function filaEquipo(s) {
   const dm = s.discos.reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
   const sinDatos = s.estado === 'caido' || s.estado === 'pendiente' || s.estado === 'desinstalado';
   let sub = s.alias ? `${s.nombre}, ${s.so || ''}`.replace(/, $/, '') : (s.so || ESTADOS[s.estado]);
-  if (s.vms && s.vms.length) sub = `${s.so ? s.so + ', ' : ''}${s.vms.filter(v => v.estado === 'running').length} de ${plural(s.vms.length, s.tipo === 'proxmox' ? 'VM/LXC' : 'VM', s.tipo === 'proxmox' ? 'VM/LXC' : 'VM')} encendidas`;
+  // Hipervisor: primero lo importante (las VM), después el sistema
+  if (s.vms && s.vms.length) sub = `${s.vms.filter(v => v.estado === 'running').length} de ${plural(s.vms.length, s.tipo === 'proxmox' ? 'VM/LXC' : 'VM', s.tipo === 'proxmox' ? 'VM/LXC' : 'VM')} encendidas${s.so ? ', ' + s.so : ''}`;
   if (s.estado === 'caido') sub = `Sin respuesta desde ${cuando(s.ultimo)}`;
   if (s.estado === 'pendiente') sub = ESTADOS.pendiente;
   if (s.estado === 'desinstalado') sub = 'Agente desinstalado. Quítalo de la lista o vuelve a instalarlo.';
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre">${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre">${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
