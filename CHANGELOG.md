@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.16.2 (noviembre de 2026)
+
+- Sonda: el panel espera más a la respuesta (la conexión y la lectura en el agente pueden sumar) y, si no llega, dice si la orden no llegó al agente o si llegó y no hubo resultado. Queda anotado en el registro de NodeCat.
+- Agente de Windows 1.5.1: el diagnóstico `NodeCatAgente.exe sonda` muestra cada lectura que hace (equipo, ruta, resultado y cuánto tardó).
+
 ## 0.16.1 (noviembre de 2026)
 
 - Sesiones: al pulsar CPU, Memoria o Inactiva se ordena primero de mayor a menor, como en el Administrador de tareas (otro clic invierte el orden).

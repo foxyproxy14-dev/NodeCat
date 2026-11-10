@@ -110,9 +110,10 @@ namespace NodeCat
                 int k = i;
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
+                    var reloj = System.Diagnostics.Stopwatch.StartNew();
                     try { salida[k] = Una(ordenes[k] as Dictionary<string, object>); }
                     catch (Exception ex) { salida[k] = new Dictionary<string, object> { { "error", ex.Message }, { "tipo", "red" }, { "codigo", "otro" } }; }
-                    finally { hechos.Signal(); }
+                    finally { Diagnostico(ordenes[k] as Dictionary<string, object>, salida[k] as Dictionary<string, object>, reloj.ElapsedMilliseconds); hechos.Signal(); }
                 });
             }
             hechos.Wait(TimeSpan.FromSeconds(70));
@@ -125,6 +126,22 @@ namespace NodeCat
                 l.Add(r);
             }
             return l;
+        }
+
+        // En el diagnóstico (NodeCatAgente.exe sonda) se muestra cada orden y su resultado
+        public static bool Detallar;
+        static void Diagnostico(Dictionary<string, object> o, Dictionary<string, object> r, long ms)
+        {
+            if (!Detallar || o == null) return;
+            try
+            {
+                var con = o.ContainsKey("con") ? o["con"] as Dictionary<string, object> : null;
+                string destino = con == null ? "?" : Json.Txt(con, "host") + ":" + Json.Txt(con, "puerto");
+                string que = Json.Txt(o, "tipo") == "https" ? Json.Txt(o, "camino").Split('?')[0] : "API RouterOS";
+                string res = r == null ? "sin resultado" : r.ContainsKey("error") ? "ERROR: " + Json.Txt(r, "error") : r.ContainsKey("estado") ? "HTTP " + Json.Txt(r, "estado") : "OK";
+                Utiles.Log("Sonda " + destino + " " + que + " -> " + res + " (" + ms + " ms)", r != null && r.ContainsKey("error") ? ConsoleColor.Yellow : ConsoleColor.Gray);
+            }
+            catch { }
         }
 
         static Dictionary<string, object> Una(Dictionary<string, object> o)

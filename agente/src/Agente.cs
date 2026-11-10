@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.5.0";
+        public const string Version = "1.5.1";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -327,6 +327,7 @@ namespace NodeCat
             modoSonda = true;
             Console.WriteLine();
             Console.WriteLine("  Sonda de NodeCat en primer plano (Ctrl+C para salir). Si el servicio también está en marcha, para el servicio antes.");
+            Sonda.Detallar = true;
             Sonda.Ajustar(true);
             while (true) { Thread.Sleep(20000); Sonda.Ajustar(true); }
         }

@@ -77,10 +77,15 @@ async function pedir(id, orden, tiempo) {
   if (!conectado(a)) await esperarConexion(id, a);
   return new Promise((ok, mal) => {
     const o = { id: secuencia++, ...orden, tiempo };
+    // Se espera el tiempo de la conexión y el de la lectura en el agente, más el viaje de ida y vuelta
     const t = setTimeout(() => {
-      a.pendientes.delete(o.id); a.cola = a.cola.filter(x => x !== o);
-      mal(new ErrorRouter(`La sonda ${nombre(id)} no respondió a tiempo.`, 'red'));
-    }, tiempo + 10000);
+      a.pendientes.delete(o.id); const enCola = a.cola.includes(o); a.cola = a.cola.filter(x => x !== o);
+      const msg = enCola
+        ? `La sonda ${nombre(id)} no recogió la orden: su agente no está pidiendo trabajo a NodeCat. Reinicia el servicio NodeCat Agente en ese servidor.`
+        : `La sonda ${nombre(id)} recibió la orden pero no devolvió el resultado a tiempo. En ese servidor, ejecuta el diagnóstico (NodeCatAgente.exe sonda) para ver qué pasa.`;
+      require('./util').log(`Sonda ${nombre(id)}: sin respuesta para ${orden.tipo === 'https' ? (orden.con.host + ':' + orden.con.puerto + orden.camino.split('?')[0]) : orden.con && orden.con.host} (${enCola ? 'la orden no llegó al agente' : 'la orden llegó, sin resultado'}).`);
+      mal(new ErrorRouter(msg, 'red'));
+    }, 2 * tiempo + 15000);
     a.pendientes.set(o.id, { ok, mal, t });
     a.cola.push(o);
     despachar(a);
