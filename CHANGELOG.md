@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.17.0 (noviembre de 2026)
+
+- **Notificaciones en el teléfono o la PC** (Web Push), aunque NodeCat esté cerrado. Se activan en el menú de la cuenta → **Notificaciones en este dispositivo**. Al tocarlas se abre el equipo del problema.
+- Cada cuenta recibe solo los avisos de los clientes que puede ver (un administrador limitado a ciertos clientes, solo de esos). Además, cada persona elige de qué clientes y de qué tipo: equipos que no responden; CPU, memoria y disco; enlaces WAN; seguridad de FortiGate; versiones nuevas.
+- En **Cuentas de acceso**, el administrador decide qué cuentas pueden recibirlas y ve cuántos dispositivos tiene activados cada una.
+- Funcionan aunque Telegram esté apagado; usan las mismas reglas y umbrales. En iPhone hace falta instalar NodeCat en la pantalla de inicio (iOS 16.4 o más nuevo). Sin servicios de terceros ni dependencias: cifrado y firma propios (RFC 8291 y 8292).
+
 ## 0.16.2 (noviembre de 2026)
 
 - Sonda: el panel espera más a la respuesta (la conexión y la lectura en el agente pueden sumar) y, si no llega, dice si la orden no llegó al agente o si llegó y no hubo resultado. Queda anotado en el registro de NodeCat.

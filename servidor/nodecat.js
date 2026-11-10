@@ -263,8 +263,16 @@ ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flo
 
 // Cuentas
 ruta('GET', '/api/cuentas', soloAdmin, () => ({ cuentas: auth.cuentas() }));
+// Notificaciones en los dispositivos de cada cuenta (Web Push)
+const push = require('./lib/push');
+ruta('GET', '/api/push', {}, ({ sesion }) => push.estado(sesion));
+ruta('POST', '/api/push/suscribir', {}, ({ sesion, cuerpo, req }) => { push.suscribir(sesion, cuerpo.suscripcion, req.headers['user-agent']); if (cuerpo.preferencias) push.guardarPreferencias(sesion, cuerpo.preferencias); return push.estado(sesion); });
+ruta('POST', '/api/push/quitar', {}, ({ sesion, cuerpo }) => { push.quitar(sesion, cuerpo.endpoint); return push.estado(sesion); });
+ruta('PUT', '/api/push/preferencias', {}, ({ sesion, cuerpo }) => { push.guardarPreferencias(sesion, cuerpo); return push.estado(sesion); });
+ruta('POST', '/api/push/probar', {}, ({ sesion }) => push.probar(sesion));
 ruta('POST', '/api/cuentas', soloAdmin, ({ cuerpo, sesion }) => {
   auth.guardarCuenta({ usuario: String(cuerpo.usuario || '').trim(), clave: cuerpo.clave, rol: cuerpo.rol, clientes: cuerpo.clientes, grupos: cuerpo.grupos }, !!cuerpo.nueva);
+  if (cuerpo.push !== undefined) require('./lib/push').permitir(String(cuerpo.usuario || '').trim(), !!cuerpo.push);
   log(`${sesion.usuario} ${cuerpo.nueva ? 'creó' : 'modificó'} la cuenta ${cuerpo.usuario}.`); return { ok: true };
 });
 ruta('DELETE', '/api/cuentas/:usuario', soloAdmin, ({ p, sesion }) => {

@@ -11,3 +11,20 @@ self.addEventListener('fetch', e => {
     '<button onclick="location.reload()" style="font:inherit;padding:10px 18px;border-radius:10px;border:0;background:#2a9fb5;color:#fff">Reintentar</button></div>',
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } })));
 });
+
+// Notificaciones de NodeCat (Web Push): llegan aunque la página esté cerrada
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { t: 'NodeCat', b: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.t || 'NodeCat', {
+    body: d.b || '', icon: '/iconos/icono-192.png', badge: '/iconos/icono-192.png', tag: d.g || undefined, renotify: !!d.g, data: { u: d.u || '/' }
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const destino = new URL((e.notification.data && e.notification.data.u) || '/', self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => {
+    for (const c of l) if (new URL(c.url).origin === self.location.origin) { c.focus(); return c.navigate ? c.navigate(destino) : null; }
+    return self.clients.openWindow(destino);
+  }));
+});

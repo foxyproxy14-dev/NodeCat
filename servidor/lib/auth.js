@@ -85,7 +85,7 @@ function borrarCuenta(usuario) {
   q('DELETE FROM usuarios WHERE usuario = ?').run(usuario);
 }
 function cuentas() {
-  return q('SELECT usuario, rol, clientes, grupos, creado, ultimo_acceso, totp IS NOT NULL AS dosPasos FROM usuarios ORDER BY usuario').all()
+  return q('SELECT usuario, rol, clientes, grupos, creado, ultimo_acceso, totp IS NOT NULL AS dosPasos, push IS NOT 0 AS push, (SELECT COUNT(*) FROM push_subs p WHERE p.usuario = usuarios.usuario) AS dispositivos FROM usuarios ORDER BY usuario').all()
     .map(c => ({ ...c, clientes: c.clientes ? JSON.parse(c.clientes) : null, grupos: c.grupos ? JSON.parse(c.grupos) : null }));
 }
 function cambiarClave(usuario, actual, nueva) {
@@ -209,4 +209,4 @@ function limpiar() {
   for (const [ip, f] of fallos) if (f.hasta < ahora && f.n === 0) fallos.delete(ip);
 }
 
-module.exports = { dosPasosEstado, dosPasosPreparar, dosPasosActivar, dosPasosQuitar, ROLES, hayCuentas, prepararInicio, crearPrimera, guardarCuenta, borrarCuenta, cuentas, cambiarClave, iniciar, sesion, cerrar, limpiar, hash };
+module.exports = { alcance, dosPasosEstado, dosPasosPreparar, dosPasosActivar, dosPasosQuitar, ROLES, hayCuentas, prepararInicio, crearPrimera, guardarCuenta, borrarCuenta, cuentas, cambiarClave, iniciar, sesion, cerrar, limpiar, hash };

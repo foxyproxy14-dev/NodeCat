@@ -133,6 +133,10 @@ irm https://TU-NODECAT/instalar/CLAVE.ps1 | iex
 
 Muestra los pasos y la barra de descarga e instala el servicio. Es la forma recomendada: el `.exe` sin firmar suele disparar avisos en Chrome y en Windows.
 
+## Notificaciones en el teléfono o la PC
+
+En el menú de tu cuenta → **Notificaciones en este dispositivo** → **Activar**. Llegan aunque NodeCat esté cerrado, solo de los clientes que tu cuenta puede ver, y eliges de cuáles y de qué tipo. El administrador decide en **Cuentas de acceso** qué cuentas pueden recibirlas. Necesita HTTPS y que el servidor de NodeCat tenga salida a Internet (a los servicios de notificaciones de Google, Mozilla, Apple y Microsoft). En iPhone, primero instala NodeCat en la pantalla de inicio.
+
 ## En el teléfono
 
 NodeCat se instala como app: en el iPhone, Safari → Compartir → **Añadir a la pantalla de inicio**; en Android, el navegador ofrece **Instalar**. El panel lo sugiere solo la primera vez (y está en el menú de la cuenta). Necesita HTTPS, como cuando lo publicas con Nginx Proxy Manager.

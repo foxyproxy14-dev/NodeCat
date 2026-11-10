@@ -61,8 +61,9 @@ function guardarDesdeWeb(o, quien) {
   if (n.activo && descifrar(n.token) && !n.chats.length && !Object.keys(n.porCliente).length && !conBots) throw new Error('Elige al menos un chat donde enviar los avisos.');
   const activando = n.activo && !A.activo;
   A = n; guardar();
-  if (activando || !A.activo) { estados.clear(); guardarEstado(); }
-  if (activando) silenciar = 'anunciar';   // al activar: un solo mensaje con lo que ya está pendiente
+  // Si las notificaciones en dispositivos siguen funcionando, el estado se conserva (si no, se repetirían los avisos)
+  if (activando || !A.activo) { if (!push().hay()) { estados.clear(); guardarEstado(); } }
+  if (activando) silenciar = push().hay() ? false : 'anunciar';   // al activar: un solo mensaje con lo que ya está pendiente
   log(`${quien} cambió las notificaciones de Telegram (${A.activo ? 'activadas' : 'desactivadas'}).`);
   if (A.activo) evaluar(true);
 }
@@ -229,7 +230,13 @@ async function vigilarBots() {
 // ---------------------------------------------------------------- cola de envío
 const cola = [], recientes = [];
 let enviando = false;
-function encolar(texto, clienteId, soloBot) {
+// Un aviso sale por Telegram (si está activado) y como notificación a los dispositivos de las cuentas que deben recibirlo
+const TIPO_REGLA = { caida: 'caidas', cpu: 'recursos', ram: 'recursos', disco: 'recursos', wan: 'red', firmware: 'versiones' };
+const canalActivo = () => A.activo || push().hay();
+const push = () => require('./push');
+function encolar(texto, clienteId, soloBot, extra) {
+  if (extra && extra.tipo && clienteId) { try { push().notificar({ ...push().desdeTexto(texto), clienteId, tipo: extra.tipo, equipo: extra.equipo }); } catch (e) { log('Notificaciones: ' + e.message); } }
+  if (!A.activo) return;
   if (config.DEMO) texto = '<i>[demo]</i> ' + texto;
   cola.push({ texto, clienteId, soloBot });
   if (cola.length > 300) cola.shift();
@@ -294,6 +301,7 @@ function guardarEstado() {
 }
 
 function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, ahora, primera, clienteId, sinRecordar) {
+  const [eqId, tipoR] = clave.split('|'), extra = { tipo: TIPO_REGLA[tipoR], equipo: Number(eqId) || null };
   let st = estados.get(clave);
   if (!habilitada) { estados.delete(clave); return; }
   if (enCondicion == null) return;          // sin datos: no se cambia nada
@@ -301,13 +309,13 @@ function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, 
     if (!st) estados.set(clave, st = { desde: ahora, activa: false });
     if (!st.activa && ahora - st.desde >= minutos * 60000) {
       st.activa = true; st.aviso = ahora; st.texto = alerta();
-      if (!primera) encolar(st.texto, clienteId);
+      if (!primera) encolar(st.texto, clienteId, null, extra);
     } else if (st.activa && !sinRecordar && A.recordarHoras > 0 && ahora - st.aviso >= A.recordarHoras * 3600e3) {
       st.aviso = ahora;
-      encolar(`⏰ <b>Sigue sin resolverse</b> desde hace ${duracion(ahora - st.desde)}\n${alerta()}`, clienteId);
+      encolar(`⏰ <b>Sigue sin resolverse</b> desde hace ${duracion(ahora - st.desde)}\n${alerta()}`, clienteId, null, extra);
     }
   } else if (despejada && st) {
-    if (st.activa) encolar(fin(ahora - st.desde), clienteId);
+    if (st.activa) encolar(fin(ahora - st.desde), clienteId, null, extra);
     estados.delete(clave);
   }
 }
@@ -317,7 +325,7 @@ function evaluar(forzar) {
   const ahora = Date.now();
   if (!forzar && ahora - ultima < 5000) return;
   ultima = ahora;
-  if (!A.activo) return;
+  if (!canalActivo()) return;
   const primera = silenciar; silenciar = false;
   const antes = [...estados.values()].filter(e => e.activa).length;
   const nombres = new Map(flota.clientes().map(c => [c.id, c.nombre]));
@@ -349,7 +357,7 @@ function evaluar(forzar) {
       for (const k of [...estados.keys()]) if (k.startsWith(s + '|firmware|') && (!fw || k !== `${s}|firmware|${fw.nueva}`) && e.red && e.red.version) {
         const st = estados.get(k), ya = require('./firmware').comparar(e.red.version, k.split('|')[2]) >= 0;
         if (!fw && !ya) continue;   // sin datos de versiones (p. ej. sin Internet): se deja como está
-        if (st.activa && ya) encolar(`✅ <b>${hs} actualizado</b>${hc}\nAhora tiene ${H(e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS')} ${H(e.red.version)}.`, e.cliente);
+        if (st.activa && ya) encolar(`✅ <b>${hs} actualizado</b>${hc}\nAhora tiene ${H(e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS')} ${H(e.red.version)}.`, e.cliente, null, { tipo: 'versiones', equipo: e.id });
         estados.delete(k);
       }
       if (fw) regla(`${s}|firmware|${fw.nueva}`, A.firmware !== false, true, false, 0,
@@ -365,7 +373,7 @@ function evaluar(forzar) {
   }
   for (const k of [...estados.keys()]) if (!vigentes.has(k.split('|')[0])) estados.delete(k);
   let cambio = [...estados.values()].filter(e => e.activa).length !== antes;
-  if (primera === 'anunciar') {
+  if (primera === 'anunciar' && A.activo) {
     const act = [...estados.values()].filter(e => e.activa).map(e => '• ' + e.texto.split('\n')[0].replace(/<[^>]+>/g, '').replace(/^[🔴🟠] /u, ''));
     encolar('🔔 <b>Avisos de NodeCat activados</b>\n' + (act.length === 0 ? 'Ahora mismo todo está en orden. Te avisaré cuando algo cambie.'
       : `Ahora mismo hay ${act.length} ${act.length === 1 ? 'problema' : 'problemas'}:\n${H(act.join('\n'))}\n\nTe avisaré de lo nuevo y de lo que se resuelva.`));
@@ -383,7 +391,7 @@ function partesHoy() {
   return { dia: `${g('year')}-${g('month')}-${g('day')}`, hora: `${g('hour') === '24' ? '00' : g('hour')}:${g('minute')}` };
 }
 function resumenDiario() {
-  if (!A.resumen) return;
+  if (!A.resumen || !A.activo) return;
   const { dia, hora } = partesHoy();
   if (A.ultimoResumen === dia || hora < A.resumenHora) return;
   A.ultimoResumen = dia; guardar();
@@ -421,7 +429,7 @@ function enviarResumen() {
 function arrancar() {
   cargarEstado();
     // Tras reiniciar no se repiten avisos de problemas que ya existían
-  if (A.activo) silenciar = 'callar';
+  if (canalActivo()) silenciar = 'callar';
   setInterval(() => evaluar(), 15000).unref();
   setInterval(() => enviar(), 30000).unref();
   setInterval(() => vigilarBots(), 60000).unref();
@@ -430,10 +438,10 @@ function arrancar() {
 
 // Lo importante que pasa en un FortiGate (accesos fallidos, cuentas nuevas, ataques…), según sus logs
 function fortigate(id, a) {
-  if (!A.activo || A.fgSeguridad === false) return;
+  if (!canalActivo() || A.fgSeguridad === false) return;
   const e = flota.equipo(id); if (!e) return;
   const cli = (flota.clientes().find(c => c.id === e.cliente_id) || {}).nombre || '';
-  encolar(`${H(a.texto)}\n<b>${H(e.alias || e.nombre)}</b>${cli ? ` · <i>${H(cli)}</i>` : ''}\n${H(a.det || '')}`, e.cliente_id);
+  encolar(`${H(a.texto)}\n<b>${H(e.alias || e.nombre)}</b>${cli ? ` · <i>${H(cli)}</i>` : ''}\n${H(a.det || '')}`, e.cliente_id, null, { tipo: 'seguridad', equipo: id });
 }
 
 module.exports = { fortigate, info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };

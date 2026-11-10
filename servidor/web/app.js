@@ -1446,6 +1446,7 @@ $('#btnCuenta').addEventListener('click', e => {
   const it = [{ t: 'Cambiar mi contraseña', fn: cambiarClave }, { t: 'Verificación en dos pasos', fn: dosPasos }];
   if (esAdmin()) it.push({ t: 'Clientes y agentes', fn: () => { if (location.hash && location.hash !== '#/') location.hash = '#/'; gestionClientes(); } }, { t: 'Cuentas de acceso', fn: cuentas }, { t: 'Enlaces compartidos', fn: enlacesCompartidos }, { t: 'Logos de los sistemas', fn: logosSistemas }, { t: 'Notificaciones por Telegram', fn: notificaciones });
   if ('Notification' in window && Notification.permission === 'default') it.push({ t: 'Avisos del gato en el escritorio', fn: () => Notification.requestPermission().then(p => aviso(p === 'granted' ? 'Listo: el gato te avisará aunque NodeCat esté en otra pestaña.' : 'Sin permiso del navegador; los avisos solo saldrán dentro de la página.', p !== 'granted')) });
+  it.push({ t: 'Notificaciones en este dispositivo', fn: () => notificacionesDispositivo() });
   if (window.nodecatInstalar && matchMedia('(pointer: coarse)').matches && !matchMedia('(display-mode: standalone)').matches && navigator.standalone !== true) it.push({ t: 'Instalar en este teléfono', fn: () => window.nodecatInstalar() });
   it.push({ sep: true }, { t: 'Cerrar sesión', fn: salir });
   const alcance = SESION.clientes ? `, ${plural(SESION.clientes.length, 'cliente', 'clientes')}` : '';
@@ -1611,9 +1612,9 @@ async function cuentas() {
     const sel = editando && editando.clientes ? editando.clientes : [], selG = editando && editando.grupos ? editando.grupos : [];
     const dlg = libre(`<h3>Cuentas de acceso</h3>
       <p>Los administradores gestionan clientes, cuentas y notificaciones. Las cuentas de solo lectura únicamente miran. Puedes limitar cualquier cuenta a algunos clientes, por ejemplo para que un cliente vea solo lo suyo.</p>
-      <div class="tabla-dlg desliza"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Clientes</th><th>Último acceso</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>
+      <div class="tabla-dlg desliza"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Clientes</th><th>Notificaciones</th><th>Último acceso</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>
       ${lista.map(c => `<tr><td><span class="usr">${esc(c.usuario)}</span>${yo(c) ? ' <span class="tenue">(tú)</span>' : ''}${c.dosPasos ? ' <span class="chip-hv ok" title="Verificación en dos pasos activada" style="margin:0 0 0 6px">2 pasos</span>' : ''}</td>
-        <td>${ROLES[c.rol] || esc(c.rol)}</td><td style="white-space:normal;max-width:220px">${esc(alcance(c))}</td><td class="tenue">${c.ultimo_acceso ? cuando(c.ultimo_acceso) : 'Nunca'}</td>
+        <td>${ROLES[c.rol] || esc(c.rol)}</td><td style="white-space:normal;max-width:220px">${esc(alcance(c))}</td><td>${c.push ? (c.dispositivos ? plural(c.dispositivos, 'dispositivo', 'dispositivos') : '<span class="tenue">Permitidas</span>') : '<span class="tenue">No</span>'}</td><td class="tenue">${c.ultimo_acceso ? cuando(c.ultimo_acceso) : 'Nunca'}</td>
         <td class="acc">${yo(c) ? '' : `<button type="button" class="enlace" data-editar="${esc(c.usuario)}">Editar</button>${c.dosPasos ? `<button type="button" class="enlace" data-quitar2="${esc(c.usuario)}">${borrando === '2:' + c.usuario ? '¿Seguro? Quitar 2 pasos' : 'Quitar 2 pasos'}</button>` : ''}<button type="button" class="enlace peligro" data-borrar="${esc(c.usuario)}">${borrando === c.usuario ? '¿Seguro? Borrar' : 'Borrar'}</button>`}</td></tr>`).join('')}
       </tbody></table></div>
       <form class="separado"><h4>${editando ? `Editar la cuenta de ${esc(editando.usuario)}` : 'Nueva cuenta'}</h4>
@@ -1629,6 +1630,7 @@ async function cuentas() {
           <span class="ayuda-campo" style="margin-top:6px">Clientes sueltos:</span>` : ''}
           <div class="marcas-cli">${estado.clientes.map(c => `<label><input type="checkbox" name="cli" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
         </div>
+        <label class="interruptor" style="margin-top:10px"><input type="checkbox" name="push" ${!editando || editando.push ? 'checked' : ''}><span><b>Puede recibir notificaciones en sus dispositivos</b><small>En su teléfono o PC, aunque NodeCat esté cerrado. Solo de los clientes que puede ver; cada persona elige cuáles y de qué tipo en su menú.</small></span></label>
         ${msg ? (bien ? `<div class="msg bien" role="status" style="margin-top:12px">${esc(msg)}</div>` : `<div style="margin-top:12px">${gatoError(esc(msg))}</div>`) : ''}
         <div class="pie">${editando ? '<button class="btn" type="button" data-nuevo>Cancelar edición</button>' : ''}<button class="btn" type="button" data-cerrar>Cerrar</button><button class="btn prim" type="submit">${editando ? 'Guardar cambios' : 'Crear cuenta'}</button></div>
       </form>`, true);
@@ -1654,7 +1656,7 @@ async function cuentas() {
       const clientes = algunos ? [...f.querySelectorAll('[name=cli]:checked')].map(x => +x.value) : null;
       const grupos = algunos ? [...f.querySelectorAll('[name=grp]:checked')].map(x => +x.value) : null;
       if (algunos && !clientes.length && !grupos.length) { pintar('Marca al menos un grupo o un cliente, o elige “Todos”.'); return; }
-      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes: clientes && clientes.length ? clientes : null, grupos: grupos && grupos.length ? grupos : null, nueva: !editando };
+      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes: clientes && clientes.length ? clientes : null, grupos: grupos && grupos.length ? grupos : null, nueva: !editando, push: f.push.checked };
       try {
         await enviar('/api/cuentas', 'POST', d); await recargar();
         const m = editando ? `Cuenta de ${d.usuario} actualizada.` : `Cuenta de ${d.usuario} creada.`;

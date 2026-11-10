@@ -1257,3 +1257,10 @@ body.iniciando .inicio-carga { display: grid; }
 #tablaSes table.con-uso .dom { display: block; font-size: 11.5px; }
 #tablaSes table.con-uso .dom { margin-left: 0; } .ses-srv .enlace { justify-self: start; text-align: left; }
 #tablaSes th button { cursor: pointer; } #tablaSes th button:hover { color: var(--tinta); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Notificaciones en este dispositivo */
+.push-estado { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--linea); border-radius: 12px; margin: 6px 0 14px; }
+.push-estado b { margin-right: auto; }
+.push-estado.si { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 7%, transparent); }
+#fPush h4 { margin: 14px 0 6px; }
+.tipos-push { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
