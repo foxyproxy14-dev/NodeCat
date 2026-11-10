@@ -174,7 +174,7 @@ async function cargar(forzar, sinPintar) {
   ultimaCarga = Date.now();
   try {
     const e = await api('/api/estado');
-    for (const c of e.clientes) c.equipos = arr(c.equipos).map(x => ({ ...x, clienteNombre: c.nombre, sesiones: arr(x.sesiones), discos: arr(x.discos), historial: arr(x.historial) }));
+    for (const c of e.clientes) c.equipos = arr(c.equipos).map(x => ({ ...x, clienteNombre: c.nombre, clienteId: c.id, sesiones: arr(x.sesiones), discos: arr(x.discos), historial: arr(x.historial) }));
     const nuevo = !estado || e.actualizado !== estado.actualizado;
     vigilarCambios(e);
     estado = e;
@@ -307,6 +307,7 @@ function reloj() {
 function rutaActual() {
   const h = location.hash.replace(/^#\/?/, '');
   const [a, b] = h.split('/');
+  if (a === 'c' && b && h.split('/')[2] === 'sesiones') return { vista: 'sesiones', cli: Number(b), clave: 'sesiones-c' + b };
   if (a === 'c' && b) return { vista: 'cliente', id: Number(b), clave: 'c' + b };
   if (a === 'e' && b) return { vista: 'equipo', id: Number(b), clave: 'e' + b };
   if (a === 'sesiones' || a === 'historial') return { vista: a, clave: a };
@@ -320,6 +321,7 @@ function render() {
   const r = rutaActual();
   if (r.vista === 'cliente' && !cliente(r.id)) { ir('#/'); return; }
   if (r.vista === 'equipo' && !equipo(r.id)) { ir('#/'); return; }
+  if (r.vista === 'sesiones' && r.cli && !cliente(r.cli)) { ir('#/sesiones'); return; }
   const esRouter = r.vista === 'equipo' && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo);
   document.body.classList.toggle('consola', esRouter);
   pintarNav(r);
@@ -327,10 +329,18 @@ function render() {
   actualizar(r);
 }
 
+// Cliente en el que uno está (en su página, en uno de sus equipos o en sus sesiones): "Sesiones" muestra solo las suyas
+function clienteDeRuta(r) {
+  if (r.vista === 'cliente') return r.id;
+  if (r.vista === 'equipo') { const e = equipo(r.id); return e ? e.clienteId : null; }
+  if (r.vista === 'sesiones' && r.cli) return r.cli;
+  return null;
+}
 function pintarNav(r) {
-  const n = todasLasSesiones().length;
+  const cc = clienteDeRuta(r), c = cc ? cliente(cc) : null;
+  const n = todasLasSesiones(c ? c.equipos : undefined).length;
   const activa = r.vista === 'cliente' || r.vista === 'equipo' ? 'resumen' : r.vista;
-  $('#nav').innerHTML = [['resumen', '#/', 'Clientes'], ['sesiones', '#/sesiones', `Sesiones <span class="cuenta">${n}</span>`], ['historial', '#/historial', 'Historial']].map(([id, h, t]) =>
+  $('#nav').innerHTML = [['resumen', '#/', 'Clientes'], ['sesiones', c ? `#/c/${c.id}/sesiones` : '#/sesiones', `Sesiones <span class="cuenta"${c ? ` title="Sesiones de ${esc(c.nombre)}"` : ''}>${n}</span>`], ['historial', '#/historial', 'Historial']].map(([id, h, t]) =>
     `<div class="pest ${activa === id ? 'activa' : ''}"><button type="button" ${activa === id ? 'aria-current="page"' : ''} data-ir="${h}">${t}</button></div>`).join('');
 }
 $('#nav').addEventListener('click', e => { const t = e.target.closest('[data-ir]'); if (t) ir(t.dataset.ir); });
@@ -390,21 +400,23 @@ function montar(r) {
     }
     cargarSucesos();
   } else if (r.vista === 'sesiones') {
+    const cs = r.cli ? cliente(r.cli) : null;
     v.innerHTML = `
+      ${cs ? `<nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<a href="#/c/${cs.id}">${esc(cs.nombre)}</a>${ICO.miga}<span>Sesiones</span></nav>` : ''}
       <section class="titular"><h1 id="tituloSes"></h1><p id="subSes"></p></section>
       <div class="cab-seccion">
-        <h2>Todas las sesiones</h2>
+        <h2>${cs ? `Sesiones de ${esc(cs.nombre)}` : 'Todas las sesiones'}</h2>
         <div class="segmentos" role="group" aria-label="Filtrar por estado">
           <button type="button" data-filtro="todas">Todas</button>
           <button type="button" data-filtro="activa">Activas</button>
           <button type="button" data-filtro="desconectada">Desconectadas</button>
         </div>
-        <label><span class="sr">Cliente</span><select class="selector" id="sesCli"></select></label>
+        ${cs ? '<a class="btn" href="#/sesiones">Ver las de todos los clientes</a>' : '<label><span class="sr">Cliente</span><select class="selector" id="sesCli"></select></label>'}
         <label class="buscar">${ICO.lupa}<span class="sr">Buscar persona, servidor o equipo</span><input type="search" id="buscarSes" placeholder="Buscar persona, servidor, equipo o programa" value="${esc(filtroSes)}"></label>
       </div>
       <section class="hoja desliza" id="tablaSes"></section>`;
     $('#buscarSes').addEventListener('input', e => { filtroSes = e.target.value; actualizar(r); });
-    $('#sesCli').addEventListener('change', e => { filtroSesCli = e.target.value; actualizar(r); });
+    if ($('#sesCli')) $('#sesCli').addEventListener('change', e => { filtroSesCli = e.target.value; actualizar(r); });
     v.querySelector('.segmentos').addEventListener('click', e => { const b = e.target.closest('[data-filtro]'); if (b) { filtroEstado = b.dataset.filtro; actualizar(r); } });
     enlazarTabla();
   } else if (r.vista === 'historial') {
@@ -473,7 +485,7 @@ function actualizar(r = rutaActual()) {
   if (!estado) return;
   if (r.vista === 'resumen') vistaResumen();
   else if (r.vista === 'cliente') vistaCliente(r.id);
-  else if (r.vista === 'sesiones') vistaSesiones();
+  else if (r.vista === 'sesiones') vistaSesiones(r);
   else if (r.vista === 'historial') vistaHistorial();
   else if (equipo(r.id) && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo)) vistaRouter(r.id);
   else vistaEquipo(r.id);
@@ -694,25 +706,26 @@ function filaEquipo(s) {
 }
 
 /* ---------------- Sesiones ---------------- */
-function vistaSesiones() {
+function vistaSesiones(r = rutaActual()) {
   document.querySelectorAll('[data-filtro]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filtro === filtroEstado)));
   const sel = $('#sesCli'), lista = estado.clientes.map(c => `${c.id}:${c.nombre}`).join('|');
-  if (sel.dataset.lista !== lista) {
+  if (sel && sel.dataset.lista !== lista) {
     sel.innerHTML = '<option value="">Todos los clientes</option>' + estado.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
     sel.dataset.lista = lista;
   }
   if (filtroSesCli && !cliente(filtroSesCli)) filtroSesCli = '';
-  sel.value = filtroSesCli;
-  const base = filtroSesCli ? cliente(filtroSesCli).equipos : equipos();
+  if (sel) sel.value = filtroSesCli;
+  const cliSel = r.cli ? String(r.cli) : filtroSesCli;
+  const base = cliSel ? cliente(cliSel).equipos : equipos();
   const todas = todasLasSesiones(base.filter(e => e.estado !== 'caido'));
   const act = todas.filter(s => s.estado === 'activa').length, dsc = todas.filter(s => s.estado === 'desconectada').length;
   const personas = new Set(todas.map(s => s.usuario.toLowerCase())).size;
   $('#tituloSes').textContent = todas.length ? `${plural(personas, 'persona conectada', 'personas conectadas')}.` : 'Nadie conectado ahora.';
-  $('#subSes').innerHTML = todas.length ? `<b>${plural(act, 'sesión activa', 'sesiones activas')}</b> y ${plural(dsc, 'desconectada', 'desconectadas')} en ${plural(new Set(todas.map(s => s.equipoId)).size, 'servidor', 'servidores')}${filtroSesCli ? '' : ` de ${plural(new Set(todas.map(s => s.cliente)).size, 'cliente', 'clientes')}`}.` : 'Cuando alguien entre por Escritorio remoto aparecerá aquí.';
+  $('#subSes').innerHTML = todas.length ? `<b>${plural(act, 'sesión activa', 'sesiones activas')}</b> y ${plural(dsc, 'desconectada', 'desconectadas')} en ${plural(new Set(todas.map(s => s.equipoId)).size, 'servidor', 'servidores')}${cliSel ? '' : ` de ${plural(new Set(todas.map(s => s.cliente)).size, 'cliente', 'clientes')}`}.` : 'Cuando alguien entre por Escritorio remoto aparecerá aquí.';
   const f = filtroSes.trim().toLowerCase();
   const l = todas.filter(s => (filtroEstado === 'todas' || s.estado === filtroEstado) &&
     (!f || coincideSesion(s, f)));
-  tabla(l, true, todas.length ? '<strong>Ninguna sesión coincide</strong>Cambia la búsqueda o el filtro.' : gatoSVG('programando') + '<strong>No hay sesiones</strong>Ahora mismo nadie está conectado.');
+  tabla(cliSel ? l.map(x => ({ ...x, cliente: '' })) : l, true, todas.length ? '<strong>Ninguna sesión coincide</strong>Cambia la búsqueda o el filtro.' : gatoSVG('programando') + '<strong>No hay sesiones</strong>Ahora mismo nadie está conectado.');
 }
 
 function tabla(lista, conServidor, vacio) {
@@ -732,7 +745,7 @@ function tabla(lista, conServidor, vacio) {
     </tr></thead><tbody>
     ${filas.map(s => `<tr>
         <td><span class="usr">${esc(s.usuario)}</span>${s.dominio ? `<span class="dom">${esc(s.dominio)}</span>` : ''}</td>
-        ${conServidor ? `<td><span class="ses-srv"><button type="button" class="enlace" data-eq="${s.equipoId}">${esc(s.servidor)}</button><small>${esc(s.cliente)}</small></span></td>` : ''}
+        ${conServidor ? `<td><span class="ses-srv"><button type="button" class="enlace" data-eq="${s.equipoId}">${esc(s.servidor)}</button>${s.cliente ? `<small>${esc(s.cliente)}</small>` : ''}</span></td>` : ''}
         <td><span class="estado-ses"><span class="punto ${esc(s.estado)}" aria-hidden="true"></span>${esc(s.estadoTexto || s.estado)}</span></td>
         ${conUso ? `<td>${usoCpu(s)}</td><td>${usoRam(s)}</td><td>${usoTop(s)}</td>` : ''}
         <td>${s.equipo ? esc(s.equipo) : '<span class="tenue">—</span>'}</td>

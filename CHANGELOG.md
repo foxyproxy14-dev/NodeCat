@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.16.0 (noviembre de 2026)
+
+- Sesiones por cliente: dentro de un cliente (en su página o en uno de sus equipos), **Sesiones** del menú de arriba muestra solo las de ese cliente, con su número, en `#/c/ID/sesiones`. Desde la pantalla principal sigue mostrando todas. Botón "Ver las de todos los clientes" para salir del filtro.
+- En la página del cliente, el texto de sesiones activas y desconectadas lleva a esas sesiones.
+
 ## 0.15.1 (noviembre de 2026)
 
 - La tabla de sesiones ya no se corta a la derecha: el servidor y el cliente van en la misma columna, y los programas que más usa cada sesión se acomodan en filas.
