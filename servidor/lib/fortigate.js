@@ -1,5 +1,6 @@
 'use strict';
 const firmware = require('./firmware');
+const fglogs = require('./fglogs');
 // FortiGate: consulta periódica por la API REST (solo lectura), tráfico en vivo, SD-WAN y secciones bajo demanda.
 const { q } = require('./db');
 const flota = require('./flota');
@@ -27,12 +28,12 @@ function validar(c, previa, clienteId) {
   if (!token) throw new Error('Pega el token del usuario de API.');
   const vdom = String(c.vdom || '').trim().slice(0, 32);
   const wan = String(c.wan || '').trim().slice(0, 64);
-  return { host, puerto, token, verificar: !!c.verificar, vdom, wan, sonda: sonda.validar(c.sonda, clienteId) };
+  return { host, puerto, token, verificar: !!c.verificar, vdom, wan, sonda: sonda.validar(c.sonda, clienteId), logs: fglogs.validar(c.logs === undefined && previa ? previa.logs : c.logs) };
 }
-const guardable = c => ({ host: c.host, puerto: c.puerto, token: cifrar(c.token), verificar: c.verificar, vdom: c.vdom, wan: c.wan, sonda: c.sonda || null, demo: c.demo, perfil: c.perfil });
+const guardable = c => ({ host: c.host, puerto: c.puerto, token: cifrar(c.token), verificar: c.verificar, vdom: c.vdom, wan: c.wan, sonda: c.sonda || null, logs: c.logs || null, demo: c.demo, perfil: c.perfil });
 const clienteDe = id => { const e = flota.equipo(id); return e ? e.cliente_id : null; };
 const nueva = (c, extra = {}) => c.sonda ? new sonda.FortiOSSonda({ ...c, ...extra }) : new FortiOS({ ...c, ...extra });
-const publica = c => c ? { host: c.host, puerto: c.puerto, verificar: !!c.verificar, vdom: c.vdom || '', wan: c.wan || '', sonda: c.sonda || null, sondaNombre: c.sonda ? sonda.nombre(c.sonda) : null, tokenGuardado: !!c.token, demo: !!c.demo } : null;
+const publica = c => c ? { host: c.host, puerto: c.puerto, verificar: !!c.verificar, vdom: c.vdom || '', wan: c.wan || '', sonda: c.sonda || null, sondaNombre: c.sonda ? sonda.nombre(c.sonda) : null, tokenGuardado: !!c.token, demo: !!c.demo, logs: fglogs.validar(c.logs) } : null;
 
 async function probar(datos, id) {
   const c = validar(datos, id ? leerConfig(id) : null, id ? clienteDe(id) : datos.clienteId);
@@ -53,11 +54,12 @@ function editar(id, nombre, datos) {
   const previa = leerConfig(id); if (!previa) throw new Error('Ese FortiGate no existe.');
   if (nombre) flota.renombrarRouter(id, nombre);
   if (!previa.demo) q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify(guardable(validar(datos, previa, clienteDe(id)))), id);
+  else if (datos.logs !== undefined) q('UPDATE equipos SET config = ? WHERE id = ?').run(JSON.stringify({ ...previa, logs: fglogs.validar(datos.logs) }), id);
   quitar(id); iniciar(id);
 }
 function quitar(id) {
   const r = equipos.get(id); if (!r) return;
-  clearTimeout(r.temporizador); if (r.api) r.api.cerrar();
+  clearTimeout(r.temporizador); clearTimeout(r.logsT); if (r.api) r.api.cerrar();
   equipos.delete(id); sonda.soltar(id);
 }
 
@@ -69,7 +71,16 @@ function iniciar(id) {
   equipos.set(id, r);
   if (c.sonda && !c.demo) sonda.registrar(c.sonda, id);
   r.temporizador = setTimeout(() => ciclo(r), 500 + Math.random() * 2000);
+  if (c.logs && c.logs.activo) r.logsT = setTimeout(() => cicloLogs(r), 15000 + Math.random() * 15000);
 }
+// Logs: aparte de la consulta normal, cada 2 min, para no demorar el monitoreo
+async function cicloLogs(r) {
+  if (!equipos.has(r.id)) return;
+  try { await fglogs.recolectar(r.id, api(r), fglogs.validar(r.c.logs)); } catch { }
+  if (equipos.has(r.id)) r.logsT = setTimeout(() => cicloLogs(r), fglogs.CADA);
+}
+function logs(id, o) { const c = leerConfig(id); if (!c) throw new Error('Ese FortiGate no existe.'); return fglogs.consultar(id, o, fglogs.validar(c.logs)); }
+const detalleLog = (id, fila) => fglogs.detalle(id, fila);
 function programar(r) {
   if (!equipos.has(r.id)) return;
   const espera = r.fallos === 1 ? REINTENTO : r.fallos > 1 ? CAIDO : Date.now() - r.observado < 20000 ? RAPIDO : LENTO;
@@ -262,6 +273,9 @@ async function seccion(id, nombre) {
 function arrancar(sim) {
   simulador = sim || null;
   for (const { id } of q("SELECT id FROM equipos WHERE tipo = 'fortigate'").all()) iniciar(id);
+  // Retención de los logs guardados (cada hora)
+  const limpiar = () => { try { const n = fglogs.limpiar(id => { const c = leerConfig(id); return c ? fglogs.validar(c.logs) : null; }); if (n) log(`Logs de FortiGate: ${n} registros viejos borrados por la retención.`); } catch (e) { log('Logs de FortiGate: ' + e.message); } };
+  setTimeout(limpiar, 60000); setInterval(limpiar, 3600e3).unref();
 }
 
-module.exports = { arrancar, probar, crear, editar, quitar, vivo, seccion, leerConfig, publica };
+module.exports = { arrancar, probar, crear, editar, quitar, vivo, seccion, leerConfig, publica, logs, detalleLog, borrarLogs: fglogs.borrarEquipo };

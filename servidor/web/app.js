@@ -549,7 +549,7 @@ function filaCliente(c) {
 }
 
 /* ---------------- Últimos sucesos ---------------- */
-const SUCESOS = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Agente instalado'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
+const SUCESOS = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Agente instalado'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'], 'fg-alerta': ['aviso', 'Seguridad'] };
 let sucesos = null, sucesosT = 0;
 async function cargarSucesos() {
   try { sucesos = arr((await api('/api/eventos')).eventos); sucesosT = Date.now(); } catch (e) { if (e.login) return; sucesos = sucesos || []; }
@@ -564,7 +564,7 @@ function pintarSucesos() {
   el.innerHTML = l.length ? `<ul class="sucesos">${l.map(s => {
     const [clase, txt] = SUCESOS[s.tipo] || ['', s.tipo];
     const eq = equipo(s.equipo_id);
-    return `<li><span class="punto ${clase}" aria-hidden="true"></span><span><button type="button" data-eq="${s.equipo_id}">${esc(eq ? nombreEq(eq) : s.equipo)}</button>: ${esc(s.tipo === 'vuelta' && s.detalle ? s.detalle.replace(/\.$/, '') : txt)}</span>
+    return `<li><span class="punto ${clase}" aria-hidden="true"></span><span><button type="button" data-eq="${s.equipo_id}">${esc(eq ? nombreEq(eq) : s.equipo)}</button>: ${esc((s.tipo === 'vuelta' || s.tipo === 'fg-alerta') && s.detalle ? s.detalle.replace(/\.$/, '') : txt)}</span>
       <small>${cuando(s.t)}${r.vista === 'resumen' ? `, ${esc(s.cliente)}` : ''}</small></li>`;
   }).join('')}</ul>` : '<div class="vacio">Sin sucesos todavía.</div>';
 }
@@ -1661,6 +1661,7 @@ async function notificaciones() {
       <div class="regla"><label>${marca('ram', n.ram)} Memoria por encima del</label> ${num('ramUmbral', n.ramUmbral, 50, 100, 'Umbral de memoria')} % durante ${num('ramMin', n.ramMin, 0, 240, 'Minutos de memoria alta')} min</div>
       <div class="regla"><label>${marca('disco', n.disco)} Disco por encima del</label> ${num('discoUmbral', n.discoUmbral, 50, 100, 'Umbral de disco')} %</div>
       <div class="regla"><label>${marca('firmware', n.firmware !== false)} Hay una versión nueva de RouterOS o FortiOS para un equipo de red</label></div>
+      <div class="regla"><label>${marca('fgSeguridad', n.fgSeguridad !== false)} Pasa algo importante en un FortiGate con logs activados: intentos de acceso fallidos, cuentas creadas o borradas, ataques, virus, reinicios, cambios de configuración</label></div>
       <div class="regla"><label>${marca('resumen', n.resumen)} Resumen diario por cliente a las</label> <input type="time" name="resumenHora" value="${esc(n.resumenHora)}" aria-label="Hora del resumen"><button class="btn" type="button" data-resumen>Enviar ahora</button></div>
       <div class="regla">Recordar los avisos que sigan sin resolverse
         <select class="selector" name="recordarHoras" style="height:32px">${[[0, 'No recordar'], [1, 'Cada hora'], [4, 'Cada 4 horas'], [12, 'Cada 12 horas'], [24, 'Cada día']].map(([v, t]) => `<option value="${v}" ${n.recordarHoras === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -1749,7 +1750,7 @@ async function notificaciones() {
   f.onsubmit = async ev => {
     ev.preventDefault();
     const d = { token: f.token.value, chats: f.chats.value, resumenHora: f.resumenHora.value, recordarHoras: +f.recordarHoras.value, porCliente: {} };
-    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'resumen']) d[k] = f[k].checked;
+    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'resumen']) d[k] = f[k].checked;
     for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral']) d[k] = +f[k].value;
     for (const c of estado.clientes) { const x = f['pc-' + c.id]; if (x && x.value.trim()) d.porCliente[c.id] = x.value; }
     try { await enviar('/api/notificaciones', 'PUT', d); dlg.close(); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }

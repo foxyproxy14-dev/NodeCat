@@ -14,7 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
-  wan: true, firmware: true,
+  wan: true, firmware: true, fgSeguridad: true,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -49,7 +49,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false,
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
@@ -428,4 +428,12 @@ function arrancar() {
   setTimeout(() => vigilarBots(), 5000).unref();
 }
 
-module.exports = { info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };
+// Lo importante que pasa en un FortiGate (accesos fallidos, cuentas nuevas, ataques…), según sus logs
+function fortigate(id, a) {
+  if (!A.activo || A.fgSeguridad === false) return;
+  const e = flota.equipo(id); if (!e) return;
+  const cli = (flota.clientes().find(c => c.id === e.cliente_id) || {}).nombre || '';
+  encolar(`${H(a.texto)}\n<b>${H(e.alias || e.nombre)}</b>${cli ? ` · <i>${H(cli)}</i>` : ''}\n${H(a.det || '')}`, e.cliente_id);
+}
+
+module.exports = { fortigate, info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };

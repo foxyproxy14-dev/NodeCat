@@ -40,11 +40,12 @@ const MENU_FG = [
   ['SD-WAN', [['fg-sdwan', 'Enlaces y SLA'], ['ancho', 'Ancho de banda']]],
   ['VPN', [['fg-ipsec', 'Túneles IPsec'], ['fg-sslvpn', 'SSL-VPN']]],
   ['Seguridad', [['fg-politicas', 'Políticas'], ['fg-usuarios', 'Usuarios autenticados']]],
-  ['Sistema', [['fg-licencias', 'Licencias FortiGuard'], ['fg-ha', 'Alta disponibilidad'], ['fg-eventos', 'Registro de eventos']]]
+  ['Sistema', [['fg-licencias', 'Licencias FortiGuard'], ['fg-ha', 'Alta disponibilidad']]],
+  ['Registros', [['logs-resumen', 'Lo importante'], ['logs-sistema', 'Sistema'], ['logs-vpn', 'VPN'], ['logs-usuarios', 'Usuarios'], ['logs-red', 'Red, SD-WAN y HA'], ['logs-seguridad', 'Seguridad'], ['logs-trafico', 'Tráfico'], ['logs-todos', 'Todos']]]
 ];
 let MENU_ACTUAL = MENU_RT;
 const TITULO_RT = Object.fromEntries([...MENU_RT, ...MENU_FG].flatMap(([, l]) => l));
-const LOCALES_RT = ['resumen', 'interfaces', 'ancho', 'herramientas', 'sucesos'];   // no piden sección al router
+const LOCALES_RT = ['resumen', 'interfaces', 'ancho', 'herramientas', 'sucesos', ...MENU_FG.flatMap(([, l]) => l.map(([k]) => k)).filter(k => k.startsWith('logs-'))];   // no piden sección al router
 let gruposAbiertos = new Set(leer('gruposRt', ['Panel', 'Red']));
 
 function montarRouter(e, c) {
@@ -76,6 +77,8 @@ function montarRouter(e, c) {
   pedirVivo();
 }
 function irSeccionRt(k) {
+  if (rt.logs && k !== 'logs-todos') rt.logs.marca = '';
+  if (rt.logs && rt.pestana && k.startsWith('logs-') !== rt.pestana.startsWith('logs-')) rt.logs.accion = '';
   rt.pestana = k; rt.filtro = ''; rt.red = null;
   pintarMenuRt(); pintarCuerpoRt(true);
   const c = document.querySelector('.rt-contenido'); if (c && c.getBoundingClientRect().top < 0) c.scrollIntoView({ behavior: 'smooth' });
@@ -182,6 +185,8 @@ function pintarCuerpoRt(montar) {
     if (montar) herramientasRt();
   } else if (rt.pestana === 'sucesos') {
     if (montar) cargarSucesosRt();
+  } else if (rt.pestana.startsWith('logs-')) {
+    if (montar) vistaLogs(); else if (Date.now() - (rt.logsT || 0) > 120000 && !document.querySelector('dialog[open]')) vistaLogs(true);
   } else if (montar) {
     cuerpo.innerHTML = `<div id="rtSeccion">${gatoCargando('Preguntándole al router…')}</div>`;
     cargarSeccion(true);
@@ -727,7 +732,7 @@ function herramientasRt() {
 }
 
 /* ---------------- Caídas y sucesos de este router ---------------- */
-const NOMBRE_SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Se agregó a NodeCat'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'] };
+const NOMBRE_SUCESO = { caida: ['caido', 'Dejó de responder'], vuelta: ['ok', 'Volvió a responder'], reinicio: ['sinMetricas', 'Se reinició'], nuevo: ['activa', 'Se agregó a NodeCat'], 'wan-caida': ['caido', 'Se cayó el enlace WAN'], 'wan-vuelta': ['ok', 'Volvió el enlace WAN'], 'fg-alerta': ['aviso', 'Seguridad'] };
 async function cargarSucesosRt(dias = rt.diasSucesos || 30) {
   rt.diasSucesos = dias;
   const cuerpo = $('#rtCuerpo'), id = rt.id;
@@ -757,6 +762,18 @@ function vistaSucesos(d, dias) {
 }
 
 /* ---------------- Alta y edición de FortiGate ---------------- */
+// Logs guardados en NodeCat: activar, retención y categorías
+const CATS_LOG = [['sistema', 'Sistema', 'accesos de administradores, cambios de configuración, reinicios'], ['vpn', 'VPN', 'SSL-VPN e IPsec: conexiones, fallos, túneles'], ['usuarios', 'Usuarios', 'autenticaciones y FSSO'], ['red', 'Red, SD-WAN y HA', 'enrutamiento, SLA, alta disponibilidad, Wi-Fi'], ['seguridad', 'Seguridad', 'IPS, antivirus, filtro web, control de apps, DNS'], ['trafico', 'Tráfico', 'cada sesión que pasa por el firewall: ocupa mucho espacio']];
+function camposLogs(l) {
+  l = l || { activo: false, dias: 30, cats: ['sistema', 'vpn', 'usuarios', 'red', 'seguridad'] };
+  return `<fieldset class="logs-campos"><legend>Logs</legend>
+    <label class="interruptor"><input type="checkbox" name="logsActivo" ${l.activo ? 'checked' : ''}><span><b>Guardar los logs en NodeCat</b><small>Se leen cada 2 minutos (solo lectura) y se avisa de lo importante: accesos fallidos, cuentas nuevas, ataques, reinicios. El perfil del token necesita <code>loggrp read</code>.</small></span></label>
+    <div class="logs-opciones" ${l.activo ? '' : 'hidden'}>
+      <label class="campo">Guardarlos durante<select class="selector" name="logsDias">${[1, 3, 7, 15, 30, 60, 90, 180, 365].map(d => `<option value="${d}" ${l.dias === d ? 'selected' : ''}>${d === 1 ? '1 día' : d === 365 ? '1 año' : d + ' días'}</option>`).join('')}</select></label>
+      <div class="logs-cats">${CATS_LOG.map(([k, t, d]) => `<label class="grupo"><input type="checkbox" name="logsCat" value="${k}" ${l.cats.includes(k) ? 'checked' : ''}> <span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>
+      <p class="ayuda-campo">Pasado ese tiempo se borran solos. Si el FortiGate no tiene disco, se leen de su memoria (guarda poco, por eso conviene que NodeCat los vaya juntando).</p>
+    </div></fieldset>`;
+}
 async function dialogoForti(clienteId, id) {
   let cfg = null; const e = id ? equipo(id) : null;
   if (id) { try { cfg = (await api(`/api/routers/${id}/vivo`)).config; } catch (x) { if (!x.login) aviso(x.message, true); return; } }
@@ -794,7 +811,7 @@ end
 execute api-user generate-key nodecat</code>
       <p>Si lo lees a través de un servidor del cliente (sonda), pon en el trusthost la IP interna de ese servidor. Si llegas por Internet, usa la IP pública de NodeCat y permite HTTPS de administración en la interfaz WAN solo desde esa IP.</p>
     </details>` : ''}
-    ${demo ? '<div class="msg atencion">FortiGate del modo demo: solo se puede cambiar el nombre.</div>' : ''}
+    ${demo ? '<div class="msg atencion">FortiGate del modo demo: solo se pueden cambiar el nombre, la sede y los logs.</div>' : ''}
     <label class="campo">Nombre<input name="nombre" maxlength="60" value="${esc(e ? e.nombre : '')}" placeholder="Firewall principal" required></label>
     ${campoSede(clienteId, e ? e.sede : '')}
     ${demo ? '' : `${campoSonda(clienteId, cfg, 'el FortiGate')}<div class="tres">
@@ -805,11 +822,14 @@ execute api-user generate-key nodecat</code>
     <label class="campo">Token de la API<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg && cfg.tokenGuardado ? 'Guardado. Déjalo vacío para conservarlo.' : 'Pega aquí el token'}"></label>
     <label class="interruptor" style="margin-bottom:14px"><input type="checkbox" name="verificar" ${cfg && cfg.verificar ? 'checked' : ''}><span><b>Verificar el certificado</b><small>Actívalo solo si el FortiGate tiene un certificado válido (no el de fábrica).</small></span></label>
     <label class="campo">Interfaz WAN <span class="ayuda-campo">Opcional. Vacía: los enlaces de SD-WAN, o wan1.</span><input name="wan" spellcheck="false" value="${esc(cfg ? cfg.wan : '')}" placeholder="wan1"></label>`}
+    ${camposLogs(cfg && cfg.logs)}
     <div class="msg" role="status" hidden></div>
     <div class="pie">${id ? '<button class="btn" type="button" data-quitar style="margin-right:auto">Quitar de NodeCat</button>' : ''}${demo ? '' : '<button class="btn" type="button" data-probar>Probar conexión</button>'}<button class="btn" type="button" data-cerrar>Cancelar</button><button class="btn prim" type="submit">${id ? 'Guardar' : 'Agregar FortiGate'}</button></div></form>`, true);
   const f = dlg.querySelector('form'), m = f.querySelector('.msg');
   const msg = (t, tipo) => { if (!t || tipo !== 'bien') return gatoDice(m, t); m.className = 'msg bien'; m.textContent = t; m.hidden = false; };
-  const datos = () => demo ? { nombre: f.nombre.value, sede: f.sede.value } : { sede: f.sede.value, tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
+  const logs = () => ({ activo: f.logsActivo.checked, dias: +f.logsDias.value, cats: [...f.querySelectorAll('[name=logsCat]:checked')].map(x => x.value) });
+  f.logsActivo.onchange = () => { f.querySelector('.logs-opciones').hidden = !f.logsActivo.checked; };
+  const datos = () => demo ? { nombre: f.nombre.value, sede: f.sede.value, logs: logs() } : { logs: logs(), sede: f.sede.value, tipo: 'fortigate', nombre: f.nombre.value, host: f.host.value, vdom: f.vdom.value, puerto: +f.puerto.value, token: f.token.value, verificar: f.verificar.checked, wan: f.wan.value, sonda: f.sonda.value ? +f.sonda.value : null, clienteId, id };
   f.nombre.focus();
   const bp = f.querySelector('[data-probar]');
   if (bp) bp.onclick = ev => ocupado(ev.currentTarget, f.sonda.value ? 'Probando por la sonda…' : 'Probando…', async () => {

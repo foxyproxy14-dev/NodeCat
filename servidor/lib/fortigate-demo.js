@@ -17,6 +17,56 @@ function estado(id, perfil) {
   e = { p, t: Date.now(), arranque: Date.now() - (20 + rnd() * 80) * 864e5, cnt: Object.fromEntries(p.interfaces.map(i => [i[0], { rx: rnd() * 1e12, tx: rnd() * 2e11 }])) };
   estados.set(id, e); return e;
 }
+// Logs simulados: tiempos fijos por "casilla" para que no se dupliquen entre lecturas
+function sem(n) { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); }
+function logsDemo(ruta, perfil, ahora) {
+  const out = [], grande = perfil === 'fg100f';
+  const cada = (min, n, f) => { const P = min * 60000; const b = Math.floor(ahora / P); for (let i = 0; i < n; i++) { const t = (b - i) * P + Math.floor(sem(b - i + min) * P * 0.8); if (t <= ahora) { const x = f(t, sem((b - i) * 7 + min), b - i); if (x) out.push(x); } } };
+  const base = (t, extra) => { const d = new Date(t - 4 * 3600e3); return { date: d.toISOString().slice(0, 10), time: d.toISOString().slice(11, 19), tz: '-0400', eventtime: String(t * 1e6), ...extra }; };
+  const LAN = grande ? '192.168.10.' : '192.168.20.';
+  switch (ruta) {
+    case 'event/system':
+      cada(9, 160, (t, r) => r < 0.35 ? base(t, { logid: '0100032001', subtype: 'system', level: 'information', action: 'login', status: 'success', user: 'admin', srcip: LAN + '5', method: 'https', logdesc: 'Admin login successful', msg: `Administrator admin logged in successfully from https(${LAN}5)` })
+        : r < 0.55 ? base(t, { logid: '0100044547', subtype: 'system', level: 'information', action: 'Edit', user: 'admin', ui: `GUI(${LAN}5)`, cfgpath: ['firewall.policy', 'firewall.address', 'system.interface', 'router.static'][Math.floor(r * 40) % 4], cfgobj: String(1 + Math.floor(r * 30)), cfgattr: 'status[enable->disable]', logdesc: 'Object attribute configured', msg: 'Edit firewall.policy' })
+        : r < 0.8 ? base(t, { logid: '0100041000', subtype: 'system', level: 'information', logdesc: 'FortiGuard update succeeded', msg: 'FortiGuard antivirus and IPS database updated' })
+        : base(t, { logid: '0100026001', subtype: 'system', level: 'information', logdesc: 'DHCP Ack log', msg: `DHCP server sends a DHCPACK to ${LAN}${40 + Math.floor(r * 90)}` }));
+      // Ráfaga de accesos fallidos cada 40 min (la más reciente sirve para probar el aviso)
+      { const P = 40 * 60000, b = Math.floor(ahora / P); for (let k = 0; k < 36; k++) { const t0 = (b - k) * P + 5 * 60000; if (t0 > ahora) continue; const ip = ['45.155.205.3', '185.220.101.7', '103.145.13.21'][(b - k) % 3]; for (let i = 0; i < 7; i++) { const t = t0 + i * 20000; if (t <= ahora) out.push(base(t, { logid: '0100032002', subtype: 'system', level: 'alert', action: 'login', status: 'failed', user: ['admin', 'root', 'fortinet', 'administrator'][i % 4], srcip: ip, method: 'https', logdesc: 'Admin login failed', msg: `Administrator ${['admin', 'root', 'fortinet', 'administrator'][i % 4]} login failed from https(${ip}) because of invalid password` })); } } }
+      { const t = Math.floor(ahora / 864e5) * 864e5 - 5 * 3600e3; out.push(base(t, { logid: '0100044546', subtype: 'system', level: 'information', action: 'Add', user: 'admin', ui: `GUI(${LAN}5)`, cfgpath: 'system.admin', cfgobj: 'soporte-externo', cfgattr: 'accprofile[super_admin]', logdesc: 'Attribute configured', msg: 'Add system.admin soporte-externo' })); }
+      if (grande) { const t = Math.floor(ahora / 864e5) * 864e5 - 30 * 3600e3; out.push(base(t, { logid: '0100032009', subtype: 'system', level: 'critical', logdesc: 'Device rebooted', msg: 'User admin rebooted the device from GUI' })); }
+      break;
+    case 'event/vpn':
+      cada(15, 96, (t, r) => r < 0.5 ? base(t, { subtype: 'vpn', level: 'information', action: 'tunnel-up', tunneltype: 'ssl-web', user: ['dra.paredes', 'contador', 'jcastillo'][Math.floor(r * 30) % 3], remip: '190.204.33.12', logdesc: 'SSL VPN tunnel up', msg: 'SSL tunnel established' })
+        : r < 0.75 ? base(t, { subtype: 'vpn', level: 'alert', action: 'ssl-login-fail', user: ['test', 'vpn', 'admin'][Math.floor(r * 30) % 3], remip: '91.240.118.' + Math.floor(r * 200), reason: 'sslvpn_login_unknown_user', logdesc: 'SSL VPN login fail', msg: 'SSL user failed to logged in' })
+        : r < 0.88 ? base(t, { subtype: 'vpn', level: 'notice', action: 'tunnel-down', vpntunnel: grande ? 'A-Backup-Nube' : 'Barq-Valencia', remip: '52.10.33.1', logdesc: 'IPsec phase 2 status changed', msg: 'IPsec phase 2 SA deleted' })
+        : base(t, { subtype: 'vpn', level: 'notice', action: 'tunnel-up', vpntunnel: grande ? 'A-Sede-Norte' : 'Barq-Valencia', remip: '186.24.10.5', logdesc: 'IPsec phase 2 status changed', msg: 'IPsec phase 2 SA established' }));
+      break;
+    case 'event/user':
+      cada(12, 120, (t, r) => base(t, { subtype: 'user', level: r < 0.8 ? 'notice' : 'warning', action: r < 0.8 ? 'FSSO-logon' : 'auth-logon', status: r < 0.8 ? 'success' : 'failed', user: ['jcastillo', 'mrojas', 'recepcion', 'farmacia'][Math.floor(r * 40) % 4], srcip: LAN + (40 + Math.floor(r * 60)), logdesc: r < 0.8 ? 'FSSO logon authentication status' : 'Authentication failed', msg: r < 0.8 ? 'FSSO-logon event from FSSO_AD' : 'User failed to authenticate' }));
+      break;
+    case 'event/sdwan':
+      if (grande) cada(47, 30, (t, r) => base(t, { subtype: 'sdwan', level: 'notice', logdesc: 'SDWAN SLA notification', msg: r < 0.5 ? 'Health Check Internet SLA status changed: wan2 out of SLA (latencia 180 ms)' : 'Health Check Internet SLA status changed: wan2 back in SLA', interface: 'wan2' }));
+      break;
+    case 'event/ha':
+      if (grande) cada(360, 4, (t, r) => base(t, { subtype: 'ha', level: 'notice', logdesc: 'HA heartbeat', msg: 'Heartbeat packet received on ha1, cluster healthy' }));
+      break;
+    case 'ips':
+      cada(11, 130, (t, r) => base(t, { type: 'utm', subtype: 'ips', level: r < 0.3 ? 'alert' : 'warning', severity: r < 0.3 ? 'critical' : r < 0.6 ? 'high' : 'medium', attack: ['Apache.Log4j.Error.Log.Remote.Code.Execution', 'Microsoft.Exchange.Server.ProxyShell', 'SSH.Brute.Force', 'Fortinet.FortiOS.SSL.VPN.Heap.Buffer.Overflow', 'HTTP.URI.SQL.Injection'][Math.floor(r * 50) % 5], srcip: ['45.155.205.3', '194.26.29.11', '162.142.125.9'][Math.floor(r * 30) % 3], dstip: grande ? '192.168.10.12' : '192.168.20.5', dstport: [443, 22, 80][Math.floor(r * 30) % 3], action: 'dropped', msg: 'web_server: attack blocked' }));
+      break;
+    case 'virus':
+      cada(240, 8, (t, r) => base(t, { type: 'utm', subtype: 'virus', level: 'warning', virus: ['W32/Agent.ADV!tr', 'JS/Phish.AAB!tr', 'EICAR_TEST_FILE'][Math.floor(r * 30) % 3], filename: ['factura_nov.zip', 'documento.js', 'eicar.com'][Math.floor(r * 30) % 3], hostname: ['descargas-gratis.top', 'mail.proveedor.com', 'secure.eicar.org'][Math.floor(r * 30) % 3], srcip: LAN + (40 + Math.floor(r * 60)), action: 'blocked', msg: 'File is infected.' }));
+      break;
+    case 'webfilter':
+      cada(5, 280, (t, r) => base(t, { type: 'utm', subtype: 'webfilter', level: 'warning', hostname: ['www.bet365.com', 'tiktok.com', 'torrentgalaxy.to', 'facebook.com', 'apuestas-ya.net'][Math.floor(r * 50) % 5], catdesc: ['Gambling', 'Social Networking', 'Peer-to-peer File Sharing', 'Social Networking', 'Gambling'][Math.floor(r * 50) % 5], srcip: LAN + (40 + Math.floor(r * 60)), user: ['jcastillo', 'recepcion', ''][Math.floor(r * 30) % 3], action: 'blocked', msg: 'URL belongs to a denied category in policy' }));
+      break;
+    case 'app-ctrl':
+      cada(7, 200, (t, r) => base(t, { type: 'utm', subtype: 'app-ctrl', level: 'information', app: ['BitTorrent', 'Psiphon', 'Netflix', 'WhatsApp'][Math.floor(r * 40) % 4], appcat: ['P2P', 'Proxy', 'Video/Audio', 'Collaboration'][Math.floor(r * 40) % 4], srcip: LAN + (40 + Math.floor(r * 60)), action: r < 0.5 ? 'block' : 'pass', msg: 'Application control' }));
+      break;
+    default: { const e2 = new Error('Sin logs de ' + ruta); e2.tipo = 'falta'; throw e2; }
+  }
+  return out.sort((a, b) => Number(b.eventtime) - Number(a.eventtime)).slice(0, 500);
+}
+
 function api(id) {
   const fila = require('./db').q('SELECT config FROM equipos WHERE id = ?').get(id);
   const perfil = fila && fila.config ? JSON.parse(fila.config).perfil : 'fg40f';
@@ -59,8 +109,8 @@ function api(id) {
         case 'monitor/router/ipv4': return { results: !p.sdwan.length ? [{ ip_mask: '0.0.0.0/0', gateway: '200.44.1.1', interface: 'wan', type: 'static', distance: 10, metric: 0 }, { ip_mask: '192.168.20.0/24', gateway: '0.0.0.0', interface: 'lan', type: 'connect', distance: 0, metric: 0 }, { ip_mask: '10.10.0.0/16', gateway: '0.0.0.0', interface: 'Barq-Valencia', type: 'static', distance: 10, metric: 0 }] : [{ ip_mask: '0.0.0.0/0', gateway: '200.44.1.1', interface: 'wan1', type: 'static', distance: 1, metric: 0 }, { ip_mask: '0.0.0.0/0', gateway: '10.64.64.64', interface: 'wan2', type: 'static', distance: 10, metric: 0 }, { ip_mask: '192.168.10.0/24', gateway: '0.0.0.0', interface: 'internal1', type: 'connect', distance: 0, metric: 0 }, { ip_mask: '10.20.0.0/16', gateway: '0.0.0.0', interface: 'A-Sede-Norte', type: 'static', distance: 10, metric: 0 }] };
         case 'monitor/license/status': return { results: { forticare: { status: 'licensed', expires: Math.round(ahora / 1000 + 210 * 86400) }, antivirus: { status: 'licensed', expires: Math.round(ahora / 1000 + 210 * 86400), version: '92.07721' }, ips: { status: 'licensed', expires: Math.round(ahora / 1000 + 210 * 86400), version: '28.00870' }, web_filtering: { status: 'licensed', expires: Math.round(ahora / 1000 + 24 * 86400) }, antispam: { status: 'expired', expires: Math.round(ahora / 1000 - 30 * 86400) } } };
         case 'monitor/user/firewall': return { results: [{ username: 'jcastillo', ipaddr: '192.168.10.45', method: 'FSSO', usergroup: [{ name: 'Administracion' }], duration: 18000, traffic_vol_bytes: 1.2e9 }] };
-        case 'log/memory/event/system': return { results: Array.from({ length: 30 }, (_, i) => { const t = new Date(ahora - 4 * 3600e3 - i * 7 * 60000); return { date: t.toISOString().slice(0, 10), time: t.toISOString().slice(11, 19), level: i % 9 === 0 ? 'warning' : 'information', msg: ['Admin admin logged in successfully from https(192.168.10.5)', 'Link monitor status changed: wan2 SLA dropped', 'DHCP server sends a DHCPACK', 'FortiGuard database updated', 'IPsec tunnel A-Backup-Nube is down'][i % 5], user: i % 5 === 0 ? 'admin' : '' }; }) };
-        default: { const e2 = new Error(`Esta versión de FortiOS no tiene ${ruta}.`); e2.tipo = 'falta'; throw e2; }
+        default: if (ruta.startsWith('log/memory/')) return { results: logsDemo(ruta.slice(11), perfil, ahora) };
+        { const e2 = new Error(`Esta versión de FortiOS no tiene ${ruta}.`); e2.tipo = 'falta'; throw e2; }
       }
     }
   };

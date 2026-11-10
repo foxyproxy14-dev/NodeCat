@@ -147,6 +147,12 @@ Todo es de solo lectura: el agente no puede encender, apagar ni cambiar nada. De
 
 Si el cliente tiene hipervisores y también servidores, la lista los muestra en dos grupos (**Hipervisores** y **Servidores y VM**), igual que las sedes.
 
+## Logs de FortiGate
+
+En **Editar → Logs** de cada FortiGate se activa **Guardar los logs en NodeCat**, con la retención (de 1 día a 1 año) y las categorías. NodeCat los lee cada 2 minutos (del disco del FortiGate o, si no tiene, de su memoria), los guarda sin duplicados y los borra solos al vencer. El perfil del token necesita `loggrp read` (ya viene en los comandos de ejemplo). Tráfico va apagado por defecto porque ocupa mucho.
+
+En la página del FortiGate, **Registros** muestra lo importante y una tabla por categoría con búsqueda y filtros. Además NodeCat avisa por Telegram de lo que importa: ráfagas de accesos fallidos, administradores que entran desde una IP nueva, cuentas creadas o borradas, cambios de configuración, ataques, virus, túneles caídos, HA, reinicios y eventos críticos.
+
 ## Versiones nuevas de RouterOS y FortiOS
 
 NodeCat avisa cuando hay una versión nueva para un equipo de red (chip azul, aviso en su página, gato en el escritorio y Telegram). Solo avisa: la actualización la haces tú.

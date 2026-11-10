@@ -146,6 +146,8 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 // Routers MikroTik
 function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik' && e.tipo !== 'fortigate') throw error(404, 'Ese equipo no es un equipo de red.'); return e; }
 ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const v = modRed(e).vivo(e.id) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
+ruta('GET', '/api/routers/:id/logs', {}, ({ sesion, p, url }) => { const e = routerVisible(sesion, p.id); if (e.tipo !== 'fortigate') throw error(400, 'Solo los FortiGate guardan logs.'); return fortigate.logs(e.id, Object.fromEntries(url.searchParams)); });
+ruta('GET', '/api/routers/:id/logs/:fila', {}, ({ sesion, p }) => { const e = routerVisible(sesion, p.id); const d = fortigate.detalleLog(e.id, p.fila); if (!d) throw error(404, 'Ese registro ya no existe.'); return { log: d }; });
 ruta('GET', '/api/routers/:id/seccion/:nombre', {}, async ({ sesion, p }) => { const e = routerVisible(sesion, p.id); return { datos: await modRed(e).seccion(e.id, p.nombre) }; });
 ruta('POST', '/api/routers/:id/herramienta', {}, async ({ sesion, p, cuerpo }) => { const e = routerVisible(sesion, p.id); if (e.tipo !== 'mikrotik') throw error(400, 'Herramienta solo disponible en MikroTik.'); return { resultado: await mikrotik.herramienta(e.id, cuerpo.tipo, cuerpo.destino) }; });
 ruta('POST', '/api/routers/probar', soloAdmin, async ({ cuerpo }) => (cuerpo.tipo === 'fortigate' ? fortigate : mikrotik).probar(cuerpo, cuerpo.id ? Number(cuerpo.id) : null));
@@ -441,7 +443,8 @@ const demo = config.DEMO ? require('./lib/demo') : null;
 if (demo) demo.preparar();
 flota.arrancar();
 avisos.arrancar();
-flota.alBorrarEquipo = id => { mikrotik.quitar(id); fortigate.quitar(id); };
+require('./lib/fglogs').alAlertar = (id, a) => { flota.evento(id, 'fg-alerta', `${a.texto.replace(/^[^\p{L}\d]+/u, '')}. ${a.det || ''}`.slice(0, 500)); require('./lib/avisos').fortigate(id, a); };
+flota.alBorrarEquipo = id => { mikrotik.quitar(id); fortigate.quitar(id); fortigate.borrarLogs(id); };
 flota.alCambiar(() => avisos.evaluar(true));   // caídas y vueltas: aviso por Telegram sin esperar al siguiente repaso
 mikrotik.arrancar(demo ? require('./lib/mikrotik-demo') : null);
 fortigate.arrancar(demo ? require('./lib/fortigate-demo') : null);

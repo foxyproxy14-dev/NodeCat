@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.13.0 (noviembre de 2026)
+
+- Logs de FortiGate guardados en NodeCat. Al agregar o editar un FortiGate se activa **Guardar los logs**, se elige la retención (1 día a 1 año) y las categorías (Sistema, VPN, Usuarios, Red/SD-WAN/HA, Seguridad y, opcional, Tráfico). Se leen cada 2 minutos por la API (disco o memoria, solo lectura, también vía sonda), sin duplicados, y se borran solos al vencer.
+- Nueva sección **Registros** en la página del FortiGate: "Lo importante" (contadores, línea de tiempo con ráfagas agrupadas, IP y usuarios con más accesos fallidos, ataques más frecuentes) y una tabla por categoría con búsqueda, filtros por periodo, nivel y acción, y el detalle completo de cada registro.
+- "El soplón": avisos por Telegram y en Últimos sucesos cuando pasa algo importante: 5 o más accesos fallidos en 10 minutos (al FortiGate o a la VPN), un administrador que entra desde una IP nueva, cuentas o administradores creados, cambiados o borrados, cambios de configuración, ataques IPS, virus, túneles caídos, cambios de HA, reinicios o actualizaciones, modo conserve y eventos críticos. Se puede apagar en las notificaciones.
+
 ## 0.12.0 (noviembre de 2026)
 
 - Aviso de versiones nuevas de RouterOS y FortiOS. MikroTik: NodeCat consulta cada 6 h el mismo servidor que usan los routers (upgrade.mikrotik.com) según la rama y el canal de cada uno. FortiGate: lo que el equipo sabe por FortiGuard (`monitor/system/firmware`), con la última de su misma rama y la más nueva de todas.

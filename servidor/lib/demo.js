@@ -196,7 +196,7 @@ function sembrarRouters() {
     const cli = q('SELECT id FROM clientes WHERE nombre = ?').get(cliNombre); if (!cli) continue;
     for (const [nombre, perfil, tipo = 'mikrotik', porSonda] of lista) {
       const srv = porSonda && q("SELECT id FROM equipos WHERE cliente_id = ? AND tipo = 'windows' ORDER BY id LIMIT 1").get(cli.id);
-      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil, sonda: srv ? srv.id : null }, tipo);
+      const id = flota.crearRouter(cli.id, nombre, { demo: true, perfil, sonda: srv ? srv.id : null, ...(tipo === 'fortigate' ? { logs: { activo: true, dias: 30, cats: ['sistema', 'vpn', 'usuarios', 'red', 'seguridad'] } } : {}) }, tipo);
       const p = PERFILES[perfil], creado = ahora - 32 * 864e5;
       if (!p.cpu) p.cpu = 8;
       q('UPDATE equipos SET creado = ? WHERE id = ?').run(creado, id);
