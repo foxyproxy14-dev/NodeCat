@@ -380,7 +380,7 @@ function montar(r) {
         <div>
           <div class="cab-seccion">
             <h2 id="tituloTablero">Servidores</h2>
-            ${esAdmin() ? `<button class="btn" type="button" id="btnAgente" data-abre-menu aria-haspopup="menu">Descargar agente ▾</button><button class="btn" type="button" id="btnCompartir">Compartir</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
+            ${esAdmin() ? `<button class="btn prim" type="button" id="btnActAgentes" hidden></button><button class="btn" type="button" id="btnAgente" data-abre-menu aria-haspopup="menu">Descargar agente ▾</button><button class="btn" type="button" id="btnCompartir">Compartir</button><button class="btn" type="button" id="btnEditarCli">Editar cliente</button>` : ''}
           </div>
           <div id="tablero"></div>
           <div class="cab-seccion" style="margin-top:36px">
@@ -393,6 +393,7 @@ function montar(r) {
       </div>`;
     if (esAdmin()) {
       $('#btnAgente').addEventListener('click', ev => menuAgentes(ev.currentTarget, c.id));
+      $('#btnActAgentes').addEventListener('click', ev => actualizarAgentes(ev.currentTarget, `/api/clientes/${c.id}/actualizar-agentes`));
       $('#btnCompartir').addEventListener('click', () => compartirCliente(c.id));
       $('#btnEditarCli').addEventListener('click', () => editarCliente(c.id));
       $('#btnRouter').addEventListener('click', () => dialogoRouter(c.id));
@@ -646,6 +647,8 @@ function vistaCliente(id) {
     (c.notas ? `<br><span class="tenue">${esc(c.notas)}</span>` : '');
   chipsProblemas(p, false);
   $('#tituloTablero').innerHTML = `Servidores <span>${eq.length}</span>`;
+  const ba = $('#btnActAgentes');
+  if (ba) { const viejos = eq.filter(e => e.agenteNuevo && e.agenteNuevo.remota && !e.agenteNuevo.actualizando); ba.hidden = !viejos.length; if (viejos.length && !ba.disabled) ba.textContent = `Actualizar ${plural(viejos.length, 'agente', 'agentes')} a ${viejos[0].agenteNuevo.nueva}`; }
   const t = $('#tablero');
   if (!eq.length) {
     t.innerHTML = sel ? '<div class="vacio">Esta sede no tiene servidores.</div>' : gatoVacio('Sin servidores', esAdmin() ? 'Descarga el instalador, cópialo a cada servidor y ábrelo con doble clic. Aparecerán aquí solos.<br><br><button class="btn prim" type="button" id="btnAg2">Descargar el instalador</button>' : 'Un administrador tiene que instalar el agente en sus servidores.');
@@ -683,6 +686,17 @@ function medidor(v, sub, etq) {
   return `<span class="medidor" data-etq="${etq}"><span class="valor">${v}<i>%</i></span>
     <span class="carril n-${nivel(v)}"><span style="width:${Math.min(100, Math.max(0, v))}%"></span></span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
 }
+// Pide al panel que actualice el agente de Windows (de un equipo o de todo un cliente)
+async function actualizarAgentes(boton, url) {
+  await ocupado(boton, 'Pidiendo…', async () => {
+    try {
+      const r = await enviar(url, 'POST', {});
+      aviso(r.pedidos ? `${plural(r.pedidos, 'agente se actualizará', 'agentes se actualizarán')} a la ${r.version} en su próximo informe (menos de un minuto).${r.manuales ? ` ${plural(r.manuales, 'tiene', 'tienen')} una versión anterior a la 1.6.0: hay que reinstalarlos una vez con el comando de PowerShell.` : ''}`
+        : r.manuales ? 'Esos agentes son anteriores a la 1.6.0 y no saben actualizarse desde aquí: reinstálalos una vez con el comando de PowerShell.' : 'No hay agentes que actualizar.', !r.pedidos);
+      await cargar(true);
+    } catch (x) { if (!x.login) aviso(x.message, true); }
+  });
+}
 function filaEquipo(s) {
   const act = s.sesiones.filter(x => x.estado === 'activa').length, dsc = s.sesiones.filter(x => x.estado === 'desconectada').length;
   const dm = s.discos.reduce((m, d) => !m || d.pct > m.pct ? d : m, null);
@@ -696,7 +710,7 @@ function filaEquipo(s) {
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${insigniaSO(s)}<span><strong>${esc(nombreEq(s))}${s.agenteNuevo ? `<span class="fw-chip" title="Agente ${esc(s.version)}; hay ${esc(s.agenteNuevo.nueva)}">⬆ agente</span>` : ''}${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
@@ -802,12 +816,15 @@ function vistaEquipo(id) {
 
   $('#ficha').innerHTML = [
     ['Cliente', esc(s.clienteNombre)], s.alias ? ['Nombre del equipo', esc(s.nombre)] : null,
-    ['Último informe', s.ultimo ? cuando(s.ultimo) : '—'], ['Agente', s.version ? 'versión ' + esc(s.version) : '—'],
+    ['Último informe', s.ultimo ? cuando(s.ultimo) : '—'], ['Agente', s.version ? 'versión ' + esc(s.version) + (s.agenteNuevo ? (s.agenteNuevo.actualizando ? ` <span class="fw-chip">actualizando a ${esc(s.agenteNuevo.nueva)}…</span>`
+      : s.agenteNuevo.remota ? (esAdmin() ? ` <button type="button" class="btn chico" data-act-agente="${s.id}">Actualizar a ${esc(s.agenteNuevo.nueva)}</button>` : ` <span class="fw-chip">hay ${esc(s.agenteNuevo.nueva)}</span>`)
+      : ` <span class="fw-chip" title="Las versiones anteriores a la 1.6.0 no saben actualizarse desde el panel: reinstálalo una vez con el comando de PowerShell.">hay ${esc(s.agenteNuevo.nueva)}: reinstálalo una vez</span>`) : '') : '—'],
     s.ipsLocales && s.ipsLocales.length ? ['IP local', s.ipsLocales.map(esc).join(', ')] : null,
     ['Conecta desde', s.ip ? esc(s.ip) : '—'],
     (() => { const l = equipos().filter(x => x.sonda === s.id); return l.length ? ['Hace de sonda para', l.map(x => `<a href="#/e/${x.id}">${esc(x.alias || x.nombre)}</a>`).join(', ')] : null; })()
   ].filter(Boolean).map(([k, v]) => `<div><dt><span>${k}</span></dt><dd style="margin:0">${v}</dd></div>`).join('');
 
+  const bact = document.querySelector('[data-act-agente]'); if (bact) bact.onclick = () => actualizarAgentes(bact, `/api/equipos/${bact.dataset.actAgente}/actualizar-agente`);
   document.querySelectorAll('[data-rango]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.rango === rango)));
   const r = RANGOS[rango], h0 = histEq[id + '|' + rango], h = h0 && h0.cargado ? h0 : null;
   if (!h0 || (h && Date.now() - h.cargado > 60000)) cargarHistEq(id, rango);

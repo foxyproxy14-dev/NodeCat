@@ -50,7 +50,10 @@ function editarCliente(id, nombre, notas, grupo) {
   q('UPDATE clientes SET nombre = ?, notas = ?, grupo_id = ? WHERE id = ?').run(nombre, String(notas || '').slice(0, 500), grupoId(grupo), id);
 }
 let alBorrarEquipo = () => { };
-let alNuevo = () => { };   // equipo nuevo o agente reinstalado (para avisar)
+let alNuevo = () => { };
+// Actualizaciones del agente de Windows pedidas desde el panel (equipo → hora en que se pidió)
+const actualizaciones = new Map();
+const VERSION_REMOTA = '1.6.0';   // desde esta versión el agente de Windows sabe actualizarse cuando el panel se lo pide   // equipo nuevo o agente reinstalado (para avisar)
 function borrarCliente(id) {
   const c = cliente(id); if (!c) return;
   for (const e of q('SELECT id FROM equipos WHERE cliente_id = ?').all(id)) alBorrarEquipo(e.id);
@@ -326,7 +329,14 @@ function recibir(clave, c, ip) {
   }
   v.hora = v.hora.filter(m => m.t >= ahora - HORA);
   if (v.caido) volvio(v, ahora);
-  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(claveNueva ? { clave: claveNueva } : {}), ...(plataforma !== 'windows' && VERSION_LINUX ? { agenteLinux: VERSION_LINUX } : {}) };
+  // Actualización pedida desde el panel: se ofrece hasta que el agente informa la versión nueva (o pasan 15 min)
+  let actualizar = false;
+  if (plataforma === 'windows' && actualizaciones.has(id)) {
+    const vw = require('./paquete').versionWindows(), cmp = require('./firmware').comparar;
+    if (!vw || cmp(c.version, vw) >= 0 || Date.now() - actualizaciones.get(id) > 15 * 60000) actualizaciones.delete(id);
+    else actualizar = cmp(c.version, VERSION_REMOTA) >= 0;
+  }
+  return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(actualizar ? { actualizar: true } : {}), ...(claveNueva ? { clave: claveNueva } : {}), ...(plataforma !== 'windows' && VERSION_LINUX ? { agenteLinux: VERSION_LINUX } : {}) };
 }
 
 /** La sonda: identifica al agente por su clave y su nombre de equipo. */
@@ -471,11 +481,30 @@ function vistaEquipo(v, ahora) {
     red: esAgente(v.tipo) ? null : d.red || null, errorConexion: v.errorConexion || null, sonda: v.sonda || null, sede: v.sede || null,
     interfaces: esAgente(v.tipo) ? d.red || [] : undefined, nucleos: d.nucleos ?? null, carga: d.carga ?? null, temperatura: d.temperatura ?? null,
     ramCache: d.ramCache ?? null, cpuUsuario: d.cpuUsuario ?? null, cpuSistema: d.cpuSistema ?? null,
-    hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve, ipsLocales: d.ipsLocales || [],
+    hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve, ipsLocales: d.ipsLocales || [], agenteNuevo: infoAgente(v),
     historial: v.hora
   };
 }
 /** Detalles de Proxmox de un equipo (aparte de /api/estado porque pueden ser grandes). */
+/** El panel pide actualizar el agente de Windows de estos equipos. Devuelve cuántos se van a actualizar y cuántos necesitan reinstalarse a mano. */
+function pedirActualizacion(ids) {
+  const vw = require('./paquete').versionWindows(), cmp = require('./firmware').comparar;
+  if (!vw) throw new Error('Esta instalación de NodeCat no incluye el agente de Windows.');
+  let pedidos = 0, manuales = 0;
+  for (const id of ids) {
+    const v = vivo.get(id); if (!v || v.tipo !== 'windows' || cmp(v.version_agente, vw) >= 0) continue;
+    if (cmp(v.version_agente, VERSION_REMOTA) < 0) { manuales++; continue; }
+    actualizaciones.set(id, Date.now()); pedidos++;
+  }
+  return { pedidos, manuales, version: vw };
+}
+function infoAgente(v) {
+  if (v.tipo !== 'windows' || !v.version_agente) return null;
+  const vw = require('./paquete').versionWindows(); if (!vw) return null;
+  const cmp = require('./firmware').comparar;
+  if (cmp(v.version_agente, vw) >= 0) return null;
+  return { nueva: vw, remota: cmp(v.version_agente, VERSION_REMOTA) >= 0, actualizando: actualizaciones.has(v.id) };
+}
 function detallesPve(id) { const v = vivo.get(id); const d = v && v.datos; if (d && d.hvRed && !d.pve) return { red: d.hvRed }; return (d && d.pve) || {}; }
 function estado(sesion) {
   const ahora = Date.now();
@@ -607,7 +636,7 @@ function mantenimiento() {
 }
 
 module.exports = {
-  AGENTES, esAgente, detallesPve,
+  AGENTES, esAgente, detallesPve, pedirActualizacion,
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; }, set alNuevo(fn) { alNuevo = fn; },
   INTERVALO_AGENTE, GUARDAR_CADA, guardarPendientes, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,

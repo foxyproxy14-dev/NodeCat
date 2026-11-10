@@ -237,7 +237,7 @@ function informe(x, ahora) {
   const cpu = Math.round(Math.min(100, Math.max(1, p.cpu * (0.3 + j * 1.4) + (rnd() * 15 - 6) + (e.alto === 'cpu' ? 55 : 0))));
   const ramPct = Math.round(Math.min(99, Math.max(5, p.ram + j * 14 + (rnd() * 8 - 4) + (e.alto === 'ram' ? 30 : 0))));
   return {
-    nombre: e.nombre, version: '1.2.0', intervalo: 30, hora: ahora,
+    nombre: e.nombre, version: require('./paquete').versionWindows() || '1.6.0', intervalo: 30, hora: ahora,
     cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque, ipsLocales: ['192.168.10.' + (10 + x.id % 200)],
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
     sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12), ...usoSesion(s) })),

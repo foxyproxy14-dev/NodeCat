@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.5.2";
+        public const string Version = "1.6.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -204,6 +204,43 @@ namespace NodeCat
             return l.Take(6).ToList();
         }
 
+        // ------------------------------------------------------------ actualización desde el panel
+        // Descarga el instalador de este cliente desde NodeCat, comprueba su huella (la manda el panel) y lo ejecuta:
+        // el instalador quita este servicio, se copia y crea el nuevo. El archivo no se llama NodeCatAgente.exe para que
+        // el instalador no lo cierre al cerrar los procesos del agente viejo.
+        static int actualizando;
+        static void ActualizarDesdePanel(string version, string sha)
+        {
+            if (string.IsNullOrEmpty(version) || version == Version || sha.Length != 64) return;
+            if (Interlocked.Exchange(ref actualizando, 1) == 1) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NodeCat", "actualizacion");
+                    Directory.CreateDirectory(carpeta);
+                    foreach (var viejo in Directory.GetFiles(carpeta, "NodeCatAgente-*.exe")) { try { File.Delete(viejo); } catch { } }
+                    var req = (HttpWebRequest)WebRequest.Create(servidor + "/instalar/" + clave + ".exe");
+                    req.UserAgent = "NodeCat-Agente/" + Version; req.Timeout = 60000; req.ReadWriteTimeout = 60000;
+                    req.Proxy = string.IsNullOrEmpty(proxy) ? null : new WebProxy(proxy, true);
+                    byte[] b;
+                    using (var res = req.GetResponse()) using (var st = res.GetResponseStream()) using (var ms = new MemoryStream()) { st.CopyTo(ms); b = ms.ToArray(); }
+                    if (b.Length < 50000 || b[0] != (byte)'M' || b[1] != (byte)'Z') throw new Exception("lo descargado no es un instalador válido");
+                    string h; using (var sh = System.Security.Cryptography.SHA256.Create()) h = BitConverter.ToString(sh.ComputeHash(b)).Replace("-", "").ToLowerInvariant();
+                    if (!string.Equals(h, sha, StringComparison.OrdinalIgnoreCase)) throw new Exception("la huella del instalador no coincide con la que dio NodeCat");
+                    string destino = Path.Combine(carpeta, "NodeCatAgente-" + version + ".exe");
+                    File.WriteAllBytes(destino, b);
+                    Utiles.Log("Actualizando el agente de la versión " + Version + " a la " + version + " (pedido desde NodeCat).", ConsoleColor.Green);
+                    Process.Start(new ProcessStartInfo(destino, "instalar /silencioso") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = carpeta });
+                }
+                catch (Exception ex)
+                {
+                    Utiles.Log("No se pudo actualizar el agente: " + ex.Message, ConsoleColor.Yellow);
+                    Interlocked.Exchange(ref actualizando, 0);
+                }
+            });
+        }
+
         static Dictionary<string, object> Recolectar(string porQue)
         {
             var o = new Dictionary<string, object>
@@ -269,6 +306,9 @@ namespace NodeCat
                     if (i >= 5 && i <= 600) intervalo = i;
                     // NodeCat pide que este servidor lea equipos de red de su red (sonda)
                     if (ComoServicio || modoSonda) Sonda.Ajustar(Json.Txt(o, "sonda") == "True" || Json.Txt(o, "sonda") == "true");
+                    // Actualización pedida desde el panel de NodeCat
+                    var act = o.ContainsKey("actualizar") ? o["actualizar"] as Dictionary<string, object> : null;
+                    if (ComoServicio && act != null) ActualizarDesdePanel(Json.Txt(act, "version"), Json.Txt(act, "sha256"));
                     // El servidor se movió a otro cliente en NodeCat: desde ahora usa la clave del cliente nuevo
                     string nueva = Json.Txt(o, "clave").Trim();
                     if (ComoServicio && nueva.Length >= 16 && nueva != clave)

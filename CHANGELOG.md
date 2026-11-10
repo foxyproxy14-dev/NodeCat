@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.19.0 (noviembre de 2026)
+
+- **Actualizar el agente de Windows desde el panel.** Cuando un servidor tiene un agente más viejo que el que ofrece NodeCat, aparece "⬆ agente" en su fila, el botón **Actualizar a X** en su ficha y, en la página del cliente, **Actualizar N agentes**. Al pulsarlo, en su próximo informe (menos de un minuto) el agente descarga el instalador de su cliente desde NodeCat, comprueba su huella SHA-256 (la da el panel) y se reinstala solo, sin pedir nada en el servidor.
+- Funciona desde el agente 1.6.0: los que tienen una versión anterior hay que reinstalarlos una última vez con el comando de PowerShell (el panel lo indica).
+- `agente/build.sh` escribe `servidor/agente/NodeCatAgente.version`, que es la versión que NodeCat ofrece.
+
 ## 0.18.0 (noviembre de 2026)
 
 - **Hyper-V, pestaña Red** (como la de Proxmox): tarjetas físicas, **conmutadores virtuales** (externo, interno o privado, con la IP del host en cada uno), adaptadores de cada VM con su IP y MAC, puerta de enlace, DNS, dominio, latencia y la topología animada. El agente la lee cada 5 minutos en segundo plano.

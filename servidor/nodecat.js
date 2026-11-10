@@ -156,6 +156,12 @@ function equipoVisible(sesion, id) {
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
 ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.sucesosEquipo(e.id, Math.min(400, Number(url.searchParams.get('dias')) || 90)); });
+ruta('POST', '/api/equipos/:id/actualizar-agente', soloAdmin, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); const r = flota.pedirActualizacion([e.id]); log(`${sesion.usuario} pidió actualizar el agente de ${e.nombre}.`); return r; });
+ruta('POST', '/api/clientes/:id/actualizar-agentes', soloAdmin, ({ sesion, p }) => {
+  const c = flota.cliente(Number(p.id)); if (!c || !flota.puedeVer(sesion, c.id)) throw error(404, 'Ese cliente no existe.');
+  const ids = [...flota.vivo.values()].filter(v => v.cliente_id === c.id).map(v => v.id);
+  const r = flota.pedirActualizacion(ids); log(`${sesion.usuario} pidió actualizar los agentes de ${c.nombre} (${r.pedidos}).`); return r;
+});
 ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return { ...flota.detallesPve(e.id), personal: appsPersonal(e.id), logosApps: logosApps() }; });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
@@ -300,7 +306,16 @@ ruta('POST', '/api/agente/informe', { publica: true, agente: true }, async ({ re
   if (f && f.hasta > Date.now()) throw error(429, 'Demasiados intentos con una clave errónea. Espera unos minutos.');
   const clave = req.headers['x-nodecat-agente'] || req.headers['x-vigia-agente'];
   const cuerpo = await leerCuerpo(req, 2 * 1024 * 1024);
-  try { const r = flota.recibir(clave, cuerpo, ip); avisos.evaluar(); return r; }
+  try {
+    const r = flota.recibir(clave, cuerpo, ip); avisos.evaluar();
+    // Actualización del agente de Windows pedida desde el panel: versión y huella del instalador que va a descargar
+    if (r.actualizar) {
+      const c = flota.clientes().map(x => flota.cliente(x.id)).find(x => x.clave === (r.clave || clave));
+      if (c) { const b = paquete.instalador(c, urlPublica(req)); r.actualizar = { version: paquete.versionWindows(), sha256: crypto.createHash('sha256').update(b).digest('hex') }; }
+      else delete r.actualizar;
+    }
+    return r;
+  }
   catch (e) { if (e.status === 403) claveFallida(ip); throw e; }
 });
 ruta('POST', '/api/agente/sonda', { publica: true, agente: true }, async ({ req, res }) => {

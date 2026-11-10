@@ -69,6 +69,13 @@ function instalador(cliente, url) {
   const cola = Buffer.alloc(12); cola.writeInt32LE(cfg.length, 0); cola.write('NODECAT1', 4, 'ascii');
   return Buffer.concat([fs.readFileSync(EXE), cfg, cola]);
 }
+// Versión del agente de Windows que ofrece este NodeCat (la escribe agente/build.sh al compilar)
+let versionWin = { t: 0, v: null };
+function versionWindows() {
+  try { const f = path.join(__dirname, '..', 'agente', 'NodeCatAgente.version'), m = fs.statSync(f).mtimeMs; if (m !== versionWin.t) versionWin = { t: m, v: fs.readFileSync(f, 'utf8').trim() || null }; }
+  catch { versionWin = { t: 0, v: null }; }
+  return versionWin.v;
+}
 const nombreArchivo = c => c.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ---------------------------------------------------------------- Windows por PowerShell (irm … | iex), con pasos y barra de progreso
@@ -144,4 +151,4 @@ fi
 `;
 }
 
-module.exports = { scriptWindows, crear, instalador, nombreArchivo, disponible, agentePython, scriptLinux };
+module.exports = { versionWindows, scriptWindows, crear, instalador, nombreArchivo, disponible, agentePython, scriptLinux };

@@ -1265,3 +1265,4 @@ body.iniciando .inicio-carga { display: grid; }
 #fPush h4 { margin: 14px 0 6px; }
 .tipos-push { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .etq-hv { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 6px; letter-spacing: .02em; color: #7c5cd6; background: color-mix(in srgb, #7c5cd6 14%, transparent); vertical-align: 2px; }
+.btn.chico { height: 28px; padding: 0 10px; font-size: 12.5px; margin-left: 8px; vertical-align: 1px; }
