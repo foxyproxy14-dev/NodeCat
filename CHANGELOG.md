@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.17.2 (noviembre de 2026)
+
+- Aviso de **equipo nuevo**: por Telegram y en los dispositivos, cuando un agente se instala por primera vez en un cliente, cuando se agrega un MikroTik o FortiGate, o cuando se reinstala un agente que se había quitado. Dice el equipo, el cliente, el sistema y desde qué IP. Se puede apagar (regla nueva en las notificaciones y tipo "Equipos nuevos o reinstalados" en los dispositivos).
+
 ## 0.17.1 (noviembre de 2026)
 
 - Los hipervisores llevan una etiqueta (Hyper-V o Proxmox) junto al nombre, y su línea empieza por las VM encendidas.

@@ -11,7 +11,7 @@ q(`CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, usuario TEXT
 q('CREATE TABLE IF NOT EXISTS push_prefs (usuario TEXT PRIMARY KEY COLLATE NOCASE, clientes TEXT, tipos TEXT)').run();
 try { q('ALTER TABLE usuarios ADD COLUMN push INTEGER DEFAULT 1').run(); } catch { }
 
-const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas de RouterOS y FortiOS' };
+const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas de RouterOS y FortiOS', nuevos: 'Equipos nuevos o reinstalados' };
 // Solo se aceptan suscripciones de los servicios de notificaciones de los navegadores (evita que NodeCat haga peticiones a cualquier sitio)
 const SERVICIOS = /^https:\/\/([a-z0-9-]+\.)*(googleapis\.com|mozilla\.com|mozaws\.net|push\.apple\.com|notify\.windows\.com)\//i;
 

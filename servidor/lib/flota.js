@@ -50,6 +50,7 @@ function editarCliente(id, nombre, notas, grupo) {
   q('UPDATE clientes SET nombre = ?, notas = ?, grupo_id = ? WHERE id = ?').run(nombre, String(notas || '').slice(0, 500), grupoId(grupo), id);
 }
 let alBorrarEquipo = () => { };
+let alNuevo = () => { };   // equipo nuevo o agente reinstalado (para avisar)
 function borrarCliente(id) {
   const c = cliente(id); if (!c) return;
   for (const e of q('SELECT id FROM equipos WHERE cliente_id = ?').all(id)) alBorrarEquipo(e.id);
@@ -296,6 +297,7 @@ function recibir(clave, c, ip) {
     }
     if (previo && previo.desinstalado) evento(id, 'nuevo', 'El agente se volvió a instalar.', ahora);
     if (nuevo) evento(id, 'nuevo', `El agente empezó a informar desde ${ip}.`, ahora);
+    if (nuevo || (previo && previo.desinstalado)) setImmediate(() => { try { alNuevo(id, { reinstalado: !nuevo, ip, so: d.so, version: c.version }); } catch { } });
     if (antes && d.arranque && antes.arranque && Math.abs(d.arranque - antes.arranque) > 120000 && d.arranque > antes.arranque)
       evento(id, 'reinicio', 'El equipo se reinició.', d.arranque);
     if (!d.errorSesiones) seguirSesiones(id, d.sesiones, ahora);
@@ -341,6 +343,7 @@ function crearRouter(clienteId, nombre, config, tipo = 'mikrotik') {
   const r = q("INSERT INTO equipos (cliente_id, tipo, nombre, creado, intervalo, config) VALUES (?, ?, ?, ?, 30, ?)").run(clienteId, tipo, nombre, Date.now(), JSON.stringify(config));
   const id = Number(r.lastInsertRowid);
   cargarVivo(id);
+  setImmediate(() => { try { alNuevo(id, { red: true }); } catch { } });
   return id;
 }
 function renombrarRouter(id, nombre) {
@@ -598,7 +601,7 @@ function mantenimiento() {
 
 module.exports = {
   AGENTES, esAgente, detallesPve,
-  set alBorrarEquipo(fn) { alBorrarEquipo = fn; },
+  set alBorrarEquipo(fn) { alBorrarEquipo = fn; }, set alNuevo(fn) { alNuevo = fn; },
   INTERVALO_AGENTE, GUARDAR_CADA, guardarPendientes, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
   visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
