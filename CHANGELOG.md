@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.20.3 (noviembre de 2026)
+
+- **Aviso cuando se actualiza un agente** (por Telegram y en los dispositivos): "agente actualizado de la 1.6.0 a la 1.7.0", tanto si se pidió desde el panel como si el agente de Linux se actualizó solo. Si una actualización pedida desde el panel no se completa en 15 minutos, avisa que no se pudo. Se activa o desactiva en Notificaciones.
+
 ## 0.20.2 (noviembre de 2026)
 
 - La ficha de los servidores Windows sin el rol de Host de sesión indica "Solo administración remota (2 conexiones)" en Escritorio remoto, para que se sepa que no tienen periodo de gracia.

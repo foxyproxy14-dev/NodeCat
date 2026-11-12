@@ -498,6 +498,7 @@ avisos.arrancar();
 require('./lib/fglogs').alAlertar = (id, a) => { flota.evento(id, 'fg-alerta', `${a.texto.replace(/^[^\p{L}\d]+/u, '')}. ${a.det || ''}`.slice(0, 500)); require('./lib/avisos').fortigate(id, a); };
 flota.alBorrarEquipo = id => { mikrotik.quitar(id); fortigate.quitar(id); fortigate.borrarLogs(id); };
 flota.alNuevo = (id, o) => avisos.equipoNuevo(id, o);
+flota.alActualizado = (id, o) => avisos.agenteActualizado(id, o);
 flota.alCambiar(() => avisos.evaluar(true));   // caídas y vueltas: aviso por Telegram sin esperar al siguiente repaso
 mikrotik.arrancar(demo ? require('./lib/mikrotik-demo') : null);
 fortigate.arrancar(demo ? require('./lib/fortigate-demo') : null);

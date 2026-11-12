@@ -11,7 +11,7 @@ q(`CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, usuario TEXT
 q('CREATE TABLE IF NOT EXISTS push_prefs (usuario TEXT PRIMARY KEY COLLATE NOCASE, clientes TEXT, tipos TEXT)').run();
 try { q('ALTER TABLE usuarios ADD COLUMN push INTEGER DEFAULT 1').run(); } catch { }
 
-const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas de RouterOS y FortiOS', nuevos: 'Equipos nuevos o reinstalados', vms: 'Máquinas virtuales que se apagan', discos: 'Salud de los discos', licencias: 'Licencia de Escritorio remoto (RDS)' };
+const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas y agentes actualizados', nuevos: 'Equipos nuevos o reinstalados', vms: 'Máquinas virtuales que se apagan', discos: 'Salud de los discos', licencias: 'Licencia de Escritorio remoto (RDS)' };
 // Tipos que existían antes de guardar las preferencias como "quitados": los tipos nuevos llegan activados
 const TIPOS_0_17 = ['caidas', 'recursos', 'red', 'seguridad', 'versiones', 'nuevos', 'vms'];
 // Solo se aceptan suscripciones de los servicios de notificaciones de los navegadores (evita que NodeCat haga peticiones a cualquier sitio)

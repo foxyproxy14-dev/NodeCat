@@ -52,6 +52,7 @@ function editarCliente(id, nombre, notas, grupo) {
 }
 let alBorrarEquipo = () => { };
 let alNuevo = () => { };
+let alActualizado = () => { };
 // Actualizaciones del agente de Windows pedidas desde el panel (equipo → hora en que se pidió)
 const actualizaciones = new Map();
 const VERSION_REMOTA = '1.6.0';   // desde esta versión el agente de Windows sabe actualizarse cuando el panel se lo pide   // equipo nuevo o agente reinstalado (para avisar)
@@ -301,6 +302,9 @@ function recibir(clave, c, ip) {
   if (d.pve && antes && antes.pve && c.pve && c.pve.parcial) d.pve = { ...antes.pve, ...d.pve };
   // Cambios de fondo (equipo nuevo, otra plataforma, reinstalación): se guardan al momento y se recarga la fila.
   // Lo de cada informe (datos, hora, IP) queda en memoria y se guarda con el resto cada minuto.
+  // El agente cambió de versión (actualización desde el panel o la automática de Linux): se avisa
+  const verAntes = previo && previo.version_agente, verAhora = txt(c.version, 20);
+  if (!nuevo && verAntes && verAhora && verAntes !== verAhora) setImmediate(() => { try { alActualizado(id, { de: verAntes, a: verAhora }); } catch { } });
   const deFondo = !previo || nuevo || previo.tipo !== plataforma || previo.desinstalado || (instalacion && instalacion !== previo.instalacion);
   transaccion(() => {
     if (deFondo) {
@@ -336,7 +340,12 @@ function recibir(clave, c, ip) {
   let actualizar = false;
   if (plataforma === 'windows' && actualizaciones.has(id)) {
     const vw = require('./paquete').versionWindows(), cmp = require('./firmware').comparar;
-    if (!vw || cmp(c.version, vw) >= 0 || Date.now() - actualizaciones.get(id) > 15 * 60000) actualizaciones.delete(id);
+    const vencida = Date.now() - actualizaciones.get(id) > 15 * 60000;
+    if (!vw || cmp(c.version, vw) >= 0 || vencida) {
+      actualizaciones.delete(id);
+      // Pasaron 15 minutos y sigue con la versión vieja: la actualización no se pudo hacer
+      if (vw && vencida && cmp(c.version, vw) < 0) setImmediate(() => { try { alActualizado(id, { de: verAhora, nueva: vw, fallo: true }); } catch { } });
+    }
     else actualizar = cmp(c.version, VERSION_REMOTA) >= 0;
   }
   return { ok: true, intervalo: INTERVALO_AGENTE, servidor: nombre, cliente: clienteNuevo || cli.nombre, sonda: require('./sonda').enUso(id), ...(actualizar ? { actualizar: true } : {}), ...(claveNueva ? { clave: claveNueva } : {}), ...(plataforma !== 'windows' && VERSION_LINUX ? { agenteLinux: VERSION_LINUX } : {}) };
@@ -658,7 +667,7 @@ function mantenimiento() {
 
 module.exports = {
   AGENTES, esAgente, detallesPve, saludDiscos, pedirActualizacion,
-  set alBorrarEquipo(fn) { alBorrarEquipo = fn; }, set alNuevo(fn) { alNuevo = fn; },
+  set alBorrarEquipo(fn) { alBorrarEquipo = fn; }, set alNuevo(fn) { alNuevo = fn; }, set alActualizado(fn) { alActualizado = fn; },
   INTERVALO_AGENTE, GUARDAR_CADA, guardarPendientes, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
   visibles, puedeVer, veEquipo, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento

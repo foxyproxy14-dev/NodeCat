@@ -14,7 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
-  wan: true, firmware: true, fgSeguridad: true, nuevos: true, vms: true, vmMin: 2, smart: true, rds: true,
+  wan: true, firmware: true, fgSeguridad: true, nuevos: true, vms: true, vmMin: 2, smart: true, rds: true, agentes: true,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -49,7 +49,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false, vms: o.vms !== false, vmMin: rango(o, 'vmMin', 0, 120), smart: o.smart !== false, rds: o.rds !== false,
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false, vms: o.vms !== false, vmMin: rango(o, 'vmMin', 0, 120), smart: o.smart !== false, rds: o.rds !== false, agentes: o.agentes !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
@@ -508,4 +508,15 @@ function equipoNuevo(id, o = {}) {
   encolar(`🆕 <b>${o.reinstalado ? 'Agente reinstalado' : 'Equipo nuevo'}: ${H(e.alias || e.nombre)}</b>${cli ? `\n<i>${H(cli)}</i>` : ''}\n${H(que)}${o.so ? '\n' + H(o.so) : ''}`, e.cliente_id, null, { tipo: 'nuevos', equipo: id });
 }
 
-module.exports = { equipoNuevo, fortigate, info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };
+// El agente de un equipo se actualizó (o no pudo actualizarse en 15 minutos)
+function agenteActualizado(id, o) {
+  if (!canalActivo() || A.agentes === false) return;
+  const e = flota.equipo(id); if (!e) return;
+  const cli = (flota.clientes().find(c => c.id === e.cliente_id) || {}).nombre || '';
+  const hs = H(e.alias || e.nombre), hc = cli ? `\n<i>${H(cli)}</i>` : '';
+  const texto = o.fallo ? `⚠️ <b>${hs}: no se pudo actualizar el agente</b>${hc}\nSigue con la versión ${H(o.de)} después de 15 minutos (había ${H(o.nueva)}). Revisa el registro del agente en el servidor o reinstálalo con el comando de PowerShell.`
+    : `⬆️ <b>${hs}: agente actualizado</b>${hc}\nDe la versión ${H(o.de)} a la ${H(o.a)}.`;
+  encolar(texto, e.cliente_id, null, { tipo: 'versiones', equipo: id });
+}
+
+module.exports = { agenteActualizado, equipoNuevo, fortigate, info, guardarDesdeWeb, buscarChats, probar, evaluar, enviarResumen, arrancar, agregarBot, editarBot, quitarBot, probarBot, vigilarBots, destinosDe };
