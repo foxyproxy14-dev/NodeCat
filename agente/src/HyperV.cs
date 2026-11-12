@@ -129,7 +129,7 @@ $cs = Get-CimInstance Win32_ComputerSystem
             return l;
         }
 
-        static string PowerShell(string script, int ms)
+        internal static string PowerShell(string script, int ms)
         {
             string cod = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
             var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + cod)
@@ -138,8 +138,8 @@ $cs = Get-CimInstance Win32_ComputerSystem
             {
                 var salida = p.StandardOutput.ReadToEndAsync();
                 var error = p.StandardError.ReadToEndAsync();
-                if (!p.WaitForExit(ms)) { try { p.Kill(); } catch { } throw new System.TimeoutException("Hyper-V no respondió a tiempo"); }
-                if (p.ExitCode != 0) { string e = (error.Result ?? "").Trim(); throw new Exception(e.Length > 0 ? e.Split('\n')[0].Trim() : "No se pudo leer Hyper-V (código " + p.ExitCode + ")"); }
+                if (!p.WaitForExit(ms)) { try { p.Kill(); } catch { } throw new System.TimeoutException("PowerShell no respondió a tiempo"); }
+                if (p.ExitCode != 0) { string e = (error.Result ?? "").Trim(); throw new Exception(e.Length > 0 ? e.Split('\n')[0].Trim() : "PowerShell terminó con el código " + p.ExitCode + ")"); }
                 return salida.Result;
             }
         }

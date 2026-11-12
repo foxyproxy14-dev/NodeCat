@@ -14,7 +14,7 @@ const DEFECTO = {
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
-  wan: true, firmware: true, fgSeguridad: true, nuevos: true, vms: true, vmMin: 2,
+  wan: true, firmware: true, fgSeguridad: true, nuevos: true, vms: true, vmMin: 2, smart: true, rds: true,
   resumen: false, resumenHora: '08:00', recordarHoras: 0, ultimoResumen: ''
 };
 const CLAVE = config.DEMO ? 'notificaciones-demo' : 'notificaciones';
@@ -49,7 +49,7 @@ function guardarDesdeWeb(o, quien) {
     caidas: !!o.caidas, caidaMin: rango(o, 'caidaMin', 0, 120),
     cpu: !!o.cpu, cpuUmbral: rango(o, 'cpuUmbral', 50, 100), cpuMin: rango(o, 'cpuMin', 0, 240),
     ram: !!o.ram, ramUmbral: rango(o, 'ramUmbral', 50, 100), ramMin: rango(o, 'ramMin', 0, 240),
-    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false, vms: o.vms !== false, vmMin: rango(o, 'vmMin', 0, 120),
+    disco: !!o.disco, discoUmbral: rango(o, 'discoUmbral', 50, 100), wan: o.wan !== false, firmware: o.firmware !== false, fgSeguridad: o.fgSeguridad !== false, nuevos: o.nuevos !== false, vms: o.vms !== false, vmMin: rango(o, 'vmMin', 0, 120), smart: o.smart !== false, rds: o.rds !== false,
     resumen: !!o.resumen, resumenHora: /^([01]\d|2[0-3]):[0-5]\d$/.test(o.resumenHora || '') ? o.resumenHora : '08:00',
     recordarHoras: rango(o, 'recordarHoras', 0, 48), ultimoResumen: A.ultimoResumen, bots: A.bots
   };
@@ -231,7 +231,10 @@ async function vigilarBots() {
 const cola = [], recientes = [];
 let enviando = false;
 // Un aviso sale por Telegram (si está activado) y como notificación a los dispositivos de las cuentas que deben recibirlo
-const TIPO_REGLA = { caida: 'caidas', cpu: 'recursos', ram: 'recursos', disco: 'recursos', wan: 'red', firmware: 'versiones', vm: 'vms' };
+const TIPO_REGLA = { caida: 'caidas', cpu: 'recursos', ram: 'recursos', disco: 'recursos', wan: 'red', firmware: 'versiones', vm: 'vms', smart: 'discos', temp: 'discos', rds: 'licencias' };
+// Último estado visto de cada disco (para avisar si empeora: de precaución a malo, o suben los sectores reasignados)
+const discoVisto = new Map();
+const ESTADO_DISCO = { malo: 'MALO', precaucion: 'PRECAUCIÓN', bueno: 'BUENO' };
 // VM que se vieron encendidas (solo se avisa si una VM que estaba encendida se apaga; las que siempre están apagadas no avisan)
 const vmsEncendidas = new Set();
 const ESTADO_VM = { stopped: 'apagada', paused: 'en pausa', saved: 'guardada (estado guardado)', suspended: 'suspendida', stopping: 'apagándose' };
@@ -367,6 +370,40 @@ function evaluar(forzar) {
           t => `🟢 <b>${hs}: ${tipoVm} ${n} volvió a encenderse</b>${hc}\nEstuvo ${vm.tipo === 'lxc' ? 'apagado' : 'apagada'} ${duracion(t)}.`, ahora, primera, e.cliente, true);
       }
       for (const k of [...vmsEncendidas]) if (k.startsWith(s + '|vm|') && !actuales.has(k)) { vmsEncendidas.delete(k); estados.delete(k); }
+    }
+    // Salud de los discos (agente de Windows 1.7): estado como CrystalDiskInfo y temperatura
+    const salud = vivo && v.datos && v.datos.salud;
+    if (salud && Array.isArray(salud.discos)) {
+      for (const d of salud.discos) {
+        if (d.virtual || d.estado === 'raid' || d.estado === 'desconocido') continue;
+        const id = d.serie || d.numero || d.modelo, k = `${s}|smart|${id}`, nd = `${H(d.modelo || 'Disco ' + d.numero)}${d.volumenes && d.volumenes.length ? ' (' + H(d.volumenes.join(' ')) + ')' : ''}`;
+        const mal = d.estado === 'malo' || d.estado === 'precaucion';
+        const previo = discoVisto.get(k), st = estados.get(k);
+        // Empeoró con el aviso ya enviado: se avisa otra vez
+        if (st && st.activa && previo && (d.estado === 'malo' && previo.estado !== 'malo' || (d.reasignados || 0) + (d.pendientes || 0) > (previo.reasignados || 0) + (previo.pendientes || 0)))
+          encolar(`🔴 <b>${hs}: el disco ${nd} empeoró</b>${hc}\nEstado: ${ESTADO_DISCO[d.estado]}. ${H(d.motivos.join('; '))}.`, e.cliente, null, { tipo: 'discos', equipo: e.id });
+        discoVisto.set(k, { estado: d.estado, reasignados: d.reasignados, pendientes: d.pendientes });
+        regla(k, A.smart !== false, mal, d.estado === 'bueno', 0,
+          () => `${d.estado === 'malo' ? '🔴' : '🟠'} <b>${hs}: disco en estado ${ESTADO_DISCO[d.estado]}</b>${hc}\n${nd}: ${H(d.motivos.join('; '))}.${d.estado === 'malo' ? '\nConviene cambiarlo y revisar las copias de seguridad.' : '\nVigílalo y asegúrate de tener copia de seguridad.'}`,
+          t => `✅ <b>${hs}: el disco ${nd} vuelve a estar BUENO</b>${hc}`, ahora, primera, e.cliente, true);
+        regla(`${s}|temp|${id}`, A.smart !== false, d.temp == null ? null : d.temp === 'alerta', d.temp === 'ok', 10,
+          () => `🌡️ <b>${hs}: disco a ${d.temperatura} °C</b>${hc}\n${nd} lleva más de 10 min muy caliente. Revisa la ventilación.`,
+          t => `✅ <b>${hs}: temperatura del disco normal</b> (${d.temperatura} °C)${hc}`, ahora, primera, e.cliente);
+      }
+    }
+    // Licencia de Escritorio remoto: periodo de gracia de 120 días. Un aviso a los 30, 14, 7, 3 y 1 días, y al vencer
+    const rds = vivo && v.datos && v.datos.rds;
+    if (rds) {
+      const umbral = rds.estado === 'licenciado' || rds.dias == null ? null : [0, 1, 3, 7, 14, 30].find(u => rds.dias <= u);
+      for (const k of [...estados.keys()]) if (k.startsWith(s + '|rds|') && k !== `${s}|rds|${umbral}`) {
+        const st = estados.get(k);
+        if (st.activa && rds.estado === 'licenciado') encolar(`✅ <b>${hs}: Escritorio remoto ya tiene licencia</b>${hc}\nModo ${H(rds.licenciaTexto.toLowerCase())}, servidor de licencias ${H(rds.servidores.join(', '))}.`, e.cliente, null, { tipo: 'licencias', equipo: e.id });
+        estados.delete(k);
+      }
+      if (umbral != null) regla(`${s}|rds|${umbral}`, A.rds !== false, true, false, 0,
+        () => rds.dias <= 0 ? `🔴 <b>${hs}: venció el periodo de gracia de Escritorio remoto</b>${hc}\nLos usuarios ya no pueden conectarse por RDP (solo los administradores). Configura el servidor de licencias y el modo de licencia.`
+          : `${rds.dias <= 7 ? '🔴' : '🟠'} <b>${hs}: a Escritorio remoto le ${rds.dias === 1 ? 'queda 1 día' : `quedan ${rds.dias} días`}</b>${hc}\nVence el ${new Date(ahora + rds.dias * 864e5).toLocaleDateString('es', { timeZone: config.ZONA_HORARIA, day: 'numeric', month: 'long' })}. Licencia: ${H(rds.licenciaTexto.toLowerCase())}${rds.servidores.length ? ', servidor ' + H(rds.servidores.join(', ')) : ', sin servidor de licencias'}.`,
+        () => '', ahora, primera, e.cliente, rds.dias > 0);
     }
     // Versión nueva de RouterOS / FortiOS: un aviso por versión (sin recordatorios); cuando se actualiza, se confirma
     const fw = vivo && !flota.esAgente(e.tipo) && e.red ? e.red.actualizacion : undefined;

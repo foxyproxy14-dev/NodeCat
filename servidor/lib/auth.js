@@ -52,22 +52,29 @@ function crearPrimera(codigo, usuario, clave) {
   codigoInicial = null;
 }
 
-function guardarCuenta({ usuario, clave, rol, clientes, grupos }, nueva) {
+function guardarCuenta({ usuario, clave, rol, clientes, grupos, equipos }, nueva) {
   const e = validarUsuario(usuario); if (e) throw new Error(e);
   if (!ROLES.includes(rol)) throw new Error('Rol no válido.');
   let lista = Array.isArray(clientes) && clientes.length ? JSON.stringify(clientes.map(Number)) : null;
   const listaG = Array.isArray(grupos) && grupos.length ? JSON.stringify(grupos.map(Number)) : null;
   // Con grupos y sin clientes sueltos, la lista de clientes queda vacía pero no "todos"
   if (listaG && !lista) lista = '[]';
+  // Equipos por cliente: solo se guarda la lista de los clientes en los que no ve todo
+  let listaE = null;
+  if (equipos && typeof equipos === 'object' && !Array.isArray(equipos)) {
+    const m = {};
+    for (const [c, l] of Object.entries(equipos)) if (Number(c) && Array.isArray(l)) { const ids = [...new Set(l.map(Number).filter(Boolean))].slice(0, 2000); if (!ids.length) throw new Error('En cada cliente marca al menos un equipo, o quita el cliente de la cuenta.'); m[Number(c)] = ids; }
+    if (Object.keys(m).length) listaE = JSON.stringify(m);
+  }
   const existe = q('SELECT usuario FROM usuarios WHERE usuario = ?').get(usuario);
   if (nueva && existe) throw new Error(`Ya existe la cuenta ${usuario}.`);
   if (!existe) {
     const ec = validarClave(clave); if (ec) throw new Error(ec);
-    q('INSERT INTO usuarios (usuario, rol, hash, clientes, grupos, creado) VALUES (?, ?, ?, ?, ?, ?)').run(usuario, rol, hash(clave), lista, listaG, Date.now());
+    q('INSERT INTO usuarios (usuario, rol, hash, clientes, grupos, equipos, creado) VALUES (?, ?, ?, ?, ?, ?, ?)').run(usuario, rol, hash(clave), lista, listaG, listaE, Date.now());
     log(`Cuenta creada: ${usuario} (${rol}).`);
   } else {
     if (rol !== 'admin' && esUltimoAdmin(usuario)) throw new Error('Debe quedar al menos una cuenta de administrador.');
-    q('UPDATE usuarios SET rol = ?, clientes = ?, grupos = ? WHERE usuario = ?').run(rol, lista, listaG, usuario);
+    q('UPDATE usuarios SET rol = ?, clientes = ?, grupos = ?, equipos = ? WHERE usuario = ?').run(rol, lista, listaG, listaE, usuario);
     if (clave) {
       const ec = validarClave(clave); if (ec) throw new Error(ec);
       q('UPDATE usuarios SET hash = ? WHERE usuario = ?').run(hash(clave), usuario);
@@ -85,8 +92,8 @@ function borrarCuenta(usuario) {
   q('DELETE FROM usuarios WHERE usuario = ?').run(usuario);
 }
 function cuentas() {
-  return q('SELECT usuario, rol, clientes, grupos, creado, ultimo_acceso, totp IS NOT NULL AS dosPasos, push IS NOT 0 AS push, (SELECT COUNT(*) FROM push_subs p WHERE p.usuario = usuarios.usuario) AS dispositivos FROM usuarios ORDER BY usuario').all()
-    .map(c => ({ ...c, clientes: c.clientes ? JSON.parse(c.clientes) : null, grupos: c.grupos ? JSON.parse(c.grupos) : null }));
+  return q('SELECT usuario, rol, clientes, grupos, equipos, creado, ultimo_acceso, totp IS NOT NULL AS dosPasos, push IS NOT 0 AS push, (SELECT COUNT(*) FROM push_subs p WHERE p.usuario = usuarios.usuario) AS dispositivos FROM usuarios ORDER BY usuario').all()
+    .map(c => ({ ...c, clientes: c.clientes ? JSON.parse(c.clientes) : null, grupos: c.grupos ? JSON.parse(c.grupos) : null, equipos: c.equipos ? JSON.parse(c.equipos) : null }));
 }
 function cambiarClave(usuario, actual, nueva) {
   const r = q('SELECT hash FROM usuarios WHERE usuario = ?').get(usuario);
@@ -186,13 +193,13 @@ function iniciar(usuario, clave, ip, codigo) {
 
 function sesion(id) {
   if (!id) return null;
-  const s = q(`SELECT s.id, s.usuario, s.csrf, s.creada, s.ultimo, u.rol, u.clientes, u.grupos FROM sesiones_web s
+  const s = q(`SELECT s.id, s.usuario, s.csrf, s.creada, s.ultimo, u.rol, u.clientes, u.grupos, u.equipos FROM sesiones_web s
                JOIN usuarios u ON u.usuario = s.usuario WHERE s.id = ?`).get(id);
   if (!s) return null;
   const ahora = Date.now();
   if (ahora - s.ultimo > INACTIVIDAD || ahora - s.creada > MAXIMO) { cerrar(id); return null; }
   if (ahora - s.ultimo > 30000) q('UPDATE sesiones_web SET ultimo = ? WHERE id = ?').run(ahora, id);
-  return { id: s.id, usuario: s.usuario, csrf: s.csrf, rol: s.rol, clientes: alcance(s.clientes, s.grupos), grupos: s.grupos ? JSON.parse(s.grupos) : null };
+  return { id: s.id, usuario: s.usuario, csrf: s.csrf, rol: s.rol, clientes: alcance(s.clientes, s.grupos), grupos: s.grupos ? JSON.parse(s.grupos) : null, equipos: s.equipos ? JSON.parse(s.equipos) : null };
 }
 // Clientes que puede ver una cuenta: los elegidos uno a uno más todos los de sus grupos (también los que se agreguen después)
 function alcance(clientes, grupos) {

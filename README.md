@@ -145,6 +145,12 @@ En el menú de tu cuenta → **Notificaciones en este dispositivo** → **Activa
 
 NodeCat se instala como app: en el iPhone, Safari → Compartir → **Añadir a la pantalla de inicio**; en Android, el navegador ofrece **Instalar**. El panel lo sugiere solo la primera vez (y está en el menú de la cuenta). Necesita HTTPS, como cuando lo publicas con Nginx Proxy Manager.
 
+## Salud de los discos y licencia de Escritorio remoto
+
+Desde el agente de Windows 1.7.0, la página de cada servidor físico muestra la **salud de sus discos** como CrystalDiskInfo: estado (bueno, precaución o malo), temperatura, horas y ciclos de encendido, sectores reasignados, pendientes e incorregibles, vida restante de los SSD y la tabla de atributos SMART. Lo lee con lo que trae Windows (`Get-PhysicalDisk`, contadores de fiabilidad y SMART por WMI), sin instalar nada. Las máquinas virtuales no tienen SMART, y los discos detrás de una controladora RAID por hardware no se ven desde Windows.
+
+En los servidores con el rol de Host de sesión de Escritorio remoto muestra los **días que quedan del periodo de gracia** de 120 días, o si ya tiene servidor de licencias y modo configurados. Avisa a los 30, 14, 7, 3 y 1 días, y cuando vence.
+
 ## Proxmox VE, Hyper-V y Linux
 
 En la página del cliente, **Descargar agente** tiene cuatro opciones:

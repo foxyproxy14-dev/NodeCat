@@ -122,7 +122,7 @@ const soloAdmin = { admin: true };
 ruta('GET', '/api/sesion', { publica: true }, ({ sesion }) => {
   if (!auth.hayCuentas()) return { configurar: true };
   if (!sesion) throw Object.assign(error(401, 'Inicia sesión.'), { login: true });
-  return { usuario: sesion.usuario, rol: sesion.rol, csrf: sesion.csrf, clientes: sesion.clientes, grupos: sesion.grupos, version: config.VERSION, demo: config.DEMO };
+  return { usuario: sesion.usuario, rol: sesion.rol, csrf: sesion.csrf, clientes: sesion.clientes, grupos: sesion.grupos, equipos: sesion.equipos, version: config.VERSION, demo: config.DEMO };
 });
 ruta('POST', '/api/configurar', { publica: true }, ({ cuerpo, res, req }) => {
   auth.crearPrimera(cuerpo.codigo, String(cuerpo.usuario || '').trim(), cuerpo.clave);
@@ -151,7 +151,7 @@ ruta('POST', '/api/clave', {}, ({ sesion, cuerpo }) => { auth.cambiarClave(sesio
 ruta('GET', '/api/estado', {}, ({ sesion }) => flota.estado(sesion));
 function equipoVisible(sesion, id) {
   const e = flota.equipo(Number(id));
-  if (!e || !flota.puedeVer(sesion, e.cliente_id)) throw error(404, 'Ese equipo no existe o no tienes acceso.');
+  if (!e || !flota.veEquipo(sesion, e.cliente_id, e.id)) throw error(404, 'Ese equipo no existe o no tienes acceso.');
   return e;
 }
 ruta('GET', '/api/equipos/:id/metricas', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.metricas(e.id, url.searchParams.get('rango')); });
@@ -159,9 +159,10 @@ ruta('GET', '/api/equipos/:id/sucesos', {}, ({ sesion, p, url }) => { const e = 
 ruta('POST', '/api/equipos/:id/actualizar-agente', soloAdmin, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); const r = flota.pedirActualizacion([e.id]); log(`${sesion.usuario} pidió actualizar el agente de ${e.nombre}.`); return r; });
 ruta('POST', '/api/clientes/:id/actualizar-agentes', soloAdmin, ({ sesion, p }) => {
   const c = flota.cliente(Number(p.id)); if (!c || !flota.puedeVer(sesion, c.id)) throw error(404, 'Ese cliente no existe.');
-  const ids = [...flota.vivo.values()].filter(v => v.cliente_id === c.id).map(v => v.id);
+  const ids = [...flota.vivo.values()].filter(v => v.cliente_id === c.id && flota.veEquipo(sesion, c.id, v.id)).map(v => v.id);
   const r = flota.pedirActualizacion(ids); log(`${sesion.usuario} pidió actualizar los agentes de ${c.nombre} (${r.pedidos}).`); return r;
 });
+ruta('GET', '/api/equipos/:id/salud', {}, ({ sesion, p }) => flota.saludDiscos(equipoVisible(sesion, p.id).id));
 ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return { ...flota.detallesPve(e.id), personal: appsPersonal(e.id), logosApps: logosApps() }; });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
@@ -264,8 +265,8 @@ ruta('PUT', '/api/ajustes/url', soloAdmin, ({ cuerpo }) => {
   if (u && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw error(400, 'Escribe una dirección completa, por ejemplo https://nodecat.miempresa.com');
   ajustes.guardar('urlAgentes', u); return { ok: true };
 });
-ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo }) => { flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null, sede: cuerpo.sede }); return { ok: true }; });
-ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e) { mikrotik.quitar(e.id); fortigate.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
+ruta('PUT', '/api/equipos/:id', soloAdmin, ({ p, cuerpo, sesion }) => { equipoVisible(sesion, p.id); if (cuerpo.cliente != null && !flota.puedeVer(sesion, Number(cuerpo.cliente))) throw error(404, 'Ese cliente no existe.'); flota.editarEquipo(Number(p.id), { alias: cuerpo.alias, cliente_id: cuerpo.cliente != null ? Number(cuerpo.cliente) : null, sede: cuerpo.sede }); return { ok: true }; });
+ruta('DELETE', '/api/equipos/:id', soloAdmin, ({ p, sesion }) => { const e = flota.equipo(Number(p.id)); if (e && flota.veEquipo(sesion, e.cliente_id, e.id)) { mikrotik.quitar(e.id); fortigate.quitar(e.id); flota.borrarEquipo(e.id); log(`${sesion.usuario} quitó el equipo ${e.nombre}.`); } return { ok: true }; });
 
 // Cuentas
 ruta('GET', '/api/cuentas', soloAdmin, () => ({ cuentas: auth.cuentas() }));
@@ -277,7 +278,7 @@ ruta('POST', '/api/push/quitar', {}, ({ sesion, cuerpo }) => { push.quitar(sesio
 ruta('PUT', '/api/push/preferencias', {}, ({ sesion, cuerpo }) => { push.guardarPreferencias(sesion, cuerpo); return push.estado(sesion); });
 ruta('POST', '/api/push/probar', {}, ({ sesion }) => push.probar(sesion));
 ruta('POST', '/api/cuentas', soloAdmin, ({ cuerpo, sesion }) => {
-  auth.guardarCuenta({ usuario: String(cuerpo.usuario || '').trim(), clave: cuerpo.clave, rol: cuerpo.rol, clientes: cuerpo.clientes, grupos: cuerpo.grupos }, !!cuerpo.nueva);
+  auth.guardarCuenta({ usuario: String(cuerpo.usuario || '').trim(), clave: cuerpo.clave, rol: cuerpo.rol, clientes: cuerpo.clientes, grupos: cuerpo.grupos, equipos: cuerpo.equipos }, !!cuerpo.nueva);
   if (cuerpo.push !== undefined) require('./lib/push').permitir(String(cuerpo.usuario || '').trim(), !!cuerpo.push);
   log(`${sesion.usuario} ${cuerpo.nueva ? 'creó' : 'modificó'} la cuenta ${cuerpo.usuario}.`); return { ok: true };
 });

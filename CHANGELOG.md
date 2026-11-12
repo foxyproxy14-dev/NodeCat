@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.20.0 (noviembre de 2026)
+
+- **Salud de los discos, como CrystalDiskInfo** (agente de Windows 1.7.0). En la página de cada servidor físico, una tarjeta por disco con su estado (**Bueno**, **Precaución** o **Malo**), temperatura, horas y ciclos de encendido, sectores reasignados, pendientes e incorregibles, errores CRC, vida restante de los SSD y la tabla de atributos SMART. Lo lee con lo que trae Windows, sin instalar nada, cada 10 minutos. Las VM muestran que sus discos son virtuales; los discos detrás de una controladora RAID por hardware aparecen sin datos.
+- **Avisos de discos** por Telegram y en los dispositivos (tipo nuevo "Salud de los discos"): un disco pasa a Precaución o Malo, empeora (sube a Malo o aumentan los sectores reasignados o pendientes), o pasa más de 10 minutos muy caliente.
+- **Licencia de Escritorio remoto (RDS).** En los servidores con el rol de Host de sesión, la ficha muestra los días que quedan del periodo de gracia de 120 días y la fecha en que vence, o "Licenciado" si ya tiene servidor de licencias y modo. En la lista aparece la etiqueta "RDS 9 d" cuando faltan 30 días o menos. Avisos a los 30, 14, 7, 3 y 1 días y al vencer (tipo nuevo "Licencia de Escritorio remoto"), y confirmación cuando queda licenciado.
+- **Cuentas con acceso por equipo.** Dentro de cada cliente se puede dejar a una cuenta solo algunos equipos (servidores, VM, MikroTik, FortiGate), por ejemplo a un soportista externo. Lo demás del cliente no lo ve en el panel, en el historial ni en los sucesos, y las notificaciones en sus dispositivos siguen la misma regla.
+- Los tipos de notificación nuevos llegan activados también a quien ya había guardado sus preferencias.
+- Un administrador limitado a algunos clientes ya no puede editar ni quitar equipos de otros clientes.
+
 ## 0.19.1 (noviembre de 2026)
 
 - El aviso de actualización (agente nuevo en servidores, RouterOS/FortiOS nuevo en MikroTik y FortiGate) pasa a ser una **flecha azul en la esquina del ícono**, a la izquierda. Antes iba como etiqueta al final del nombre y, con nombres largos, quedaba oculta. Al pasar el ratón por la flecha se ven la versión actual y la nueva.

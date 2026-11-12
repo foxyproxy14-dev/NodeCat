@@ -11,7 +11,9 @@ q(`CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, usuario TEXT
 q('CREATE TABLE IF NOT EXISTS push_prefs (usuario TEXT PRIMARY KEY COLLATE NOCASE, clientes TEXT, tipos TEXT)').run();
 try { q('ALTER TABLE usuarios ADD COLUMN push INTEGER DEFAULT 1').run(); } catch { }
 
-const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas de RouterOS y FortiOS', nuevos: 'Equipos nuevos o reinstalados', vms: 'Máquinas virtuales que se apagan' };
+const TIPOS = { caidas: 'Equipos que no responden', recursos: 'CPU, memoria y disco', red: 'Enlaces WAN', seguridad: 'Seguridad de FortiGate', versiones: 'Versiones nuevas de RouterOS y FortiOS', nuevos: 'Equipos nuevos o reinstalados', vms: 'Máquinas virtuales que se apagan', discos: 'Salud de los discos', licencias: 'Licencia de Escritorio remoto (RDS)' };
+// Tipos que existían antes de guardar las preferencias como "quitados": los tipos nuevos llegan activados
+const TIPOS_0_17 = ['caidas', 'recursos', 'red', 'seguridad', 'versiones', 'nuevos', 'vms'];
 // Solo se aceptan suscripciones de los servicios de notificaciones de los navegadores (evita que NodeCat haga peticiones a cualquier sitio)
 const SERVICIOS = /^https:\/\/([a-z0-9-]+\.)*(googleapis\.com|mozilla\.com|mozaws\.net|push\.apple\.com|notify\.windows\.com)\//i;
 
@@ -79,13 +81,21 @@ async function enviarA(s, datos) {
 // ------------------------------------------------------------ a quién le llega
 const auth = () => require('./auth');
 function cuenta(usuario) {
-  const u = q('SELECT usuario, rol, clientes, grupos, push FROM usuarios WHERE usuario = ?').get(usuario);
+  const u = q('SELECT usuario, rol, clientes, grupos, equipos, push FROM usuarios WHERE usuario = ?').get(usuario);
   if (!u) return null;
-  return { usuario: u.usuario, permitido: u.push !== 0, alcance: auth().alcance(u.clientes, u.grupos) };
+  return { usuario: u.usuario, permitido: u.push !== 0, alcance: auth().alcance(u.clientes, u.grupos), equipos: u.equipos ? JSON.parse(u.equipos) : null };
+}
+function tiposDe(guardado) {
+  const todos = Object.keys(TIPOS);
+  if (!guardado) return todos;
+  const g = JSON.parse(guardado);
+  // Antes se guardaba la lista de los elegidos; ahora, los quitados (así un tipo nuevo llega activado)
+  if (Array.isArray(g)) return todos.filter(t => g.includes(t) || !TIPOS_0_17.includes(t));
+  return todos.filter(t => !(g.quitados || []).includes(t));
 }
 function preferencias(usuario) {
   const p = q('SELECT clientes, tipos FROM push_prefs WHERE usuario = ?').get(usuario);
-  return { clientes: p && p.clientes ? JSON.parse(p.clientes) : null, tipos: p && p.tipos ? JSON.parse(p.tipos) : Object.keys(TIPOS) };
+  return { clientes: p && p.clientes ? JSON.parse(p.clientes) : null, tipos: tiposDe(p && p.tipos) };
 }
 const hay = () => !!q('SELECT 1 FROM push_subs LIMIT 1').get();
 
@@ -102,6 +112,8 @@ function notificar({ titulo, cuerpo, clienteId, tipo, equipo }) {
     if (!c) { q('DELETE FROM push_subs WHERE usuario = ?').run(u); continue; }
     if (!c.permitido) continue;
     if (c.alcance && !c.alcance.includes(clienteId)) continue;          // solo sus clientes
+    const lim = c.equipos && c.equipos[clienteId];
+    if (lim && (!equipo || !lim.includes(equipo))) continue;            // y, si se limitó, solo sus equipos
     const p = preferencias(u);
     if (p.clientes && !p.clientes.includes(clienteId)) continue;        // los que eligió
     if (!p.tipos.includes(tipo)) continue;
@@ -139,7 +151,7 @@ function guardarPreferencias(sesion, o) {
   const clientes = Array.isArray(o.clientes) ? [...new Set(o.clientes.map(Number).filter(Boolean))] : null;
   const tipos = Array.isArray(o.tipos) ? o.tipos.filter(t => TIPOS[t]) : Object.keys(TIPOS);
   q('INSERT INTO push_prefs (usuario, clientes, tipos) VALUES (?, ?, ?) ON CONFLICT (usuario) DO UPDATE SET clientes = excluded.clientes, tipos = excluded.tipos')
-    .run(sesion.usuario, clientes ? JSON.stringify(clientes) : null, JSON.stringify(tipos));
+    .run(sesion.usuario, clientes ? JSON.stringify(clientes) : null, JSON.stringify({ quitados: Object.keys(TIPOS).filter(t => !tipos.includes(t)) }));
 }
 async function probar(sesion) {
   const subs = q('SELECT * FROM push_subs WHERE usuario = ?').all(sesion.usuario);

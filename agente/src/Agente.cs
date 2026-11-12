@@ -56,7 +56,7 @@ namespace NodeCat
 
     public static class Agente
     {
-        public const string Version = "1.6.0";
+        public const string Version = "1.7.0";
         const string NombreServicio = "NodeCatAgente";
         public static bool ComoServicio;
         static string servidor, clave, proxy;
@@ -271,6 +271,17 @@ namespace NodeCat
                     { "unidad", d.Unidad }, { "etiqueta", d.Etiqueta }, { "total", d.TotalGB }, { "libre", d.LibreGB }, { "pct", d.Pct } }).ToList();
             }
             catch (Exception ex) { o["errorMetricas"] = ex.Message; }
+            // Salud de los discos y licencia de Escritorio remoto (lectura en segundo plano cada 10 min)
+            try
+            {
+                var sd = Salud.Leer();
+                if (sd != null)
+                {
+                    if (sd.ContainsKey("error")) o["salud"] = new Dictionary<string, object> { { "error", sd["error"] } };
+                    else { o["salud"] = new Dictionary<string, object> { { "discos", sd.ContainsKey("discos") ? sd["discos"] : null }, { "virtual", sd.ContainsKey("virtual") ? sd["virtual"] : null } }; if (sd.ContainsKey("rds") && sd["rds"] != null) o["rds"] = sd["rds"]; }
+                }
+            }
+            catch { }
             // Hyper-V: sus máquinas virtuales
             if (HyperV.Disponible())
             {

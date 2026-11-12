@@ -89,6 +89,8 @@ if (!columnas('clientes').includes('grupo_id')) db.exec('ALTER TABLE clientes AD
 if (!columnas('usuarios').includes('grupos')) db.exec('ALTER TABLE usuarios ADD COLUMN grupos TEXT');
 if (!columnas('usuarios').includes('totp')) db.exec('ALTER TABLE usuarios ADD COLUMN totp TEXT');
 if (!columnas('usuarios').includes('recuperacion')) db.exec('ALTER TABLE usuarios ADD COLUMN recuperacion TEXT');
+// Equipos concretos que puede ver una cuenta dentro de cada cliente: {"clienteId": [equipoId, …]}; sin entrada, todos los del cliente
+if (!columnas('usuarios').includes('equipos')) db.exec('ALTER TABLE usuarios ADD COLUMN equipos TEXT');
 if (!columnas('equipos').includes('sede')) db.exec('ALTER TABLE equipos ADD COLUMN sede TEXT');
 if (!columnas('equipos').includes('instalacion')) db.exec('ALTER TABLE equipos ADD COLUMN instalacion TEXT');
 if (!columnas('equipos').includes('desinstalado')) db.exec('ALTER TABLE equipos ADD COLUMN desinstalado INTEGER');

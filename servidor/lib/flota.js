@@ -3,6 +3,7 @@
 const { q, transaccion, ajustes, compactar } = require('./db');
 const { aleatorio, log, duracion } = require('./util');
 const config = require('./config');
+const discos = require('./discos');
 
 const INTERVALO_AGENTE = 30;                       // segundos entre informes que se piden a los agentes
 const limite = e => Math.max(90, (e.intervalo || INTERVALO_AGENTE) * 3) * 1000;   // sin noticias durante esto = sin respuesta
@@ -234,6 +235,8 @@ function limpiarInforme(c) {
     ipsLocales: (Array.isArray(c.ipsLocales) ? c.ipsLocales : []).slice(0, 6).map(t => txt(t, 45)).filter(Boolean),
     hvRed: c.hvRed && typeof c.hvRed === 'object' && !c.hvRed.error ? limpiarRed(c.hvRed) : null,
     errorVms: c.errorVms ? txt(c.errorVms, 400) : null,
+    // Salud de los discos y licencia de Escritorio remoto (agente de Windows 1.7 o más nuevo)
+    salud: discos.limpiarSalud(c.salud), rds: discos.limpiarRds(c.rds),
     pve: limpiarPve(c.pve)
   };
   if (d.errorMetricas) { d.cpu = d.ramPct = null; }
@@ -469,6 +472,17 @@ function visibles(sesion) {
   return sesion.clientes ? todos.filter(c => sesion.clientes.includes(c.id)) : todos;
 }
 function puedeVer(sesion, clienteId) { return !sesion.clientes || sesion.clientes.includes(clienteId); }
+/** ¿La cuenta ve este equipo? Su cliente tiene que estar en su alcance y, si se limitó a algunos equipos de ese cliente, este tiene que estar entre ellos. */
+function veEquipo(sesion, clienteId, equipoId) {
+  if (!puedeVer(sesion, clienteId)) return false;
+  const l = sesion.equipos && sesion.equipos[clienteId];
+  return !l || l.includes(equipoId);
+}
+/** Ids de los equipos que ve la cuenta, o null si no tiene límite por equipo (para filtrar consultas de historial). */
+function equiposPermitidos(sesion) {
+  if (!sesion.equipos) return null;
+  return [...vivo.values()].filter(v => veEquipo(sesion, v.cliente_id, v.id)).map(v => v.id);
+}
 
 function vistaEquipo(v, ahora) {
   const d = v.datos || {};
@@ -482,6 +496,7 @@ function vistaEquipo(v, ahora) {
     interfaces: esAgente(v.tipo) ? d.red || [] : undefined, nucleos: d.nucleos ?? null, carga: d.carga ?? null, temperatura: d.temperatura ?? null,
     ramCache: d.ramCache ?? null, cpuUsuario: d.cpuUsuario ?? null, cpuSistema: d.cpuSistema ?? null,
     hipervisor: d.hipervisor || null, vms: d.vms || [], errorVms: d.errorVms || null, conPve: !!d.pve, ipsLocales: d.ipsLocales || [], agenteNuevo: infoAgente(v),
+    saludDiscos: discos.resumen(d.salud), rds: d.rds || null,
     historial: v.hora
   };
 }
@@ -505,6 +520,8 @@ function infoAgente(v) {
   if (cmp(v.version_agente, vw) >= 0) return null;
   return { nueva: vw, remota: cmp(v.version_agente, VERSION_REMOTA) >= 0, actualizando: actualizaciones.has(v.id) };
 }
+/** Salud de los discos de un equipo con todos los atributos SMART (aparte de /api/estado). */
+function saludDiscos(id) { const v = vivo.get(id); const d = v && v.datos; return { salud: (d && d.salud) || null, rds: (d && d.rds) || null }; }
 function detallesPve(id) { const v = vivo.get(id); const d = v && v.datos; if (d && d.hvRed && !d.pve) return { red: d.hvRed }; return (d && d.pve) || {}; }
 function estado(sesion) {
   const ahora = Date.now();
@@ -512,7 +529,7 @@ function estado(sesion) {
   const porCliente = new Map(cs.map(c => [c.id, { ...c, equipos: [] }]));
   let actualizado = 0;
   for (const v of vivo.values()) {
-    const c = porCliente.get(v.cliente_id); if (!c) continue;
+    const c = porCliente.get(v.cliente_id); if (!c || !veEquipo(sesion, v.cliente_id, v.id)) continue;
     c.equipos.push(vistaEquipo(v, ahora));
     if (v.ultimo_contacto > actualizado) actualizado = v.ultimo_contacto;
   }
@@ -576,6 +593,7 @@ function historialSesiones(sesion, { cliente: cid, equipo: eid, desde, hasta, te
              FROM sesiones s JOIN equipos e ON e.id = s.equipo_id JOIN clientes c ON c.id = e.cliente_id
              WHERE s.inicio <= ? AND COALESCE(s.fin, 9e15) >= ?`;
   if (sesion.clientes) { sql += ` AND c.id IN (${sesion.clientes.map(() => '?').join(',') || 'NULL'})`; params.push(...sesion.clientes); }
+  const pe = equiposPermitidos(sesion); if (pe) { sql += ` AND e.id IN (${pe.map(() => '?').join(',') || 'NULL'})`; params.push(...pe); }
   if (cid) { sql += ' AND c.id = ?'; params.push(Number(cid)); }
   if (eid) { sql += ' AND e.id = ?'; params.push(Number(eid)); }
   if (texto) { sql += ' AND (s.usuario LIKE ? OR s.origen LIKE ? OR e.nombre LIKE ?)'; const t = `%${String(texto).slice(0, 60)}%`; params.push(t, t, t); }
@@ -587,7 +605,10 @@ function eventosRecientes(sesion, limiteN = 60) {
   const params = [];
   let sql = `SELECT ev.t, ev.tipo, ev.detalle, e.id AS equipo_id, e.nombre AS equipo, c.id AS cliente_id, c.nombre AS cliente
              FROM eventos ev JOIN equipos e ON e.id = ev.equipo_id JOIN clientes c ON c.id = e.cliente_id`;
-  if (sesion.clientes) { sql += ` WHERE c.id IN (${sesion.clientes.map(() => '?').join(',') || 'NULL'})`; params.push(...sesion.clientes); }
+  const cond = [];
+  if (sesion.clientes) { cond.push(`c.id IN (${sesion.clientes.map(() => '?').join(',') || 'NULL'})`); params.push(...sesion.clientes); }
+  const pe = equiposPermitidos(sesion); if (pe) { cond.push(`e.id IN (${pe.map(() => '?').join(',') || 'NULL'})`); params.push(...pe); }
+  if (cond.length) sql += ' WHERE ' + cond.join(' AND ');
   sql += ' ORDER BY ev.t DESC LIMIT ?'; params.push(limiteN);
   return q(sql).all(...params);
 }
@@ -636,9 +657,9 @@ function mantenimiento() {
 }
 
 module.exports = {
-  AGENTES, esAgente, detallesPve, pedirActualizacion,
+  AGENTES, esAgente, detallesPve, saludDiscos, pedirActualizacion,
   set alBorrarEquipo(fn) { alBorrarEquipo = fn; }, set alNuevo(fn) { alNuevo = fn; },
   INTERVALO_AGENTE, GUARDAR_CADA, guardarPendientes, grupos, renombrarGrupo, borrarGrupo, crearCliente, editarCliente, borrarCliente, nuevaClave, cliente, clientes,
   equipo, editarEquipo, borrarEquipo, arrancar, recibir, vigilar, alCambiar, estado, estadoDe, vivo, vistaEquipo,
-  visibles, puedeVer, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
+  visibles, puedeVer, veEquipo, metricas, trafico, sucesosEquipo, historialSesiones, agenteDe, crearRouter, renombrarRouter, actualizarRouter, routerSinRespuesta, wansDe, eventosRecientes, mantenimiento, evento
 };

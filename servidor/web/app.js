@@ -269,6 +269,13 @@ function problemasDe(e) {
   if (e.estado === 'sinMetricas') l.push({ e, n: 'aviso', t: `${n}: no se pueden leer CPU ni memoria` });
   if (e.estado === 'pendiente' && e.errorConexion) l.push({ e, n: 'aviso', t: `${n}: no se puede conectar` });
   if (e.errorSesiones) l.push({ e, n: 'aviso', t: `${n}: no se pueden leer las sesiones` });
+  const sd = e.saludDiscos;
+  if (sd && sd.malos) l.push({ e, n: 'alerta', t: `${n}: ${sd.malos === 1 ? 'un disco en estado MALO' : sd.malos + ' discos en estado MALO'}` });
+  else if (sd && sd.precaucion) l.push({ e, n: 'aviso', t: `${n}: ${sd.precaucion === 1 ? 'un disco en PRECAUCIÓN' : sd.precaucion + ' discos en PRECAUCIÓN'}` });
+  if (sd && sd.tempAlta) l.push({ e, n: 'aviso', t: `${n}: disco muy caliente` });
+  const rd = e.rds;
+  if (rd && rd.estado === 'vencido') l.push({ e, n: 'alerta', t: `${n}: venció la licencia de Escritorio remoto` });
+  else if (rd && (rd.estado === 'critico' || rd.estado === 'pronto')) l.push({ e, n: rd.estado === 'critico' ? 'alerta' : 'aviso', t: `${n}: a Escritorio remoto le ${rd.dias === 1 ? 'queda 1 día' : `quedan ${rd.dias} días`}` });
   const fw = e.red && e.red.actualizacion;
   if (fw && fw.nueva) l.push({ e, n: 'info', t: `${n}: ${fw.producto} ${fw.nueva} disponible` });
   return l;
@@ -470,6 +477,7 @@ function montar(r) {
         <section class="panel discos"><div class="panel-cab"><h3>Discos</h3></div><div id="srvDiscos" style="margin-top:12px"></div></section>
       </div>
       <p class="disponibilidad" id="disponibilidad"></p>
+      <div id="srvSalud"></div>
       <div id="srvVms"></div>
       <div class="cab-seccion"><h2 id="srvSesTitulo">Sesiones</h2>
         <label class="buscar">${ICO.lupa}<span class="sr">Buscar en las sesiones de este servidor</span><input type="search" id="buscarSesSrv" placeholder="Buscar persona, equipo o programa" value="${esc(filtroSesSrv)}"></label></div>
@@ -686,6 +694,9 @@ function medidor(v, sub, etq) {
   return `<span class="medidor" data-etq="${etq}"><span class="valor">${v}<i>%</i></span>
     <span class="carril n-${nivel(v)}"><span style="width:${Math.min(100, Math.max(0, v))}%"></span></span>${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
 }
+// Etiquetas en la fila: días de gracia de Escritorio remoto (30 o menos) y disco en mal estado
+const etqRds = r => !r || !['pronto', 'critico', 'vencido'].includes(r.estado) ? '' : `<span class="etq-estado ${r.estado === 'pronto' ? 'aviso' : 'alerta'}" title="${r.estado === 'vencido' ? 'Venció el periodo de gracia de Escritorio remoto' : `A Escritorio remoto le quedan ${r.dias} días del periodo de gracia`}">${r.estado === 'vencido' ? 'RDS vencido' : `RDS ${r.dias} d`}</span>`;
+const etqDisco = d => !d || !(d.malos || d.precaucion) ? '' : `<span class="etq-estado ${d.malos ? 'alerta' : 'aviso'}" title="Salud de los discos">${d.malos ? 'Disco malo' : 'Disco en precaución'}</span>`;
 // Aviso de actualización sobre el ícono del equipo (a la izquierda, así el nombre no se recorta por la etiqueta)
 const conAvisoIco = (ico, aviso) => aviso ? `<span class="ico-aviso">${ico}<span class="aviso-ico" title="${esc(aviso)}" aria-label="${esc(aviso)}" role="img">↑</span></span>` : ico;
 // Pide al panel que actualice el agente de Windows (de un equipo o de todo un cliente)
@@ -712,7 +723,7 @@ function filaEquipo(s) {
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
   return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
-    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${conAvisoIco(insigniaSO(s), s.agenteNuevo ? `Agente ${s.version}: hay ${s.agenteNuevo.nueva}${s.agenteNuevo.actualizando ? ' (actualizando)' : ''}` : '')}<span><strong class="f-titulo"><span class="f-texto" title="${esc(nombreEq(s))}">${esc(nombreEq(s))}</span>${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${esc(sub)}</small></span></span>
+    <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${conAvisoIco(insigniaSO(s), s.agenteNuevo ? `Agente ${s.version}: hay ${s.agenteNuevo.nueva}${s.agenteNuevo.actualizando ? ' (actualizando)' : ''}` : '')}<span><strong class="f-titulo"><span class="f-texto" title="${esc(nombreEq(s))}">${esc(nombreEq(s))}</span>${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${etqRds(s.rds)}${etqDisco(s.saludDiscos)}${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
     ${sinDatos ? vacio + vacio : medidor(s.ramPct, s.ramTotal ? `${nf.format(s.ramUsada)} de ${nf.format(s.ramTotal)} GB` : '', 'Memoria') +
@@ -823,6 +834,7 @@ function vistaEquipo(id) {
       : ` <span class="fw-chip" title="Las versiones anteriores a la 1.6.0 no saben actualizarse desde el panel: reinstálalo una vez con el comando de PowerShell.">hay ${esc(s.agenteNuevo.nueva)}: reinstálalo una vez</span>`) : '') : '—'],
     s.ipsLocales && s.ipsLocales.length ? ['IP local', s.ipsLocales.map(esc).join(', ')] : null,
     ['Conecta desde', s.ip ? esc(s.ip) : '—'],
+    s.rds ? ['Escritorio remoto', rdsTxt(s.rds)] : null,
     (() => { const l = equipos().filter(x => x.sonda === s.id); return l.length ? ['Hace de sonda para', l.map(x => `<a href="#/e/${x.id}">${esc(x.alias || x.nombre)}</a>`).join(', ')] : null; })()
   ].filter(Boolean).map(([k, v]) => `<div><dt><span>${k}</span></dt><dd style="margin:0">${v}</dd></div>`).join('');
 
@@ -863,6 +875,8 @@ function vistaEquipo(id) {
     <div class="disco"><div class="disco-cab"><strong>${esc(d.unidad)}</strong><span class="tenue">${esc(d.etiqueta || '')}</span><span class="pct">${d.pct} %</span></div>
     <div class="carril n-${nivel(d.pct)}" role="img" aria-label="${esc(d.unidad)}: ${d.pct} % usado"><span style="width:${d.pct}%"></span></div>
     <small>${nf.format(d.libre)} GB libres de ${nf.format(d.total)} GB</small></div>`).join('') : '<p class="tenue">Sin datos de discos.</p>';
+
+  pintarSalud(s);
 
   // Hipervisor: resumen al estilo de ProxMenux, máquinas virtuales, contenedores y red (Proxmox, Hyper-V, Linux)
   $('#srvLosas').innerHTML = losasHost(s, vivo);
@@ -1625,12 +1639,15 @@ async function cuentas() {
   let lista = [];
   const recargar = async () => { lista = arr((await api('/api/cuentas')).cuentas); };
   try { await recargar(); } catch (x) { if (!x.login) aviso(x.message, true); return; }
-  let editando = null, borrando = null;
+  let editando = null, borrando = null, eqSel = new Map(), eqDe;
   const gruposTodos = arr((await api('/api/clientes').catch(() => ({}))).grupos);
-  const alcance = c => !c.clientes && !c.grupos ? 'Todos' : [...arr(c.grupos).map(id => ((gruposTodos.find(g => g.id === id) || { nombre: '?' }).nombre) + ' (grupo)'), ...arr(c.clientes).map(id => (cliente(id) || { nombre: '?' }).nombre)].join(', ') || 'Ninguno';
+  const conEquipos = c => { const n = c.equipos ? Object.values(c.equipos).reduce((a, l) => a + l.length, 0) : 0; return n ? ` (solo ${plural(n, 'equipo', 'equipos')} en ${plural(Object.keys(c.equipos).length, 'cliente', 'clientes')})` : ''; };
+  const alcance = c => (!c.clientes && !c.grupos ? 'Todos' : alcanceCli(c)) + conEquipos(c);
+  const alcanceCli = c => [...arr(c.grupos).map(id => ((gruposTodos.find(g => g.id === id) || { nombre: '?' }).nombre) + ' (grupo)'), ...arr(c.clientes).map(id => (cliente(id) || { nombre: '?' }).nombre)].join(', ') || 'Ninguno';
   const pintar = (msg, bien) => {
     const yo = c => c.usuario.toLowerCase() === SESION.usuario.toLowerCase();
     const sel = editando && editando.clientes ? editando.clientes : [], selG = editando && editando.grupos ? editando.grupos : [];
+    if (eqDe !== editando) { eqDe = editando; eqSel = new Map(Object.entries((editando && editando.equipos) || {}).map(([c, l]) => [+c, new Set(l)])); }
     const dlg = libre(`<h3>Cuentas de acceso</h3>
       <p>Los administradores gestionan clientes, cuentas y notificaciones. Las cuentas de solo lectura únicamente miran. Puedes limitar cualquier cuenta a algunos clientes, por ejemplo para que un cliente vea solo lo suyo.</p>
       <div class="tabla-dlg desliza"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Clientes</th><th>Notificaciones</th><th>Último acceso</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>
@@ -1651,12 +1668,40 @@ async function cuentas() {
           <span class="ayuda-campo" style="margin-top:6px">Clientes sueltos:</span>` : ''}
           <div class="marcas-cli">${estado.clientes.map(c => `<label><input type="checkbox" name="cli" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.nombre)}</label>`).join('')}</div>
         </div>
-        <label class="interruptor" style="margin-top:10px"><input type="checkbox" name="push" ${!editando || editando.push ? 'checked' : ''}><span><b>Puede recibir notificaciones en sus dispositivos</b><small>En su teléfono o PC, aunque NodeCat esté cerrado. Solo de los clientes que puede ver; cada persona elige cuáles y de qué tipo en su menú.</small></span></label>
+        <div class="campo" style="margin-top:6px">Equipos que puede ver
+          <span class="ayuda-campo">Por defecto ve todos los equipos de sus clientes. Abre un cliente para dejarle solo algunos servidores, VM, MikroTik o FortiGate (por ejemplo, a un soportista externo). Las notificaciones siguen la misma regla.</span>
+          <div id="eqCuenta" class="eq-cuenta"></div>
+        </div>
+        <label class="interruptor" style="margin-top:10px"><input type="checkbox" name="push" ${!editando || editando.push ? 'checked' : ''}><span><b>Puede recibir notificaciones en sus dispositivos</b><small>En su teléfono o PC, aunque NodeCat esté cerrado. Solo de los clientes y equipos que puede ver; cada persona elige cuáles y de qué tipo en su menú.</small></span></label>
         ${msg ? (bien ? `<div class="msg bien" role="status" style="margin-top:12px">${esc(msg)}</div>` : `<div style="margin-top:12px">${gatoError(esc(msg))}</div>`) : ''}
         <div class="pie">${editando ? '<button class="btn" type="button" data-nuevo>Cancelar edición</button>' : ''}<button class="btn" type="button" data-cerrar>Cerrar</button><button class="btn prim" type="submit">${editando ? 'Guardar cambios' : 'Crear cuenta'}</button></div>
       </form>`, true);
     const f = dlg.querySelector('form');
-    f.querySelectorAll('[name=cli], [name=grp]').forEach(x => x.onchange = () => { if (x.checked) f.alcance.value = 'algunos'; });
+    // Equipos por cliente: se muestran los clientes que la cuenta puede ver
+    const clientesElegidos = () => {
+      if (f.alcance.value !== 'algunos') return estado.clientes;
+      const ids = new Set([...f.querySelectorAll('[name=cli]:checked')].map(x => +x.value)), gs = new Set([...f.querySelectorAll('[name=grp]:checked')].map(x => +x.value));
+      return estado.clientes.filter(c => ids.has(c.id) || (c.grupo_id && gs.has(c.grupo_id)));
+    };
+    const TIPO_EQ = { windows: 'Windows', linux: 'Linux', proxmox: 'Proxmox', mikrotik: 'MikroTik', fortigate: 'FortiGate' };
+    const pintarEq = () => {
+      const caja = f.querySelector('#eqCuenta'); if (!caja) return;
+      const abiertos = new Set([...caja.querySelectorAll('details[open]')].map(x => +x.dataset.cli));
+      const cs = clientesElegidos().filter(c => c.equipos.length);
+      caja.innerHTML = cs.length ? cs.map(c => {
+        const lim = eqSel.get(c.id), n = lim ? c.equipos.filter(e => lim.has(e.id)).length : c.equipos.length;
+        return `<details data-cli="${c.id}" ${abiertos.has(c.id) ? 'open' : ''}><summary><b>${esc(c.nombre)}</b> <span class="${lim ? 'etq-estado aviso' : 'tenue'}">${lim ? `${n} de ${c.equipos.length} equipos` : `todos (${c.equipos.length})`}</span></summary>
+          <div class="marcas-cli">${c.equipos.map(e => `<label><input type="checkbox" name="eq" data-c="${c.id}" value="${e.id}" ${!lim || lim.has(e.id) ? 'checked' : ''}> ${esc(nombreEq(e))} <span class="tenue">${TIPO_EQ[e.tipo] || ''}</span></label>`).join('')}</div></details>`;
+      }).join('') : '<p class="tenue" style="margin:4px 0 0">Elige primero los clientes.</p>';
+      caja.querySelectorAll('[name=eq]').forEach(x => x.onchange = () => {
+        const cid = +x.dataset.c, c = cliente(cid), marcados = [...caja.querySelectorAll(`[name=eq][data-c="${cid}"]:checked`)].map(y => +y.value);
+        if (marcados.length === c.equipos.length) eqSel.delete(cid); else eqSel.set(cid, new Set(marcados));
+        pintarEq();
+      });
+    };
+    pintarEq();
+    f.querySelectorAll('[name=alcance]').forEach(x => x.onchange = pintarEq);
+    f.querySelectorAll('[name=cli], [name=grp]').forEach(x => x.onchange = () => { if (x.checked) f.alcance.value = 'algunos'; pintarEq(); });
     dlg.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => { editando = lista.find(c => c.usuario === b.dataset.editar); borrando = null; pintar(); });
     const nv = dlg.querySelector('[data-nuevo]'); if (nv) nv.onclick = () => { editando = null; pintar(); };
     dlg.querySelectorAll('[data-quitar2]').forEach(b => b.onclick = async () => {
@@ -1677,7 +1722,10 @@ async function cuentas() {
       const clientes = algunos ? [...f.querySelectorAll('[name=cli]:checked')].map(x => +x.value) : null;
       const grupos = algunos ? [...f.querySelectorAll('[name=grp]:checked')].map(x => +x.value) : null;
       if (algunos && !clientes.length && !grupos.length) { pintar('Marca al menos un grupo o un cliente, o elige “Todos”.'); return; }
-      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes: clientes && clientes.length ? clientes : null, grupos: grupos && grupos.length ? grupos : null, nueva: !editando, push: f.push.checked };
+      const visiblesCuenta = new Set(clientesElegidos().map(c => c.id));
+      const equipos = Object.fromEntries([...eqSel].filter(([c, l]) => visiblesCuenta.has(c) && l.size).map(([c, l]) => [c, [...l]]));
+      if ([...eqSel].some(([c, l]) => visiblesCuenta.has(c) && !l.size)) { pintar('En cada cliente marca al menos un equipo, o quita el cliente de la cuenta.'); return; }
+      const d = { usuario: f.usuario.value.trim(), clave: f.clave.value, rol: f.rol.value, clientes: clientes && clientes.length ? clientes : null, grupos: grupos && grupos.length ? grupos : null, equipos: Object.keys(equipos).length ? equipos : null, nueva: !editando, push: f.push.checked };
       try {
         await enviar('/api/cuentas', 'POST', d); await recargar();
         const m = editando ? `Cuenta de ${d.usuario} actualizada.` : `Cuenta de ${d.usuario} creada.`;
@@ -1727,6 +1775,8 @@ async function notificaciones() {
       <div class="regla"><label>${marca('disco', n.disco)} Disco por encima del</label> ${num('discoUmbral', n.discoUmbral, 50, 100, 'Umbral de disco')} %</div>
       <div class="regla"><label>${marca('firmware', n.firmware !== false)} Hay una versión nueva de RouterOS o FortiOS para un equipo de red</label></div>
       <div class="regla"><label>${marca('vms', n.vms !== false)} Una VM o contenedor de un hipervisor que estaba encendido se apaga durante</label> ${num('vmMin', n.vmMin == null ? 2 : n.vmMin, 0, 120, 'Minutos apagada')} min, y cuando vuelve</div>
+      <div class="regla"><label>${marca('smart', n.smart !== false)} Un disco de un servidor Windows pasa a PRECAUCIÓN o MALO (como CrystalDiskInfo), empeora o se calienta demasiado</label></div>
+      <div class="regla"><label>${marca('rds', n.rds !== false)} A la licencia de Escritorio remoto le quedan 30, 14, 7, 3 o 1 días del periodo de gracia, y cuando vence</label></div>
       <div class="regla"><label>${marca('nuevos', n.nuevos !== false)} Se agrega un equipo nuevo a un cliente (se instala un agente o se agrega un equipo de red) o se reinstala un agente</label></div>
       <div class="regla"><label>${marca('fgSeguridad', n.fgSeguridad !== false)} Pasa algo importante en un FortiGate con logs activados: intentos de acceso fallidos, cuentas creadas o borradas, ataques, virus, reinicios, cambios de configuración</label></div>
       <div class="regla"><label>${marca('resumen', n.resumen)} Resumen diario por cliente a las</label> <input type="time" name="resumenHora" value="${esc(n.resumenHora)}" aria-label="Hora del resumen"><button class="btn" type="button" data-resumen>Enviar ahora</button></div>
@@ -1817,7 +1867,7 @@ async function notificaciones() {
   f.onsubmit = async ev => {
     ev.preventDefault();
     const d = { token: f.token.value, chats: f.chats.value, resumenHora: f.resumenHora.value, recordarHoras: +f.recordarHoras.value, porCliente: {} };
-    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'nuevos', 'vms', 'resumen']) d[k] = f[k].checked;
+    for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'nuevos', 'vms', 'smart', 'rds', 'resumen']) d[k] = f[k].checked;
     for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral', 'vmMin']) d[k] = +f[k].value;
     for (const c of estado.clientes) { const x = f['pc-' + c.id]; if (x && x.value.trim()) d.porCliente[c.id] = x.value; }
     try { await enviar('/api/notificaciones', 'PUT', d); dlg.close(); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }
@@ -1838,3 +1888,74 @@ $('#barraGato').innerHTML = gatoSVG('reparando');
 $('#inicioCarga').innerHTML = `<div class="ic-caja"><div class="ic-pista">${gatoSVG('corriendo')}</div>
   <span class="marca">no<span class="l">d<span class="luz"></span></span>ecat</span><p class="ic-texto">Abriendo NodeCat…</p></div>`;
 iniciar();
+
+/* ---------------- Salud de los discos (como CrystalDiskInfo) y licencia de Escritorio remoto ---------------- */
+function rdsTxt(r) {
+  const fin = r.dias ? new Date(Date.now() + r.dias * 864e5).toLocaleDateString('es', { day: 'numeric', month: 'long' }) : '';
+  if (r.estado === 'licenciado') return `<span class="punto ok" aria-hidden="true"></span> Licenciado: ${esc(r.licenciaTexto.toLowerCase())}, servidor ${esc(r.servidores.join(', '))}`;
+  if (r.estado === 'vencido') return `<span class="etq-estado alerta">Periodo de gracia vencido</span> Los usuarios no pueden entrar por RDP. Licencia: ${esc(r.licenciaTexto.toLowerCase())}${r.servidores.length ? '' : ', sin servidor de licencias'}.`;
+  if (r.dias == null) return `Licencia: ${esc(r.licenciaTexto.toLowerCase())}`;
+  return `<span class="etq-estado ${r.estado === 'gracia' ? 'ok' : r.estado === 'pronto' ? 'aviso' : 'alerta'}" title="Licencia: ${esc(r.licenciaTexto.toLowerCase())}${r.servidores.length ? ', servidor ' + esc(r.servidores.join(', ')) : ', sin servidor de licencias'}">${r.dias === 1 ? 'Queda 1 día' : `Quedan ${r.dias} días`}</span> vence el ${fin}`;
+}
+
+const saludCache = new Map();
+// Tamaño como lo anuncia el fabricante (en base 10, igual que CrystalDiskInfo)
+const tamDisco = b => !b ? '' : b >= 1e12 ? `${nf.format(Math.round(b / 1e11) / 10)} TB` : `${nf.format(Math.round(b / 1e9))} GB`;
+function pintarSalud(s) {
+  const cont = $('#srvSalud'); if (!cont) return;
+  if (s.tipo !== 'windows' || !s.saludDiscos) { if (cont.innerHTML) { cont.innerHTML = ''; cont.dataset.v = ''; } return; }
+  let c = saludCache.get(s.id);
+  if ((!c || Date.now() - c.t > 60000) && !(c && c.pidiendo)) {
+    saludCache.set(s.id, { ...(c || { t: 0 }), pidiendo: true });
+    api(`/api/equipos/${s.id}/salud`).then(r => { saludCache.set(s.id, { t: Date.now(), datos: r }); const rr = rutaActual(); if (rr.vista === 'equipo' && rr.id === s.id) pintarSalud(s); })
+      .catch(() => saludCache.set(s.id, { t: Date.now(), datos: null }));
+  }
+  const d = (saludCache.get(s.id) || {}).datos;
+  const html = !d ? '' : seccionSalud(d.salud);
+  if (cont.dataset.v === html) return;
+  // Se conservan abiertas las tablas de atributos que el usuario desplegó
+  const abiertos = [...cont.querySelectorAll('details[open]')].map(x => x.dataset.disco);
+  cont.innerHTML = html; cont.dataset.v = html;
+  for (const k of abiertos) { const x = cont.querySelector(`details[data-disco="${CSS.escape(k)}"]`); if (x) x.open = true; }
+}
+
+const ESTADO_SALUD = { bueno: ['Bueno', 'ok'], precaucion: ['Precaución', 'aviso'], malo: ['Malo', 'alerta'], raid: ['Sin datos', 'gris'], virtual: ['Virtual', 'gris'], desconocido: ['Desconocido', 'gris'] };
+function seccionSalud(sl) {
+  if (!sl) return '';
+  if (sl.error) return `<div class="cab-seccion"><h2>Salud de los discos</h2></div><div class="msg atencion" style="margin-bottom:36px">No se pudo leer la salud de los discos: ${esc(sl.error)}</div>`;
+  const ds = (sl.discos || []).filter(x => !x.virtual);
+  if (!ds.length) return sl.virtual ? `<div class="cab-seccion"><h2>Salud de los discos</h2></div><p class="tenue" style="margin:-6px 0 36px">Es una máquina virtual: sus discos son virtuales y la salud de los discos físicos la ve el hipervisor.</p>` : '';
+  const malos = ds.filter(x => x.estado === 'malo').length, prec = ds.filter(x => x.estado === 'precaucion').length;
+  return `<div class="cab-seccion"><h2>Salud de los discos <span>${malos ? plural(malos, 'en estado malo', 'en estado malo') : prec ? plural(prec, 'en precaución', 'en precaución') : plural(ds.length, 'disco', 'discos')}</span></h2></div>
+    <div class="cdi-discos">${ds.map(tarjetaSalud).join('')}</div>`;
+}
+function tarjetaSalud(x) {
+  const [et, cl] = ESTADO_SALUD[x.estado] || ESTADO_SALUD.desconocido;
+  const pct = x.estado === 'raid' || x.estado === 'desconocido' ? null : x.vida;
+  const fila = (k, v) => v == null || v === '' ? '' : `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  const nfmt = v => v == null ? null : nf.format(v);
+  const contador = (v, malo) => v == null ? null : `<span class="punto ${v ? (malo ? 'caido' : 'aviso') : 'ok'}" aria-hidden="true"></span>${nf.format(v)}`;
+  const id = x.serie || x.numero;
+  return `<article class="cdi">
+    <header><h3>${esc(x.modelo || 'Disco ' + x.numero)}</h3><span class="tenue">${tamDisco(x.tamano)}</span>${(x.volumenes || []).map(v => `<span class="pm-chip-tipo">${esc(v)}</span>`).join('')}</header>
+    <div class="cdi-cuerpo">
+      <div class="cdi-cajas">
+        <div class="cdi-caja ${cl}"><span>Estado de salud</span><b>${et}</b>${pct != null ? `<i>${pct} %</i>` : ''}</div>
+        <div class="cdi-caja ${x.temp || 'gris'}"><span>Temperatura</span><b>${x.temperatura != null ? x.temperatura + ' °C' : '—'}</b>${x.temperaturaMax ? `<i>máx. ${x.temperaturaMax} °C</i>` : ''}</div>
+      </div>
+      <dl>${fila('Interfaz', esc([x.tipo, x.bus && x.bus !== x.tipo ? x.bus : ''].filter(Boolean).join(' · ')))}${fila('Firmware', x.firmware ? `<span class="mono">${esc(x.firmware)}</span>` : null)}
+        ${fila('Número de serie', x.serie ? `<span class="mono">${esc(x.serie)}</span>` : null)}${fila('Horas encendido', x.horas != null ? `${nfmt(x.horas)} h <span class="tenue">(${horasTxt(x.horas)})</span>` : null)}
+        ${fila('Ciclos de encendido', nfmt(x.ciclos))}
+        ${fila('Sectores reasignados', contador(x.reasignados))}${fila('Sectores pendientes', contador(x.pendientes))}${fila('Sectores incorregibles', contador(x.incorregibles, true))}
+        ${fila('Errores CRC (cable)', contador(x.crc))}${fila('Errores de lectura', x.erroresLectura ? contador(x.erroresLectura, true) : null)}</dl>
+    </div>
+    ${x.estado === 'raid' ? '<p class="cdi-nota">Está detrás de una controladora RAID: Windows no ve los discos físicos, así que no hay datos SMART.</p>' : ''}
+    ${x.motivos && x.motivos.length ? `<p class="cdi-nota ${cl}">${esc(x.motivos.join('; '))}.</p>` : ''}
+    ${x.atributos && x.atributos.length ? `<details data-disco="${esc(id)}"><summary>Atributos SMART (${x.atributos.length})</summary><div class="desliza"><table class="cdi-tabla">
+      <thead><tr><th></th><th>ID</th><th>Atributo</th><th>Actual</th><th>Peor</th><th>Umbral</th><th>Valor bruto</th></tr></thead><tbody>
+      ${x.atributos.map(([aid, act, peor, umb, crudo, nombre]) => {
+        const mal = umb && umb < 254 && act <= umb, ojo = [5, 196, 197, 198].includes(aid) && crudo > 0;
+        return `<tr><td><span class="punto ${mal ? 'caido' : ojo ? 'aviso' : 'ok'}" aria-label="${mal ? 'Por debajo del umbral' : ojo ? 'Atención' : 'Correcto'}"></span></td><td class="mono">${aid.toString(16).toUpperCase().padStart(2, '0')}</td><td>${esc(nombre)}</td><td class="mono">${act}</td><td class="mono">${peor}</td><td class="mono">${umb == null ? '—' : umb}</td><td class="mono">${nf.format(crudo)}</td></tr>`;
+      }).join('')}</tbody></table></div></details>` : ''}
+  </article>`;
+}

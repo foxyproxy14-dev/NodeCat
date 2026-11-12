@@ -241,8 +241,31 @@ function informe(x, ahora) {
     cpu, ramPct, ramTotal: p.ramTotal, ramUsada: Math.round(p.ramTotal * ramPct) / 100, so: SO[e.perfil], arranque: x.arranque, ipsLocales: ['192.168.10.' + (10 + x.id % 200)],
     discos: x.discos.map(d => ({ unidad: d.u, etiqueta: d.et, total: d.tot, libre: Math.round(d.tot * (100 - d.pct) * 10) / 1000, pct: Math.round(d.pct) })),
     sesiones: x.sesiones.map(s => ({ ...s, inactivo: s.estado === 'desconectada' ? Math.round((ahora - s.desde) / 60000) : Math.floor(rnd() * 12), ...usoSesion(s) })),
-    ...hipervisor(e, ahora, j)
+    ...hipervisor(e, ahora, j), ...saludDemo(e, x)
   };
+}
+
+// Salud de los discos y licencia de Escritorio remoto (como lo informa el agente 1.7)
+const RDS_DEMO = { 'SRV-RDS01': { dias: 9 }, 'SRV-RDS02': { licencia: 4, servidores: ['SRV-DC01.clinica.local'] }, 'TA-TS01': { dias: 23 }, 'FT-SERVIDOR': { dias: 0 }, 'ECM-SRV01': { dias: 64 } };
+function saludDemo(e, x) {
+  const t = x.tempBase || (x.tempBase = 30 + Math.floor(rnd() * 8));
+  const ssd = (n, serie, gb, vol, horas, desgaste, extra = []) => ({ numero: String(n), modelo: n ? 'Samsung SSD 870 EVO 1TB' : 'KINGSTON SA400S37480G', serie, firmware: n ? 'SVT02B6Q' : 'SBFKB1D2', bus: 'SATA', medio: 'SSD', tamano: gb * 1e9,
+    salud: 'Healthy', temperatura: t + Math.round(rnd() * 2), temperaturaMax: t + 12, horas, desgaste, ciclos: 214, erroresLectura: 0, volumenes: vol,
+    atributos: [[5, 100, 100, 10, 0], [9, 99, 99, 0, horas], [12, 99, 99, 0, 214], [177, 100 - desgaste, 100 - desgaste, 5, 37], [194, 100 - t, 60, 0, t], [199, 100, 100, 0, 0], [241, 99, 99, 0, horas * 2.1e8], ...extra] });
+  const hdd = (n, serie, gb, vol, horas, reasig = 0, pend = 0) => ({ numero: String(n), modelo: 'WDC WD40EFRX-68N32N0', serie, firmware: '82.00A82', bus: 'SATA', medio: 'HDD', tamano: gb * 1e9,
+    salud: reasig ? 'Warning' : 'Healthy', temperatura: t + 6, temperaturaMax: t + 15, horas, ciclos: 97, erroresLectura: 0, volumenes: vol,
+    atributos: [[1, 200, 200, 51, 0], [3, 181, 177, 21, 7933], [4, 100, 100, 0, 99], [5, reasig ? 197 : 200, reasig ? 197 : 200, 140, reasig], [7, 200, 200, 0, 0], [9, 54, 54, 0, horas], [10, 100, 100, 0, 0],
+      [12, 100, 100, 0, 97], [192, 200, 200, 0, 41], [193, 200, 200, 0, 1203], [194, 114, 101, 0, t + 6], [196, 200, 200, 0, reasig ? 3 : 0], [197, 200, 200, 0, pend], [198, 100, 253, 0, 0], [199, 200, 200, 0, 0], [200, 100, 253, 0, 0]] });
+  const o = {};
+  if (e.perfil === 'hyperv') o.salud = { virtual: false, discos: [{ numero: '0', modelo: 'Samsung SSD 980 PRO 1TB', serie: 'S5GXNF0R412345', firmware: '5B2QGXA7', bus: 'NVMe', medio: 'SSD', tamano: 1e12, salud: 'Healthy',
+    temperatura: 44, temperaturaMax: 61, horas: 11840, desgaste: 6, ciclos: 87, erroresLectura: 0, volumenes: ['C:'], atributos: [] }, hdd(1, 'WD-WCC7K4XN1234', 4000, ['D:'], 23110)] };
+  else if (e.perfil === 'proxmox') return o;
+  else if (e.nombre === 'SRV-SQL01') o.salud = { virtual: false, discos: [ssd(0, '50026B7782A1F2C3', 480, ['C:'], 31200, 18), hdd(1, 'WD-WX12D80AB3CD', 4000, ['E:', 'F:'], 40210, 8, 1)] };
+  else if (e.perfil === 'dc') o.salud = { virtual: true, discos: [{ numero: '0', modelo: 'Msft Virtual Disk', bus: 'SAS', medio: 'Unspecified', tamano: 80e9, salud: 'Healthy', volumenes: ['C:'], atributos: [] }] };
+  else o.salud = { virtual: false, discos: [ssd(0, 'S' + (1000 + x.id) + 'NX0R' + (500 + x.id), 480, ['C:'], 9000 + x.id * 731, 4 + x.id % 9), ...(e.perfil === 'rds' || e.perfil === 'archivo' ? [hdd(1, 'WD-WCC4E' + (20000 + x.id * 13), 4000, ['D:'], 15000 + x.id * 913)] : [])] };
+  const r = RDS_DEMO[e.nombre];
+  if (r) o.rds = { modo: 1, licencia: r.licencia || 5, dias: r.dias == null ? 87 : r.dias, servidores: r.servidores || [] };
+  return o;
 }
 
 // Consumo por sesión (como lo informa el agente 1.5): CPU, memoria y los programas que más usan

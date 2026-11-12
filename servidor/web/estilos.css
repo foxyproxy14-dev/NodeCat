@@ -1274,3 +1274,43 @@ body.iniciando .inicio-carga { display: grid; }
 /* Aviso de actualización (agente o RouterOS/FortiOS) en la esquina del ícono */
 .ico-aviso { position: relative; display: inline-flex; flex: none; }
 .aviso-ico { position: absolute; top: -6px; left: -6px; width: 17px; height: 17px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 11px; font-weight: 800; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--hoja); }
+/* Etiquetas de estado en la fila del equipo (RDS, discos) */
+.etq-estado { display: inline-block; flex: none; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 6px; vertical-align: 2px; white-space: nowrap; }
+.etq-estado.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.etq-estado.aviso { color: var(--aviso); background: color-mix(in srgb, var(--aviso) 16%, transparent); }
+.etq-estado.alerta { color: var(--alerta); background: color-mix(in srgb, var(--alerta) 14%, transparent); }
+/* Salud de los discos, al estilo de CrystalDiskInfo */
+.cdi-discos { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; margin-bottom: 36px; }
+.cdi { border: 1px solid var(--linea); border-radius: 12px; padding: 16px 18px; background: var(--hoja); min-width: 0; }
+.cdi header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.cdi header h3 { margin: 0; font-size: 15px; }
+.cdi-cuerpo { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: start; }
+.cdi-cajas { display: grid; gap: 10px; }
+.cdi-caja { border-radius: 10px; padding: 10px 12px; text-align: center; border: 1px solid; display: grid; gap: 2px; }
+.cdi-caja span { font-size: 12px; color: var(--tinta-3); }
+.cdi-caja b { font-size: 19px; }
+.cdi-caja i { font-style: normal; font-size: 13px; font-weight: 600; }
+.cdi-caja.ok { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 10%, transparent); color: var(--ok); }
+.cdi-caja.aviso { border-color: color-mix(in srgb, var(--aviso) 50%, transparent); background: color-mix(in srgb, var(--aviso) 12%, transparent); color: var(--aviso); }
+.cdi-caja.alerta { border-color: color-mix(in srgb, var(--alerta) 50%, transparent); background: color-mix(in srgb, var(--alerta) 10%, transparent); color: var(--alerta); }
+.cdi-caja.gris { border-color: var(--linea); background: var(--hoja-2); color: var(--tinta-2); }
+.cdi dl { margin: 0; display: grid; gap: 7px; }
+.cdi dl div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.cdi dt { color: var(--tinta-3); } .cdi dd { margin: 0; text-align: right; }
+.cdi-nota { margin: 12px 0 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--hoja-2); }
+.cdi-nota.aviso { color: var(--aviso); background: color-mix(in srgb, var(--aviso) 10%, transparent); }
+.cdi-nota.alerta { color: var(--alerta); background: color-mix(in srgb, var(--alerta) 9%, transparent); }
+.cdi details { margin-top: 12px; border-top: 1px solid var(--linea); padding-top: 10px; }
+.cdi summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--tinta-2); }
+.cdi-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+.cdi-tabla th { text-align: left; font-weight: 600; color: var(--tinta-3); padding: 4px 6px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+.cdi-tabla td { padding: 4px 6px; border-bottom: 1px solid color-mix(in srgb, var(--linea) 60%, transparent); }
+.cdi-tabla td.mono { text-align: right; }
+@media (max-width: 560px) { .cdi-discos { grid-template-columns: 1fr; } .cdi-cuerpo { grid-template-columns: 1fr; } }
+
+.f-nombre small .etq-estado { margin-right: 6px; vertical-align: 0; padding: 0 6px; font-size: 10.5px; }
+/* Cuentas: equipos que puede ver dentro de cada cliente */
+.eq-cuenta { display: grid; gap: 6px; margin-top: 6px; }
+.eq-cuenta details { border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; background: var(--hoja-2); }
+.eq-cuenta summary { cursor: pointer; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.eq-cuenta details[open] summary { margin-bottom: 4px; }
