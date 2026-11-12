@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.20.1 (noviembre de 2026)
+
+- Si el agente no puede leer la salud de los discos, la sección "Salud de los discos" muestra el motivo en lugar de no aparecer.
+
 ## 0.20.0 (noviembre de 2026)
 
 - **Salud de los discos, como CrystalDiskInfo** (agente de Windows 1.7.0). En la página de cada servidor físico, una tarjeta por disco con su estado (**Bueno**, **Precaución** o **Malo**), temperatura, horas y ciclos de encendido, sectores reasignados, pendientes e incorregibles, errores CRC, vida restante de los SSD y la tabla de atributos SMART. Lo lee con lo que trae Windows, sin instalar nada, cada 10 minutos. Las VM muestran que sus discos son virtuales; los discos detrás de una controladora RAID por hardware aparecen sin datos.

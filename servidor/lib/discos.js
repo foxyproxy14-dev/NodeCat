@@ -100,7 +100,9 @@ function evaluar(o) {
 
 /** Resumen corto para /api/estado (el detalle va aparte). */
 function resumen(s) {
-  if (!s || s.error || !s.discos) return null;
+  if (!s) return null;
+  if (s.error) return { error: true };   // la sección muestra el error en lugar de desaparecer
+  if (!s.discos) return null;
   const ds = s.discos.filter(d => !d.virtual);
   if (!ds.length) return s.virtual ? { virtual: true } : null;
   const orden = ['malo', 'precaucion', 'bueno', 'raid', 'desconocido'];
