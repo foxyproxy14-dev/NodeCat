@@ -1892,6 +1892,7 @@ iniciar();
 /* ---------------- Salud de los discos (como CrystalDiskInfo) y licencia de Escritorio remoto ---------------- */
 function rdsTxt(r) {
   const fin = r.dias ? new Date(Date.now() + r.dias * 864e5).toLocaleDateString('es', { day: 'numeric', month: 'long' }) : '';
+  if (r.estado === 'administracion') return '<span class="tenue">Solo administración remota (2 conexiones). Sin el rol de Host de sesión no hay periodo de gracia.</span>';
   if (r.estado === 'licenciado') return `<span class="punto ok" aria-hidden="true"></span> Licenciado: ${esc(r.licenciaTexto.toLowerCase())}, servidor ${esc(r.servidores.join(', '))}`;
   if (r.estado === 'vencido') return `<span class="etq-estado alerta">Periodo de gracia vencido</span> Los usuarios no pueden entrar por RDP. Licencia: ${esc(r.licenciaTexto.toLowerCase())}${r.servidores.length ? '' : ', sin servidor de licencias'}.`;
   if (r.dias == null) return `Licencia: ${esc(r.licenciaTexto.toLowerCase())}`;

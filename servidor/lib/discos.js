@@ -115,7 +115,8 @@ const LICENCIAS = { 0: 'Personal', 1: 'Administración remota', 2: 'Por disposit
 function limpiarRds(r) {
   if (!r || typeof r !== 'object') return null;
   const modo = num(r.modo, 0, 10), licencia = num(r.licencia, 0, 20);
-  if (modo !== 1) return null;   // sin el rol de Host de sesión no hay periodo de gracia
+  // Sin el rol de Host de sesión no hay periodo de gracia: solo las 2 conexiones de administración
+  if (modo !== 1) return { estado: 'administracion', dias: null, licencia, licenciaTexto: 'Administración remota', servidores: [], configurado: false };
   const servidores = (Array.isArray(r.servidores) ? r.servidores : []).slice(0, 8).map(x => txt(x, 100)).filter(Boolean);
   const dias = r.dias == null ? null : num(r.dias, 0, 365);
   const configurado = servidores.length > 0 && (licencia === 2 || licencia === 4 || licencia === 7);

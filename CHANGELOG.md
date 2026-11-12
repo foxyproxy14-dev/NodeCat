@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.20.2 (noviembre de 2026)
+
+- La ficha de los servidores Windows sin el rol de Host de sesión indica "Solo administración remota (2 conexiones)" en Escritorio remoto, para que se sepa que no tienen periodo de gracia.
+
 ## 0.20.1 (noviembre de 2026)
 
 - Si el agente no puede leer la salud de los discos, la sección "Salud de los discos" muestra el motivo en lugar de no aparecer.
