@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.20.4 (noviembre de 2026)
+
+- **Campanas personales por equipo.** Cada cuenta puede silenciar o activar los avisos de servidores, MikroTik, FortiGate, hipervisores y de cada VM o LXC. La elección se guarda para todos sus dispositivos (teléfono y PC), sin cambiar Telegram ni los avisos de otras cuentas. Silenciar un hipervisor incluye sus invitados; al activarlo se conservan las VM silenciadas individualmente. El monitoreo, el estado y el historial continúan guardándose.
+
 ## 0.20.3 (noviembre de 2026)
 
 - **Aviso cuando se actualiza un agente** (por Telegram y en los dispositivos): "agente actualizado de la 1.6.0 a la 1.7.0", tanto si se pidió desde el panel como si el agente de Linux se actualizó solo. Si una actualización pedida desde el panel no se completa en 15 minutos, avisa que no se pudo. Se activa o desactiva en Notificaciones.

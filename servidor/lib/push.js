@@ -100,7 +100,7 @@ function preferencias(usuario) {
 const hay = () => !!q('SELECT 1 FROM push_subs LIMIT 1').get();
 
 /** Manda un aviso a los dispositivos de las cuentas que deben recibirlo. */
-function notificar({ titulo, cuerpo, clienteId, tipo, equipo }) {
+function notificar({ titulo, cuerpo, clienteId, tipo, equipo, vm }) {
   if (!clienteId || !TIPOS[tipo]) return;
   const subs = q('SELECT * FROM push_subs').all();
   if (!subs.length) return;
@@ -114,6 +114,7 @@ function notificar({ titulo, cuerpo, clienteId, tipo, equipo }) {
     if (c.alcance && !c.alcance.includes(clienteId)) continue;          // solo sus clientes
     const lim = c.equipos && c.equipos[clienteId];
     if (lim && (!equipo || !lim.includes(equipo))) continue;            // y, si se limitó, solo sus equipos
+    if (equipo && require('./silencios').silenciado(u, equipo, vm)) continue;
     const p = preferencias(u);
     if (p.clientes && !p.clientes.includes(clienteId)) continue;        // los que eligió
     if (!p.tipos.includes(tipo)) continue;

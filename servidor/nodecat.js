@@ -148,7 +148,17 @@ ruta('DELETE', '/api/cuentas/:usuario/dos-pasos', soloAdmin, ({ p, sesion }) => 
 ruta('POST', '/api/clave', {}, ({ sesion, cuerpo }) => { auth.cambiarClave(sesion.usuario, cuerpo.actual, cuerpo.nueva); return { ok: true }; });
 
 // Estado e historial
-ruta('GET', '/api/estado', {}, ({ sesion }) => flota.estado(sesion));
+const silencios = require('./lib/silencios');
+ruta('GET', '/api/estado', {}, ({ sesion }) => ({ ...flota.estado(sesion), silencios: silencios.lista(sesion.usuario) }));
+ruta('PUT', '/api/equipos/:id/silencio', {}, ({ sesion, p, cuerpo }) => {
+  const e = equipoVisible(sesion, p.id);
+  if (typeof cuerpo.silenciado !== 'boolean' || (cuerpo.vm != null && typeof cuerpo.vm !== 'string')) throw error(400, 'Preferencia no válida.');
+  const vm = cuerpo.vm || '';
+  if (vm && !((flota.estado(sesion).clientes.find(c => c.id === e.cliente_id) || {}).equipos || [])
+    .find(x => x.id === e.id)?.vms?.some(v => String(v.id || v.nombre) === vm)) throw error(404, 'Esa máquina virtual no existe.');
+  silencios.guardar(sesion.usuario, e.id, vm, cuerpo.silenciado);
+  return { silencios: silencios.lista(sesion.usuario) };
+});
 function equipoVisible(sesion, id) {
   const e = flota.equipo(Number(id));
   if (!e || !flota.veEquipo(sesion, e.cliente_id, e.id)) throw error(404, 'Ese equipo no existe o no tienes acceso.');

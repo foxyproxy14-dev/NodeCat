@@ -176,10 +176,11 @@ async function cargar(forzar, sinPintar) {
     const e = await api('/api/estado');
     for (const c of e.clientes) c.equipos = arr(c.equipos).map(x => ({ ...x, clienteNombre: c.nombre, clienteId: c.id, sesiones: arr(x.sesiones), discos: arr(x.discos), historial: arr(x.historial) }));
     const nuevo = !estado || e.actualizado !== estado.actualizado;
+    if (estado) estado.silencios = e.silencios;
     vigilarCambios(e);
     estado = e;
     $('#aviso').hidden = true;
-    const v = `${e.actualizado}|${e.clientes.map(c => c.id + c.nombre + c.equipos.map(x => x.id + x.estado + x.ultimo + x.alias + x.sesiones.length).join()).join('|')}`;
+    const v = `${JSON.stringify(e.silencios)}|${e.actualizado}|${e.clientes.map(c => c.id + c.nombre + c.equipos.map(x => x.id + x.estado + x.ultimo + x.alias + x.sesiones.length).join()).join('|')}`;
     if (forzar || v !== version) {
       version = v;
       const r = rutaActual();
@@ -233,6 +234,7 @@ function vigilarCambios(e) {
 }
 // El gato de la barra lo cuenta en un bocadillo y pone la cara de la noticia
 function avisoGato(pose, titulo, texto, idEquipo, malo) {
+  if (idEquipo && (estado?.silencios || []).some(x => x.equipo === idEquipo && x.vm === '')) return;
   const cont = $('#bocadillos'), g = $('#barraGato');
   const r = g.getBoundingClientRect();
   cont.style.left = Math.max(8, r.left - 6) + 'px';
@@ -355,6 +357,7 @@ $('#nav').addEventListener('click', e => { const t = e.target.closest('[data-ir]
 function montar(r) {
   const v = $('#vista');
   v.onclick = e => {
+    const campana = e.target.closest('[data-campana]'); if (campana) { cambiarCampana(campana); return; }
     const c = e.target.closest('[data-cli]'); if (c) { ir('#/c/' + c.dataset.cli); return; }
     const q = e.target.closest('[data-eq]'); if (q) { ir('#/e/' + q.dataset.eq); return; }
   };
@@ -580,7 +583,7 @@ function filaCliente(c) {
     ${val(ram, 'Memoria más alta', m => nombreEq(m.x))}
     <span class="f-disco">${val(disco, 'Disco más lleno', m => `${nombreEq(m.x.e)} ${m.x.unidad}`)}</span>
     <span class="f-ses" data-etq="Sesiones"><span class="valor">${eq.length ? act : '—'}</span><small>${eq.length ? (act === 1 ? 'activa' : 'activas') : ''}</small></span>
-    ${ICO.flecha}</button>`;
+    ${ICO.flecha}</button></div>`;
 }
 
 /* ---------------- Últimos sucesos ---------------- */
@@ -722,7 +725,7 @@ function filaEquipo(s) {
   if (s.estado === 'desinstalado') sub = 'Agente desinstalado. Quítalo de la lista o vuelve a instalarlo.';
   if (s.estado === 'sinMetricas') sub = 'En línea, sin datos de CPU ni memoria';
   const vacio = '<span></span>';
-  return `<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
+  return `<div class="equipo-con-campana">${botonCampana(s.id)}<button type="button" class="fila ${esc(s.estado)}" data-eq="${s.id}" aria-label="${esc(nombreEq(s))}, ${esc(ESTADOS[s.estado])}. Abrir">
     <span class="f-nombre"${s.ipsLocales && s.ipsLocales.length ? ` title="IP local: ${esc(s.ipsLocales.join(', '))}"` : ''}>${conAvisoIco(insigniaSO(s), s.agenteNuevo ? `Agente ${s.version}: hay ${s.agenteNuevo.nueva}${s.agenteNuevo.actualizando ? ' (actualizando)' : ''}` : '')}<span><strong class="f-titulo"><span class="f-texto" title="${esc(nombreEq(s))}">${esc(nombreEq(s))}</span>${esHipervisor(s) ? `<span class="etq-hv">${s.tipo === 'proxmox' ? 'Proxmox' : esc(s.hipervisor === 'hyperv' || /hyper/i.test(s.hipervisor || '') ? 'Hyper-V' : (s.hipervisor || 'Hipervisor'))}</span>` : ''}</strong><small>${etqRds(s.rds)}${etqDisco(s.saludDiscos)}${esc(sub)}</small></span></span>
     ${sinDatos || s.cpu == null ? `<span class="f-cpu" data-etq="CPU"><span class="valor vacio-valor">—</span></span>` :
       `<span class="f-cpu" data-etq="CPU"><span class="valor">${s.cpu}<i>%</i></span>${chispa(s.historial, 'cpu', s.cpu)}</span>`}
@@ -815,6 +818,9 @@ function vistaEquipo(id) {
   const s = equipo(id); if (!s) return;
   $('#srvPunto').innerHTML = insigniaSO(s).replace('so-insignia', 'so-insignia grande');
   $('#srvNombre').textContent = nombreEq(s);
+  let cb = document.querySelector('#campanaEquipo');
+  if (!cb) { cb = document.createElement('span'); cb.id = 'campanaEquipo'; $('#srvNombre').after(cb); }
+  cb.innerHTML = botonCampana(s.id);
   const meta = [ESTADOS[s.estado]];
   if (s.so) meta.push(s.so);
   if (s.arranque && s.estado !== 'caido') meta.push(`encendido hace ${duracion(s.arranque)}`);
@@ -1030,7 +1036,7 @@ function tablaVms(s, vivo, datos) {
     const ram = v.ramMax ? Math.round((v.ram || 0) / v.ramMax * 100) : null;
     const dsk = v.discoMax ? Math.round((v.disco || 0) / v.discoMax * 100) : null;
     const ap = ips.get(String(v.id));
-    return `<tr class="${enc ? '' : 'apagada'}"><td><span class="punto ${k}" aria-hidden="true"></span><b>${esc(v.nombre)}</b>${v.id && s.tipo === 'proxmox' ? ` <span class="tenue">${esc(v.id)}</span>` : ''}${ap && ap.ips && ap.ips.length ? `<br><small class="tenue">${esc(ap.ips.join(', '))}</small>` : ''}</td>
+    return `<tr class="${enc ? '' : 'apagada'}"><td><span class="punto ${k}" aria-hidden="true"></span><b>${esc(v.nombre)}</b> ${botonCampana(s.id, String(v.id || v.nombre))}${v.id && s.tipo === 'proxmox' ? ` <span class="tenue">${esc(v.id)}</span>` : ''}${ap && ap.ips && ap.ips.length ? `<br><small class="tenue">${esc(ap.ips.join(', '))}</small>` : ''}</td>
       <td>${v.tipo === 'lxc' ? 'Contenedor LXC' : v.tipo === 'qemu' ? 'VM' : 'VM'}</td><td>${esc(t)}</td>
       <td class="num">${enc && v.cpu != null ? `${nf.format(Math.round(v.cpu))} %` : '—'}${v.cpus ? ` <span class="tenue">de ${v.cpus} ${v.cpus === 1 ? 'núcleo' : 'núcleos'}</span>` : ''}</td>
       <td class="num">${enc && v.ram != null ? `${gbs(v.ram)}${v.ramMax ? ` <span class="tenue">de ${gbs(v.ramMax)}</span>` : ''}` : v.ramMax ? `<span class="tenue">${gbs(v.ramMax)}</span>` : '—'}${ram != null && enc ? `<span class="carril mini n-${nivel(ram)}"><span style="width:${Math.min(100, ram)}%"></span></span>` : ''}</td>
@@ -1960,4 +1966,25 @@ function tarjetaSalud(x) {
         return `<tr><td><span class="punto ${mal ? 'caido' : ojo ? 'aviso' : 'ok'}" aria-label="${mal ? 'Por debajo del umbral' : ojo ? 'Atención' : 'Correcto'}"></span></td><td class="mono">${aid.toString(16).toUpperCase().padStart(2, '0')}</td><td>${esc(nombre)}</td><td class="mono">${act}</td><td class="mono">${peor}</td><td class="mono">${umb == null ? '—' : umb}</td><td class="mono">${nf.format(crudo)}</td></tr>`;
       }).join('')}</tbody></table></div></details>` : ''}
   </article>`;
+}
+
+
+function botonCampana(id, vm = '') {
+  const propios = (estado && estado.silencios || []).filter(x => x.equipo === id);
+  const heredado = !!vm && propios.some(x => x.vm === '');
+  const apagada = heredado || propios.some(x => x.vm === vm);
+  const texto = heredado ? 'Silenciada por el hipervisor. Activa su campana primero.'
+    : apagada ? 'Activar mis notificaciones' : 'Silenciar mis notificaciones';
+  return `<button type="button" class="btn chico campana ${apagada ? 'silenciada' : ''}" data-campana="${id}" data-vm="${esc(vm)}" aria-label="${texto}" title="${texto}" aria-pressed="${!apagada}" ${heredado ? 'disabled' : ''}>${apagada ? '🔕' : '🔔'}</button>`;
+}
+async function cambiarCampana(b) {
+  const id = Number(b.dataset.campana), vm = b.dataset.vm || '';
+  const silenciado = !(estado.silencios || []).some(x => x.equipo === id && x.vm === vm);
+  b.disabled = true;
+  try {
+    const r = await enviar(`/api/equipos/${id}/silencio`, 'PUT', { vm, silenciado });
+    estado.silencios = r.silencios;
+    document.querySelectorAll('[data-campana]').forEach(x => { x.outerHTML = botonCampana(Number(x.dataset.campana), x.dataset.vm || ''); });
+    aviso(silenciado ? 'Silenciado para tu cuenta en todos tus dispositivos.' : 'Notificaciones del equipo activadas para tu cuenta.');
+  } catch (x) { b.disabled = false; if (!x.login) aviso(x.message, true); }
 }

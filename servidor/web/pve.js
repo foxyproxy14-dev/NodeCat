@@ -119,7 +119,7 @@ function seccionVms(s, vivo, d) {
     const tipo = v.tipo === 'lxc' ? 'LXC' : 'VM';
     return `<article class="pm-vm ${enc ? '' : 'detenida'}" data-buscar="${esc([v.nombre, v.id, ...(ap && ap.ips || []), ...(v.ips || []), ...(v.etiquetas || [])].join(' ').toLowerCase())}" data-est="${enc ? 'on' : 'off'}">
       <header><span class="pm-estado ${k}"><span class="punto ${k}" aria-hidden="true"></span>${t}</span><span class="pm-tipo ${v.tipo === 'lxc' ? 'lxc' : 'vm'}">${tipo}</span>
-        <h3>${esc(v.nombre)}</h3>${pve && v.id ? `<span class="pm-id">ID: ${esc(v.id)}</span>` : ''}</header>
+        <h3>${esc(v.nombre)}</h3>${botonCampana(s.id, String(v.id || v.nombre))}${pve && v.id ? `<span class="pm-id">ID: ${esc(v.id)}</span>` : ''}</header>
       ${(v.etiquetas || []).length ? `<div class="pm-etiquetas">${v.etiquetas.map(e => `<span><i style="background:${colorEtiqueta(e)}"></i>${esc(e)}</span>`).join('')}</div>` : ''}
       <dl class="pm-datos">
         <div><dt>Encendida</dt><dd>${enc && v.uptime ? esc(durTxt(v.uptime * 1000)) : '—'}</dd></div>

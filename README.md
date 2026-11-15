@@ -141,6 +141,12 @@ Muestra los pasos y la barra de descarga e instala el servicio. Es la forma reco
 
 En el menú de tu cuenta → **Notificaciones en este dispositivo** → **Activar**. Llegan aunque NodeCat esté cerrado, solo de los clientes que tu cuenta puede ver, y eliges de cuáles y de qué tipo. El administrador decide en **Cuentas de acceso** qué cuentas pueden recibirlas. Necesita HTTPS y que el servidor de NodeCat tenga salida a Internet (a los servicios de notificaciones de Google, Mozilla, Apple y Microsoft). En iPhone, primero instala NodeCat en la pantalla de inicio.
 
+### Silenciar equipos para tu cuenta
+
+La campana junto a cada equipo permite silenciar o activar sus avisos en todos tus dispositivos (teléfono y PC). Es una preferencia personal: no cambia Telegram, los avisos de otras cuentas, el monitoreo ni el historial. Los filtros por cliente y tipo siguen aplicándose.
+
+En las tarjetas de VM y LXC también hay una campana individual. Silenciar un hipervisor silencia además los avisos de sus invitados; al activarlo se conservan las VM que habías silenciado por separado. Una VM con agente propio es otro equipo y tiene su propia campana.
+
 ## En el teléfono
 
 NodeCat se instala como app: en el iPhone, Safari → Compartir → **Añadir a la pantalla de inicio**; en Android, el navegador ofrece **Instalar**. El panel lo sugiere solo la primera vez (y está en el menú de la cuenta). Necesita HTTPS, como cuando lo publicas con Nginx Proxy Manager.

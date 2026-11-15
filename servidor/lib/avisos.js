@@ -241,7 +241,7 @@ const ESTADO_VM = { stopped: 'apagada', paused: 'en pausa', saved: 'guardada (es
 const canalActivo = () => A.activo || push().hay();
 const push = () => require('./push');
 function encolar(texto, clienteId, soloBot, extra) {
-  if (extra && extra.tipo && clienteId) { try { push().notificar({ ...push().desdeTexto(texto), clienteId, tipo: extra.tipo, equipo: extra.equipo }); } catch (e) { log('Notificaciones: ' + e.message); } }
+  if (extra && extra.tipo && clienteId) { try { push().notificar({ ...push().desdeTexto(texto), clienteId, tipo: extra.tipo, equipo: extra.equipo, vm: extra.vm }); } catch (e) { log('Notificaciones: ' + e.message); } }
   if (!A.activo) return;
   if (config.DEMO) texto = '<i>[demo]</i> ' + texto;
   cola.push({ texto, clienteId, soloBot });
@@ -307,7 +307,7 @@ function guardarEstado() {
 }
 
 function regla(clave, habilitada, enCondicion, despejada, minutos, alerta, fin, ahora, primera, clienteId, sinRecordar) {
-  const [eqId, tipoR] = clave.split('|'), extra = { tipo: TIPO_REGLA[tipoR], equipo: Number(eqId) || null };
+  const [eqId, tipoR, ...resto] = clave.split('|'), extra = { tipo: TIPO_REGLA[tipoR], equipo: Number(eqId) || null, vm: tipoR === 'vm' ? resto.join('|') : undefined };
   let st = estados.get(clave);
   if (!habilitada) { estados.delete(clave); return; }
   if (enCondicion == null) return;          // sin datos: no se cambia nada

@@ -1314,3 +1314,11 @@ body.iniciando .inicio-carga { display: grid; }
 .eq-cuenta details { border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; background: var(--hoja-2); }
 .eq-cuenta summary { cursor: pointer; font-size: 14px; display: flex; gap: 8px; align-items: center; }
 .eq-cuenta details[open] summary { margin-bottom: 4px; }
+
+/* Campanas personales: fuera del botón que abre el equipo. */
+.equipo-con-campana { position: relative; }
+.equipo-con-campana > .fila { padding-right: 68px; }
+.equipo-con-campana > .campana { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 1; }
+.campana { min-width: 40px; min-height: 40px; flex-shrink: 0; vertical-align: middle; font-size: 18px; }
+.campana.silenciada { opacity: .65; }
+.campana:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

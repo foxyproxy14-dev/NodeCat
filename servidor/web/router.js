@@ -56,7 +56,7 @@ function montarRouter(e, c) {
   $('#vista').innerHTML = `
     <nav class="miga" aria-label="Ruta"><a href="#/">Clientes</a>${ICO.miga}<a href="#/c/${c.id}">${esc(c.nombre)}</a>${ICO.miga}<span>${esc(e.nombre)}</span></nav>
     <section class="rt-cab">
-      <div><h1><span class="punto" id="rtPunto" aria-hidden="true"></span><span id="rtNombre"></span></h1><p id="rtMeta"></p></div>
+      <div><h1><span class="punto" id="rtPunto" aria-hidden="true"></span><span id="rtNombre"></span><span id="rtCampana"></span></h1><p id="rtMeta"></p></div>
       <div class="acciones"><span class="en-vivo" id="rtVivo"><i aria-hidden="true"></i>En vivo</span>${esAdmin() ? '<button class="btn" type="button" id="btnEditarRt">Editar</button>' : ''}</div>
     </section>
     <div id="rtAvisos"></div>
@@ -143,6 +143,7 @@ async function cargarSeccion(forzar) {
 }
 
 function vistaRouter(id) {
+  const cb = document.querySelector('#rtCampana'); if (cb) cb.innerHTML = botonCampana(id);
   const e = equipo(id); if (!e) return;
   const red = e.red || {}, vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
   $('#rtPunto').className = 'punto ' + e.estado;
@@ -475,13 +476,13 @@ function filaRouter(e) {
   const red = e.red || {}, vivo = e.estado === 'ok' || e.estado === 'sinMetricas', w = red.wan;
   let sub = e.estado === 'caido' ? (e.errorConexion || `Sin respuesta desde ${cuando(e.ultimo)}`) : e.estado === 'pendiente' ? (e.errorConexion || 'Conectando…') : (red.modelo ? `${red.modelo}, ${e.tipo === 'fortigate' ? 'FortiOS' : 'RouterOS'} ${red.version}` : e.so);
   const via = e.sonda && equipo(e.sonda) ? `<span class="via" title="Leído a través del agente de este servidor (sonda)">vía ${esc(equipo(e.sonda).alias || equipo(e.sonda).nombre)}</span>` : '';
-  return `<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
+  return `<div class="equipo-con-campana">${botonCampana(e.id)}<button type="button" class="fila rt ${esc(e.estado)}" data-eq="${e.id}" aria-label="${esc(e.nombre)}. Abrir">
     <span class="f-nombre">${conAvisoIco(insigniaSO(e), red.actualizacion && red.actualizacion.nueva ? `${red.actualizacion.producto} ${red.actualizacion.nueva} disponible (tiene ${red.actualizacion.actual})` : '')}<span><strong class="f-titulo"><span class="f-texto" title="${esc(e.nombre)}">${esc(e.nombre)}</span>${via}</strong><small>${esc(sub)}</small></span></span>
     ${vivo ? medidor(e.cpu, '', 'CPU') + medidor(e.ramPct, '', 'Memoria') : '<span></span><span></span>'}
     <span class="f-wan ${vivo && w && !w.activa ? 'caida' : ''}" data-etq="Internet">${!vivo || !w ? '<span class="tenue">—</span>' : (red.wans && red.wans.length > 1 && red.wans.some(x => !x.activa)) ? `<b>${esc(red.wans.filter(x => !x.activa).map(x => x.interfaz).join(', '))} caído</b><small>${red.wans.filter(x => x.activa).length} de ${red.wans.length} enlaces arriba</small>` : w.activa ? (w.rx == null ? `<span class="tenue">Midiendo…</span><small>${esc(w.interfaz)}</small>` : `<span><span class="b">↓ ${bps(w.rx)}</span>&nbsp;&nbsp;<span class="s">↑ ${bps(w.tx)}</span></span><small>${esc(w.interfaz)}${latCf(red)}</small>`) : `<b>WAN caído</b><small>${esc(w.interfaz)}</small>`}</span>
     <span class="f-extra f-ses" data-etq="Equipos y VPN">${vivo ? `<span class="valor">${red.dhcp == null ? '—' : red.dhcp}</span><small>con IP${red.vpnTotal ? `, VPN ${red.vpn}/${red.vpnTotal}` : ''}</small>` : ''}</span>
     <span class="f-up">${vivo ? esc(duracion(e.arranque)) : ''}</span>
-    ${ICO.flecha}</button>`;
+    ${ICO.flecha}</button></div>`;
 }
 
 /* ---------------- Alta y edición de routers ---------------- */
