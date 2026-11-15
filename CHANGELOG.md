@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.21.2 (noviembre de 2026)
+
+- Las campanas tienen una columna propia, sin superponerse con las sesiones activas y desconectadas. Las filas se adaptan al ancho de la tabla, también con el panel de sucesos al lado y en móvil.
+
 ## 0.21.1 (noviembre de 2026)
 
 - Nueva pose del gato asomándose junto a la sección que está consultando, con tamaño pequeño; la animación grande se reserva para el inicio.
