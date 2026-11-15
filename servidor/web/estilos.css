@@ -1350,6 +1350,17 @@ body.iniciando .inicio-carga { display: grid; }
 .campana.silenciada { opacity: .65; }
 .campana:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
+/* Las filas crecen para mostrar la información completa, sin puntos suspensivos. */
+.equipo-con-campana > .fila { padding-top: 14px; padding-bottom: 14px; }
+.fila .f-nombre strong, .fila .f-nombre small, .fila .f-titulo .f-texto,
+.fila .medidor small, .fila .f-wan small {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+.fila .f-nombre strong.f-titulo { flex-wrap: wrap; row-gap: 4px; }
+.fila .f-titulo .f-texto { flex: 0 1 auto; }
+.fila .f-nombre small, .fila .medidor small, .fila .f-wan small { line-height: 1.4; }
+.fila .f-nombre small { margin-top: 3px; }
+
 /* Secciones plegables y respuestas breves, sin desplazar el panel al navegar. */
 button.grupo-plegable { width: 100%; text-align: left; border-right: 0; border-left: 0; border-bottom: 0; cursor: pointer; font-family: inherit; }
 .grupo-plegable:hover { color: var(--tinta); }
