@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.21.1 (noviembre de 2026)
+
+- Nueva pose del gato asomándose junto a la sección que está consultando, con tamaño pequeño; la animación grande se reserva para el inicio.
+- Confirmaciones breves de guardado y copia junto al botón, sin mover los controles ni tapar el botón vecino en móvil.
+- Entrada suave del contenido al cambiar de cliente o equipo, solo con opacidad y sin desplazar el panel.
+
 ## 0.21.0 (noviembre de 2026)
 
 - Movimientos breves en las campanas, las barras de recursos, los equipos que cambian de estado y la navegación. Solo se animan los valores que cambian, sin repetir el efecto en cada lectura.

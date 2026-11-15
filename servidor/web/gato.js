@@ -23,6 +23,14 @@ function gatoCabeza(cx, cy, orejas = 'arriba') {
 }
 
 const GATO_POSES = {
+  asomando: () => `
+    <path class="g-asomo-borde" d="M16 80 H104" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".3"/>
+    <g class="g-asomo-cabeza">${gatoCabeza(60, 56)}
+      <g class="g-ojos"><ellipse cx="53" cy="54" rx="2.5" ry="3.4" fill="${GATO_C.tinta}"/><ellipse cx="67" cy="54" rx="2.5" ry="3.4" fill="${GATO_C.tinta}"/>
+        <circle cx="53.8" cy="53" r=".8" fill="#fff"/><circle cx="67.8" cy="53" r=".8" fill="#fff"/></g>
+    </g>
+    <g class="g-asomo-patas"><rect x="35" y="73" width="16" height="11" rx="5.5" fill="${GATO_C.pelo}"/><rect x="69" y="73" width="16" height="11" rx="5.5" fill="${GATO_C.pelo}"/>
+      <path d="M41 79 v3 M46 79 v3 M75 79 v3 M80 79 v3" stroke="${GATO_C.sombra}" stroke-width="1.3" stroke-linecap="round"/></g>`,
   reparando: () => `
     <g class="g-cola"><path d="M38 86 Q16 88 18 66 Q19 55 29 53" fill="none" stroke="${GATO_C.pelo}" stroke-width="7" stroke-linecap="round"/></g>
     <g class="g-cabeza">${gatoCabeza(63, 39)}
@@ -130,9 +138,9 @@ function gatoSVG(pose = 'reparando', etiqueta) {
   return `<svg class="gato g-${pose}" viewBox="0 0 120 100" ${etiqueta ? `role="img" aria-label="${etiqueta}"` : 'aria-hidden="true"'}>${f()}</svg>`;
 }
 
-// Bloque "cargando": el gato corre; si tarda más de 7 s se pone molesto
+// Carga local: el gato asoma junto al texto; la carrera grande queda para el inicio.
 function gatoCargando(texto = 'Cargando…', clase = '') {
-  return `<div class="gato-carga ${clase}" data-desde="${Date.now()}">${gatoSVG('corriendo')}<span>${texto}</span></div>`;
+  return `<div class="gato-carga carga-local ${clase}" role="status" data-desde="${Date.now()}">${gatoSVG('asomando')}<span>${texto}</span></div>`;
 }
 function gatoVacio(titulo, texto, extra = '') {
   return `<div class="hoja vacio gato-vacio">${gatoSVG('programando')}<strong>${titulo}</strong>${texto}${extra}</div>`;

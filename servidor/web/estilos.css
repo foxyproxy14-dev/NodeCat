@@ -1334,6 +1334,13 @@ button.grupo-plegable { width: 100%; text-align: left; border-right: 0; border-l
 .gato-carga { align-items: center; }
 .gato-carga > .gato { width: 64px; height: 54px; transform-origin: center bottom; animation: nc-asomar .35s ease-out .7s both; }
 @keyframes nc-asomar { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.gato-carga.carga-local { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 14px 16px; text-align: left; }
+.carga-local > .gato { flex: none; width: 58px; height: 49px; animation: none; }
+.g-asomando .g-asomo-cabeza { animation: nc-gato-asoma .48s cubic-bezier(.2,.8,.3,1) .7s both; }
+.g-asomando .g-asomo-patas { animation: nc-patas-asoman .25s ease-out .7s both; }
+@keyframes nc-gato-asoma { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes nc-patas-asoman { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.confirmacion-boton { position: fixed; z-index: 200; pointer-events: none; white-space: nowrap; font-size: 12px; line-height: 24px; padding: 0 7px; border-radius: 6px; background: var(--hoja); color: var(--tinta); border: 1px solid var(--linea); box-shadow: 0 2px 8px #0002; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

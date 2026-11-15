@@ -1172,6 +1172,7 @@ document.addEventListener('click', e => { if (!e.target.closest('#menu, #btnCuen
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu(); });
 
 function aviso(texto, error) {
+  if (!error) confirmarGuardado(texto);
   const d = document.createElement('div');
   d.className = 'toast' + (error ? ' error con-gato' : '');
   d.setAttribute('role', error ? 'alert' : 'status');
@@ -1283,7 +1284,7 @@ async function compartirCliente(id) {
     const m = dlg.querySelector('.msg.error');
     dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
     const bc = dlg.querySelector('[data-copiar]');
-    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#urlNueva'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } aviso('Enlace copiado.'); };
+    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#urlNueva'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } confirmarBoton(bc); aviso('Enlace copiado.'); };
     dlg.querySelector('[data-crear]').onclick = ev => ocupado(ev.currentTarget, 'Creando…', async () => {
       try {
         const g = dlg.querySelector('[name=grupo]');
@@ -1457,7 +1458,7 @@ async function editarCliente(id, despues) {
   };
   f.onsubmit = async ev => {
     ev.preventDefault();
-    try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value, grupo: f.grupo.value.trim() || null }); dlg.close(); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
+    try { await enviar(`/api/clientes/${id}`, 'PUT', { nombre: f.nombre.value, notas: f.notas.value, grupo: f.grupo.value.trim() || null }); await cerrarConConfirmacion(dlg); aviso('Cliente guardado.'); montada = null; await cargar(true); if (despues) despues(); }
     catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
 }
@@ -1475,7 +1476,7 @@ function editarEquipo(id) {
   const f = dlg.querySelector('form'), e = f.querySelector('.msg');
   f.onsubmit = async ev => {
     ev.preventDefault();
-    try { await enviar(`/api/equipos/${id}`, 'PUT', { alias: f.alias.value, cliente: +f.cliente.value, sede: f.sede.value }); dlg.close(); aviso('Cambios guardados.'); montada = null; await cargar(true); }
+    try { await enviar(`/api/equipos/${id}`, 'PUT', { alias: f.alias.value, cliente: +f.cliente.value, sede: f.sede.value }); await cerrarConConfirmacion(dlg); aviso('Cambios guardados.'); montada = null; await cargar(true); }
     catch (x) { if (!x.login) gatoDice(e, x.message) }
   };
   const bq = f.querySelector('[data-quitar]');
@@ -1624,7 +1625,7 @@ async function dosPasos() {
       <p style="margin-top:14px"><button class="btn" type="button" data-copiar>Copiar</button> <a class="btn" download="nodecat-codigos-recuperacion.txt" href="data:text/plain;charset=utf-8,${encodeURIComponent(texto)}">Descargar .txt</a></p>
       <div class="pie"><button class="btn prim" type="button" data-cerrar>Ya los guardé</button></div></div>`;
     dlg.querySelector('[data-cerrar]').onclick = () => { dlg.close(); aviso('Listo. La próxima vez que entres, NodeCat te pedirá el código.'); };
-    dlg.querySelector('[data-copiar]').onclick = async () => { try { await navigator.clipboard.writeText(texto); aviso('Códigos copiados.'); } catch { aviso('No se pudo copiar; descárgalos.', true); } };
+    dlg.querySelector('[data-copiar]').onclick = async () => { try { await navigator.clipboard.writeText(texto); confirmarBoton(dlg.querySelector('[data-copiar]')); aviso('Códigos copiados.'); } catch { aviso('No se pudo copiar; descárgalos.', true); } };
   };
   inicio();
 }
@@ -1883,7 +1884,7 @@ async function notificaciones() {
     for (const k of ['activo', 'caidas', 'cpu', 'ram', 'disco', 'firmware', 'fgSeguridad', 'nuevos', 'vms', 'smart', 'rds', 'agentes', 'resumen']) d[k] = f[k].checked;
     for (const k of ['caidaMin', 'cpuUmbral', 'cpuMin', 'ramUmbral', 'ramMin', 'discoUmbral', 'vmMin']) d[k] = +f[k].value;
     for (const c of estado.clientes) { const x = f['pc-' + c.id]; if (x && x.value.trim()) d.porCliente[c.id] = x.value; }
-    try { await enviar('/api/notificaciones', 'PUT', d); dlg.close(); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }
+    try { await enviar('/api/notificaciones', 'PUT', d); await cerrarConConfirmacion(dlg); aviso(d.activo ? 'Notificaciones guardadas y activadas.' : 'Notificaciones guardadas. Están desactivadas.'); }
     catch (x) { if (!x.login) error(x.message); }
   };
 }

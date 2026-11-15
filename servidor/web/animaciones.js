@@ -14,7 +14,7 @@ matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', e => {
   if (e.matches) for (const a of movimientosActivos) a.cancel();
 });
 function entradaVista() {
-  mover(document.querySelector('#vista'), [{ opacity: .45 }, { opacity: 1 }], { duration: 180 });
+  mover(document.querySelector('#vista'), [{ opacity: .55 }, { opacity: 1 }], { duration: 240 });
 }
 function claveFila(fila) {
   return fila.dataset.eq ? `equipo-${fila.dataset.eq}` : `vm-${fila.dataset.motionVm}`;
@@ -58,12 +58,40 @@ function animarCampana(id, vm, silenciado) {
     mover(b, silenciado ? [{ opacity: .3 }, { opacity: .65 }] : [{ rotate: '0deg' }, { rotate: '-14deg' }, { rotate: '12deg' }, { rotate: '0deg' }]);
   });
 }
-function confirmarBoton(b) {
-  if (!b) return;
-  const texto = b.textContent;
-  b.textContent = '✓ Copiado';
-  mover(b, [{ opacity: .5 }, { opacity: 1 }]);
-  setTimeout(() => { if (b.isConnected && b.textContent === '✓ Copiado') b.textContent = texto; }, 1600);
+function confirmarBoton(b, texto = 'Copiado') {
+  if (!b || !b.isConnected) return;
+  const anterior = b.nextElementSibling;
+  if (anterior?.classList.contains('confirmacion-boton')) anterior.remove();
+  const marca = document.createElement('span');
+  marca.className = 'confirmacion-boton';
+  marca.setAttribute('role', 'status');
+  marca.textContent = `✓ ${texto}`;
+  const r = b.getBoundingClientRect();
+  const siguiente = b.nextElementSibling?.getBoundingClientRect();
+  const alLado = r.right + 118 < window.innerWidth && (!siguiente || siguiente.left > r.right + 118 || siguiente.top >= r.bottom);
+  marca.style.left = `${alLado ? r.right + 8 : Math.max(8, Math.min(r.left, window.innerWidth - 118))}px`;
+  marca.style.top = `${alLado ? r.top + r.height / 2 - 12 : Math.max(4, r.top - 28)}px`;
+  b.after(marca);
+  mover(marca, [{ opacity: 0 }, { opacity: 1 }], { duration: 140 });
+  setTimeout(() => marca.remove(), 1800);
+}
+let botonGuardando = null, horaGuardado = 0;
+function recordarGuardar(b) {
+  if (b && /guardar/i.test(b.textContent)) { botonGuardando = b; horaGuardado = Date.now(); }
+}
+document.addEventListener('click', e => recordarGuardar(e.target.closest('button')), true);
+document.addEventListener('submit', e => recordarGuardar(e.submitter || e.target.querySelector('[type="submit"]')), true);
+function confirmarGuardado(texto) {
+  if (/guardad/i.test(texto) && Date.now() - horaGuardado < 30000) {
+    confirmarBoton(botonGuardando, 'Guardado');
+    botonGuardando = null;
+  }
+}
+async function cerrarConConfirmacion(dlg) {
+  const b = dlg.querySelector('[type="submit"]');
+  if (b) { b.disabled = true; confirmarBoton(b, 'Guardado'); }
+  if (!reducirMovimiento()) await new Promise(resolve => setTimeout(resolve, 650));
+  dlg.close();
 }
 function grupoEquipos(clave, titulo, resumen, contenido, clase = '') {
   const abierta = !gruposEquiposCerrados.has(clave);

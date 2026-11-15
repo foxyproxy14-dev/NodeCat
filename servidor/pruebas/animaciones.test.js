@@ -19,7 +19,7 @@ function entorno() {
     matchMedia: () => ({ get matches() { return reducir; }, addEventListener: (tipo, fn) => { cambio = fn; } }),
     location: { hash: '#/c/1' }, setTimeout,
     esc: s => String(s).replace(/[<"&]/g, c => ({ '<': '&lt;', '"': '&quot;', '&': '&amp;' }[c])),
-    document: { hidden: false, querySelectorAll: selector => selector.includes('carril') ? [barra] : selector.includes('motion-vm') ? [fila] : [], getElementById: () => cont }
+    document: { hidden: false, addEventListener() {}, querySelectorAll: selector => selector.includes('carril') ? [barra] : selector.includes('motion-vm') ? [fila] : [], getElementById: () => cont }
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'web', 'animaciones.js'), 'utf8'), contexto);
   return { contexto, barra, fila, animaciones, cont, boton, reducir: () => { reducir = true; cambio({ matches: true }); } };
@@ -54,4 +54,37 @@ test('el plegado persiste al redibujar y se abre sin animación con movimiento r
   e.contexto.alternarGrupoEquipos(e.boton);
   assert.equal(e.cont.hidden, false);
   assert.match(e.contexto.grupoEquipos('7', 'Hipervisor', '1', ''), /aria-expanded="true"/);
+});
+
+test('el indicador no cambia el botón ni tapa al vecino en móvil; navegar solo desvanece', () => {
+  const e = entorno();
+  let marca, temporizador;
+  e.contexto.window = { innerWidth: 390 };
+  e.contexto.setTimeout = fn => { temporizador = fn; };
+  e.contexto.document.createElement = () => ({ style: {}, setAttribute() {}, remove() { this.quitada = true; } });
+  const b = { isConnected: true, textContent: 'Guardar',
+    getBoundingClientRect: () => ({ left: 20, right: 100, top: 200, bottom: 240, height: 40 }),
+    nextElementSibling: { classList: { contains: () => false }, getBoundingClientRect: () => ({ left: 112, top: 200 }) },
+    after: el => { marca = el; } };
+  e.contexto.confirmarBoton(b, 'Guardado');
+  assert.equal(b.textContent, 'Guardar');
+  assert.equal(marca.textContent, '✓ Guardado');
+  assert.equal(marca.style.top, '172px');
+  temporizador(); assert.ok(marca.quitada);
+  e.contexto.document.querySelector = () => ({ animate: cuadros => { e.animaciones.push({ cuadros }); return { finished: Promise.resolve() }; } });
+  e.contexto.entradaVista();
+  const cuadros = e.animaciones.at(-1).cuadros;
+  assert.deepEqual(Object.keys(cuadros[0]), ['opacity']);
+  assert.deepEqual(Object.keys(cuadros[1]), ['opacity']);
+});
+
+test('las cargas de secciones usan la pose pequeña asomando', () => {
+  const fuente = fs.readFileSync(path.join(__dirname, '..', 'web', 'gato.js'), 'utf8');
+  const contexto = vm.createContext({});
+  vm.runInContext(fuente.slice(0, fuente.indexOf('setInterval(')), contexto);
+  const html = contexto.gatoCargando('Consultando discos');
+  assert.match(html, /g-asomando/);
+  assert.match(html, /g-asomo-cabeza/);
+  assert.match(html, /carga-local/);
+  assert.doesNotMatch(html, /g-corriendo/);
 });
