@@ -1322,3 +1322,18 @@ body.iniciando .inicio-carga { display: grid; }
 .campana { min-width: 40px; min-height: 40px; flex-shrink: 0; vertical-align: middle; font-size: 18px; }
 .campana.silenciada { opacity: .65; }
 .campana:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Secciones plegables y respuestas breves, sin desplazar el panel al navegar. */
+button.grupo-plegable { width: 100%; text-align: left; border-right: 0; border-left: 0; border-bottom: 0; cursor: pointer; font-family: inherit; }
+.grupo-plegable:hover { color: var(--tinta); }
+.grupo-plegable:focus-visible { outline: 2px solid var(--senal); outline-offset: -3px; }
+.grupo-flecha { margin-left: auto; font-size: 18px; transition: transform .18s ease; }
+.grupo-plegable[aria-expanded="false"] .grupo-flecha { transform: rotate(-90deg); }
+.grupo-equipos { overflow: hidden; }
+.grupo-equipos[hidden] { display: none; }
+.gato-carga { align-items: center; }
+.gato-carga > .gato { width: 64px; height: 54px; transform-origin: center bottom; animation: nc-asomar .35s ease-out .7s both; }
+@keyframes nc-asomar { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

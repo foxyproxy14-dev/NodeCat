@@ -89,6 +89,7 @@ function ocultarInicio() {
 
 function entrar(info) {
   SESION = info; CSRF = info.csrf;
+  gruposEquiposCerrados.clear();
   document.body.classList.remove('sin-sesion');
   document.body.classList.toggle('lector', !esAdmin());
   $('#acceso').hidden = true;
@@ -334,8 +335,10 @@ function render() {
   const esRouter = r.vista === 'equipo' && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo);
   document.body.classList.toggle('consola', esRouter);
   pintarNav(r);
-  if (montada !== r.clave) { montar(r); montada = r.clave; }
+  const nuevaVista = montada !== r.clave;
+  if (nuevaVista) { montar(r); montada = r.clave; }
   actualizar(r);
+  if (nuevaVista) entradaVista();
 }
 
 // Cliente en el que uno está (en su página, en uno de sus equipos o en sus sesiones): "Sesiones" muestra solo las suyas
@@ -357,6 +360,7 @@ $('#nav').addEventListener('click', e => { const t = e.target.closest('[data-ir]
 function montar(r) {
   const v = $('#vista');
   v.onclick = e => {
+    const grupo = e.target.closest('[data-grupo-equipos]'); if (grupo) { alternarGrupoEquipos(grupo); return; }
     const campana = e.target.closest('[data-campana]'); if (campana) { cambiarCampana(campana); return; }
     const c = e.target.closest('[data-cli]'); if (c) { ir('#/c/' + c.dataset.cli); return; }
     const q = e.target.closest('[data-eq]'); if (q) { ir('#/e/' + q.dataset.eq); return; }
@@ -495,12 +499,14 @@ function montar(r) {
 
 function actualizar(r = rutaActual()) {
   if (!estado) return;
+  const movimiento = fotoMovimiento();
   if (r.vista === 'resumen') vistaResumen();
   else if (r.vista === 'cliente') vistaCliente(r.id);
   else if (r.vista === 'sesiones') vistaSesiones(r);
   else if (r.vista === 'historial') vistaHistorial();
   else if (equipo(r.id) && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo)) vistaRouter(r.id);
   else vistaEquipo(r.id);
+  finalizarMovimiento(movimiento);
 }
 
 /* ---------------- Resumen de clientes ---------------- */
@@ -617,16 +623,16 @@ function porSede(lista, fila, cab, cuenta, separar) {
   const cuerpo = l => separar ? separar(l, fila, !!sedes.length) : l.map(fila).join('');
   if (!sedes.length) return cuerpo(lista);
   const grupos = [...sedes, SIN_SEDE].map(sd => [sd, lista.filter(e => (e.sede || SIN_SEDE) === sd)]).filter(([, l]) => l.length);
-  return grupos.map(([sd, l]) => `<div class="fila-grupo"><b>${sd === SIN_SEDE ? 'Sin sede' : esc(sd)}</b><span>${cuenta(l.length)}</span></div>${cuerpo(l)}`).join('');
+  return grupos.map(([sd, l]) => grupoEquipos(`sede-${l[0].cliente}-${cab ? 'red' : 'srv'}-${encodeURIComponent(sd)}`, sd === SIN_SEDE ? 'Sin sede' : sd, cuenta(l.length), cuerpo(l))).join('');
 }
 // Hipervisores (Proxmox, Hyper-V) separados de los servidores y VM, igual que las sedes. Solo si hay de los dos.
 const esHipervisor = e => e.tipo === 'proxmox' || !!e.hipervisor;
 function porRol(l, fila, dentro) {
   const hv = l.filter(esHipervisor), resto = l.filter(e => !esHipervisor(e));
   if (!hv.length) return l.map(fila).join('');
-  const cab = (t, n, tx) => `<div class="fila-grupo rol${dentro ? ' dentro' : ''}"><b>${t}</b><span>${tx(n)}</span></div>`;
-  return cab('Hipervisores', hv.length, n => plural(n, 'hipervisor', 'hipervisores')) + hv.map(fila).join('')
-    + (resto.length ? cab('Servidores y VM', resto.length, n => plural(n, 'servidor', 'servidores')) + resto.map(fila).join('') : '');
+  const bloque = (lista, tipo, titulo, contar) => grupoEquipos(`rol-${l[0].cliente}-${encodeURIComponent(l[0].sede || '')}-${tipo}`, titulo, contar(lista.length), lista.map(fila).join(''), `rol${dentro ? ' dentro' : ''}`);
+  return bloque(hv, 'hv', 'Hipervisores', n => plural(n, 'hipervisor', 'hipervisores'))
+    + (resto.length ? bloque(resto, 'srv', 'Servidores y VM', n => plural(n, 'servidor', 'servidores')) : '');
 }
 function vistaCliente(id) {
   const c = cliente(id), todosCli = c.equipos;
@@ -1169,7 +1175,7 @@ function aviso(texto, error) {
   const d = document.createElement('div');
   d.className = 'toast' + (error ? ' error con-gato' : '');
   d.setAttribute('role', error ? 'alert' : 'status');
-  if (error) { d.innerHTML = gatoSVG('avergonzado'); d.append(texto); caraDeGato('avergonzado', 5000); } else d.textContent = texto;
+  if (error) { d.innerHTML = gatoSVG('avergonzado'); d.append(texto); caraDeGato('avergonzado', 5000); } else { d.textContent = '✓ ' + texto; }
   $('#avisos').appendChild(d);
   setTimeout(() => d.remove(), error ? 9000 : 4500);
 }
@@ -1234,7 +1240,7 @@ async function agregarServidores(id, tipo = 'windows') {
     dlg.querySelector('[data-cerrar]').onclick = () => dlg.close();
     dlg.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tipo = b.dataset.t; pintar(); });
     const bc = dlg.querySelector('[data-copiar]');
-    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#cmdLinux'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } aviso('Comando copiado.'); };
+    if (bc) bc.onclick = async () => { const i = dlg.querySelector('#cmdLinux'); i.select(); try { await navigator.clipboard.writeText(i.value); } catch { document.execCommand('copy'); } confirmarBoton(bc); aviso('Comando copiado.'); };
     const bn = dlg.querySelector('[data-nueva-clave]');
     let seguro = false;
     bn.onclick = async () => {
@@ -1985,6 +1991,7 @@ async function cambiarCampana(b) {
     const r = await enviar(`/api/equipos/${id}/silencio`, 'PUT', { vm, silenciado });
     estado.silencios = r.silencios;
     document.querySelectorAll('[data-campana]').forEach(x => { x.outerHTML = botonCampana(Number(x.dataset.campana), x.dataset.vm || ''); });
+    animarCampana(id, vm, silenciado);
     aviso(silenciado ? 'Silenciado para tu cuenta en todos tus dispositivos.' : 'Notificaciones del equipo activadas para tu cuenta.');
   } catch (x) { b.disabled = false; if (!x.login) aviso(x.message, true); }
 }

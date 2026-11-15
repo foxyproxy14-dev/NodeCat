@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.21.0 (noviembre de 2026)
+
+- Movimientos breves en las campanas, las barras de recursos, los equipos que cambian de estado y la navegación. Solo se animan los valores que cambian, sin repetir el efecto en cada lectura.
+- Sedes y grupos de hipervisores plegables, con controles de teclado y estado conservado mientras se usa la cuenta en esa pestaña.
+- El gato asoma en las cargas de secciones; confirmaciones con una marca de verificación y botón de copiar con respuesta breve.
+- Todas las animaciones nuevas respetan «reducir movimiento», también si se activa mientras el panel está abierto.
+
 ## 0.20.5 (noviembre de 2026)
 
 - Corrige la alineación de las campanas en las filas de servidores e hipervisores, también cuando se agrupan por sede.
