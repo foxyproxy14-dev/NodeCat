@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.20.5 (noviembre de 2026)
+
+- Corrige la alineación de las campanas en las filas de servidores e hipervisores, también cuando se agrupan por sede.
+
 ## 0.20.4 (noviembre de 2026)
 
 - **Campanas personales por equipo.** Cada cuenta puede silenciar o activar los avisos de servidores, MikroTik, FortiGate, hipervisores y de cada VM o LXC. La elección se guarda para todos sus dispositivos (teléfono y PC), sin cambiar Telegram ni los avisos de otras cuentas. Silenciar un hipervisor incluye sus invitados; al activarlo se conservan las VM silenciadas individualmente. El monitoreo, el estado y el historial continúan guardándose.

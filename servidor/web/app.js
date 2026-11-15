@@ -583,7 +583,7 @@ function filaCliente(c) {
     ${val(ram, 'Memoria más alta', m => nombreEq(m.x))}
     <span class="f-disco">${val(disco, 'Disco más lleno', m => `${nombreEq(m.x.e)} ${m.x.unidad}`)}</span>
     <span class="f-ses" data-etq="Sesiones"><span class="valor">${eq.length ? act : '—'}</span><small>${eq.length ? (act === 1 ? 'activa' : 'activas') : ''}</small></span>
-    ${ICO.flecha}</button></div>`;
+    ${ICO.flecha}</button>`;
 }
 
 /* ---------------- Últimos sucesos ---------------- */
@@ -733,7 +733,7 @@ function filaEquipo(s) {
       medidor(dm ? dm.pct : null, dm ? `${dm.unidad} con ${nf.format(dm.libre)} GB libres` : '', 'Disco más lleno')}
     ${sinDatos ? vacio : `<span class="f-ses" data-etq="Sesiones"><span class="valor">${act}</span><small>${act === 1 ? 'activa' : 'activas'}${dsc ? `, ${dsc} desc.` : ''}</small></span>`}
     <span class="f-up">${sinDatos ? '' : esc(duracion(s.arranque))}</span>
-    ${ICO.flecha}</button>`;
+    ${ICO.flecha}</button></div>`;
 }
 
 /* ---------------- Sesiones ---------------- */
