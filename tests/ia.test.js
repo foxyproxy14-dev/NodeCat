@@ -83,8 +83,8 @@ test('IA: ruta de respaldo inactiva pero habilitada no es una falla', () => {
   ] });
   assert.equal(x.rutas[1].activa, false);
   assert.equal(x.rutas[1].habilitada, true);
-  assert.equal(x.tablasResumen[0].posiblesRespaldosPorDistancia, 1);
-  assert.match(x.tablasResumen[0].evaluacion, /No se ha verificado la conmutación/);
+  assert.equal(x.tablasResumen[0].respaldosHabilitadosConfirmados, 1);
+  assert.equal(x.tablasResumen[0].failoverVerificado, false);
   assert.equal(x.rutas[0].checkGateway, 'ping');
 });
 test('IA: ruta administrativamente deshabilitada no cuenta como respaldo', () => {
@@ -92,11 +92,29 @@ test('IA: ruta administrativamente deshabilitada no cuenta como respaldo', () =>
     { 'dst-address': '0.0.0.0/0', distance: 1, active: true, disabled: false },
     { 'dst-address': '0.0.0.0/0', distance: 2, active: false, disabled: true }
   ] });
-  assert.equal(x.tablasResumen[0].posiblesRespaldosPorDistancia, 0);
+  assert.equal(x.tablasResumen[0].respaldosHabilitadosConfirmados, 0);
 });
 test('IA: estados ausentes no se inventan', () => {
   const x = resumirRutasMikroTik({ rutas: [{ 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1' }] });
   assert.equal(x.rutas[0].activa, null);
   assert.equal(x.rutas[0].habilitada, null);
   assert.equal(x.rutas[0].distancia, null);
+});
+
+test('IA: distancia mayor con estado administrativo desconocido no confirma respaldo', () => {
+  const x = resumirRutasMikroTik({ rutas: [
+    { 'dst-address': '0.0.0.0/0', distance: 1, active: true, disabled: false },
+    { 'dst-address': '0.0.0.0/0', distance: 2 }
+  ] });
+  assert.equal(x.tablasResumen[0].respaldosHabilitadosConfirmados, 0);
+  assert.equal(x.tablasResumen[0].respaldosConEstadoDesconocido, 1);
+  assert.equal(x.tablasResumen[0].estadosDesconocidos, true);
+  assert.match(x.tablasResumen[0].conclusion, /no confirmado/);
+});
+test('IA: identifica ECMP potencial solo con rutas habilitadas', () => {
+  const x = resumirRutasMikroTik({ rutas: [
+    { 'dst-address': '0.0.0.0/0', distance: 1, disabled: false },
+    { 'dst-address': '0.0.0.0/0', distance: 1, disabled: false }
+  ] });
+  assert.equal(x.tablasResumen[0].ecmpPotencial, true);
 });
