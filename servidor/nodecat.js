@@ -180,6 +180,7 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 // Se envía únicamente un resumen limitado de telemetría; nunca configuración ni claves.
 const openrouterIA = require('./lib/openrouter-ia');
 const { resumirTelemetria, resumirRutasMikroTik } = require('./lib/contexto-ia');
+const firewallIA = require('./lib/firewall-ia');
 ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
   const e = routerVisible(sesion, cuerpo.equipoId);
   // Usar el registro ya recopilado, sin conectar al router ni ejecutar nuevos comandos.
@@ -192,6 +193,10 @@ ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
       contexto.enrutamiento = resumirRutasMikroTik(rutas);
     } catch {
       contexto.enrutamiento = { disponible: false, motivo: 'No se pudieron consultar rutas en este momento' };
+    }
+    // Solo ante preguntas relacionadas: lectura RouterOS con proplist restringida.
+    if (firewallIA.detectar(cuerpo.pregunta).length) {
+      contexto.firewall = await firewallIA.obtener(mikrotik, e.id, cuerpo.pregunta);
     }
   } else {
     contexto.enrutamiento = { disponible: false, motivo: 'Resumen de rutas FortiGate pendiente de implementación' };
