@@ -2,7 +2,8 @@
 // Cliente OpenRouter para consultas manuales de diagnóstico. Sin comandos ni credenciales de routers.
 const https = require('node:https');
 const MODELO = process.env.OPENROUTER_MODEL || 'openrouter/free';
-const ESPERA_MS = 22000;
+// Los modelos gratuitos pueden tardar en arrancar o procesar contextos largos.
+const ESPERA_MS = 90000;
 const ultimo = new Map();
 const MAX_POR_HORA = 10;
 const historial = new Map();
@@ -55,7 +56,14 @@ function consultar({ usuario, equipo, pregunta, contexto }) {
       });
     });
     req.on('timeout', () => req.destroy(new Error('Tiempo de espera agotado.')));
-    req.on('error', () => reject(Object.assign(new Error('No se pudo consultar OpenRouter. Inténtalo más tarde.'), { status: 502 })));
+    req.on('error', err => {
+      // Solo metadatos técnicos; nunca registrar cabeceras, prompts ni API keys.
+      console.error('OpenRouter: fallo de transporte', { code: err.code || 'UNKNOWN', message: err.message, model: MODELO });
+      const agotado = err.message === 'Tiempo de espera agotado.';
+      reject(Object.assign(new Error(agotado
+        ? 'OpenRouter tardó demasiado en responder (90 segundos). Prueba de nuevo o usa un modelo más rápido.'
+        : 'Falló la conexión con OpenRouter (' + (err.code || 'UNKNOWN') + '). Revisa los registros.'), { status: agotado ? 504 : 502 }));
+    });
     req.end(cuerpo);
   });
 }
