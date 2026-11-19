@@ -179,12 +179,23 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 // Asistente IA: consulta manual, solo lectura, con permisos por equipo.
 // Se envía únicamente un resumen limitado de telemetría; nunca configuración ni claves.
 const openrouterIA = require('./lib/openrouter-ia');
-const { resumirTelemetria } = require('./lib/contexto-ia');
+const { resumirTelemetria, resumirRutasMikroTik } = require('./lib/contexto-ia');
 ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
   const e = routerVisible(sesion, cuerpo.equipoId);
   // Usar el registro ya recopilado, sin conectar al router ni ejecutar nuevos comandos.
   const registro = flota.vivo.get(e.id);
   const contexto = resumirTelemetria(registro);
+  // Consulta adicional opcional, solo lectura. Nunca se remiten rutas completas.
+  if (e.tipo === 'mikrotik') {
+    try {
+      const rutas = await mikrotik.seccion(e.id, 'rutas');
+      contexto.enrutamiento = resumirRutasMikroTik(rutas);
+    } catch {
+      contexto.enrutamiento = { disponible: false, motivo: 'No se pudieron consultar rutas en este momento' };
+    }
+  } else {
+    contexto.enrutamiento = { disponible: false, motivo: 'Resumen de rutas FortiGate pendiente de implementación' };
+  }
   return openrouterIA.consultar({ usuario: sesion.usuario, equipo: e, pregunta: cuerpo.pregunta, contexto });
 });
 
