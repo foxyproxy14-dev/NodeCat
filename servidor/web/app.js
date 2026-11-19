@@ -512,40 +512,58 @@ function actualizar(r = rutaActual()) {
   finalizarMovimiento(movimiento);
 }
 
-/* ---------------- Asistente IA: interfaz inicial sin conexiones externas ---------------- */
+/* ---------------- Asistente IA: consultas manuales de solo lectura ---------------- */
 function montarAsistente() {
   const routers = equipos().filter(e => ['mikrotik', 'fortigate'].includes(e.tipo));
   const v = $('#vista');
   v.innerHTML = `
     <section class="titular"><h1>Asistente IA</h1>
-      <p>Diagnósticos de red desde NodeCat · Versión preliminar de solo lectura</p></section>
+      <p>Diagnósticos orientativos de red · OpenRouter · Solo lectura</p></section>
     <div class="dos-col">
       <section class="hoja" style="padding:24px">
-        <div class="cab-seccion"><h2>Consulta de red</h2><span class="tenue">Preparación</span></div>
-        <label class="campo">Dispositivo
-          <select id="iaEquipo" class="selector">
-            <option value="">Selecciona un dispositivo</option>
-            ${routers.map(e => `<option value="${e.id}">${esc(e.clienteNombre || '')} · ${esc(nombreEq(e))}</option>`).join('')}
-          </select>
-        </label>
-        <label class="campo">¿Qué necesitas analizar?
-          <textarea id="iaPregunta" rows="5" maxlength="2000" placeholder="Ej.: Revisa el failover de este MikroTik" style="width:100%;resize:vertical" disabled></textarea>
-        </label>
-        <button class="btn prim" type="button" disabled>Analizar con IA</button>
-        <p class="ayuda" role="status">El asistente aún no está conectado a un proveedor de IA.
-          Esta pantalla no envía información de clientes ni ejecuta comandos.</p>
+        <div class="cab-seccion"><h2>Consulta de red</h2><span class="tenue">Modelo gratuito</span></div>
+        <form id="iaFormulario">
+          <label class="campo">Dispositivo
+            <select id="iaEquipo" class="selector" required>
+              <option value="">Selecciona un dispositivo</option>
+              ${routers.map(e => `<option value="${e.id}">${esc(e.clienteNombre || '')} · ${esc(nombreEq(e))}</option>`).join('')}
+            </select>
+          </label>
+          <label class="campo">¿Qué necesitas analizar?
+            <textarea id="iaPregunta" rows="5" minlength="10" maxlength="2000" required placeholder="Ej.: ¿Qué comprobaciones recomiendas para diagnosticar el failover?" style="width:100%;resize:vertical"></textarea>
+          </label>
+          <button class="btn prim" id="iaEnviar" type="submit" ${routers.length ? '' : 'disabled'}>Analizar con IA</button>
+        </form>
+        <p class="ayuda" id="iaEstado" role="status">Se enviará tu pregunta y un resumen mínimo del estado del equipo. No se ejecutan comandos.</p>
+        <div id="iaResultado" class="hoja" style="padding:16px;margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere" hidden></div>
       </section>
       <aside class="hoja" style="padding:24px">
-        <h2>Próximas funciones</h2>
-        <p>Diagnóstico de rutas y failover, revisión de interfaces WAN, VPN y firewall.</p>
-        <p>Primero habilitaremos consultas de solo lectura con permisos por cliente.
-          Los cambios de configuración requerirán autorización explícita.</p>
+        <h2>Antes de consultar</h2>
+        <p>La IA puede equivocarse. Verifica los comandos sugeridos antes de aplicarlos.</p>
+        <p>No incluyas contraseñas, claves, configuraciones completas ni datos sensibles de clientes en la pregunta.</p>
+        <p>Máximo 10 consultas por hora y una cada 15 segundos por usuario. El proveedor también aplica sus propios límites.</p>
       </aside>
     </div>`;
-  if (!routers.length) {
-    const sel = $('#iaEquipo');
-    sel.innerHTML = '<option value="">No hay dispositivos de red disponibles</option>';
-  }
+  $('#iaFormulario').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const id = Number($('#iaEquipo').value), pregunta = $('#iaPregunta').value.trim();
+    const boton = $('#iaEnviar'), status = $('#iaEstado'), salida = $('#iaResultado');
+    if (!id || pregunta.length < 10) return;
+    boton.disabled = true;
+    status.textContent = 'Consultando OpenRouter…';
+    salida.hidden = true;
+    try {
+      const d = await enviar('/api/ia/analizar', 'POST', { equipoId: id, pregunta });
+      if (!document.contains(salida)) return;
+      salida.textContent = d.respuesta;
+      salida.hidden = false;
+      status.textContent = 'Modelo: ' + (d.modelo || 'gratuito') + ' · Diagnóstico orientativo, solo lectura.';
+    } catch (e) {
+      if (document.contains(status)) status.textContent = e.message;
+    } finally {
+      if (document.contains(boton)) boton.disabled = false;
+    }
+  });
 }
 
 /* ---------------- Resumen de clientes ---------------- */
