@@ -179,15 +179,12 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 // Asistente IA: consulta manual, solo lectura, con permisos por equipo.
 // Se envía únicamente un resumen limitado de telemetría; nunca configuración ni claves.
 const openrouterIA = require('./lib/openrouter-ia');
+const { resumirTelemetria } = require('./lib/contexto-ia');
 ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
   const e = routerVisible(sesion, cuerpo.equipoId);
-  const vivo = modRed(e).vivo(e.id) || {};
-  const contexto = {
-    estado: String(vivo.estado || 'no determinado').slice(0, 60),
-    tipo: e.tipo,
-    // No se envían direcciones, inventarios, configuraciones, logs ni credenciales.
-    telemetriaDisponible: !!vivo.serie
-  };
+  // Usar el registro ya recopilado, sin conectar al router ni ejecutar nuevos comandos.
+  const registro = flota.vivo.get(e.id);
+  const contexto = resumirTelemetria(registro);
   return openrouterIA.consultar({ usuario: sesion.usuario, equipo: e, pregunta: cuerpo.pregunta, contexto });
 });
 
