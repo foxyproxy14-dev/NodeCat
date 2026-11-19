@@ -35,3 +35,8 @@ body.sin-sesion #nodecatAiWidget, body.iniciando #nodecatAiWidget { display:none
  #ncaiPanel { width:calc(100vw - 24px); height:min(640px,calc(100dvh - 100px)); }
  #ncaiToggle { padding:12px 15px; }
 }
+
+/* Mascota original: mismo SVG que usa el resto de NodeCat. */
+.ncai-avatar .gato { width:34px; height:31px; display:block; }
+.ncai-toggle-gato { display:inline-flex; width:28px; height:28px; align-items:center; justify-content:center; }
+.ncai-toggle-gato .gato { display:block; width:32px; height:28px; }
