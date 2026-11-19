@@ -64,21 +64,36 @@ function resumirRutasMikroTik(datos) {
       gatewayDefinido: !!r.gateway
     };
   });
+  // Diagnóstico local determinista: jamás convertir un valor desconocido en falso.
   const tablasResumen = [...new Set(rutas.map(r => r.tabla))].map(tabla => {
     const rs = rutas.filter(r => r.tabla === tabla);
-    const distancias = rs.filter(r => r.habilitada !== false && r.distancia !== null).map(r => r.distancia);
+    const habilitadas = rs.filter(r => r.habilitada === true);
+    const estadoDesconocido = rs.some(r => r.habilitada === null || r.activa === null);
+    const distancias = habilitadas.filter(r => r.distancia !== null).map(r => r.distancia);
     const minima = distancias.length ? Math.min(...distancias) : null;
-    const candidatos = rs.filter(r => r.habilitada !== false && r.distancia !== null && r.distancia > minima);
-    const ecmp = minima !== null && rs.filter(r => r.habilitada !== false && r.distancia === minima).length > 1;
+    const candidatosConfirmados = rs.filter(r => r.habilitada === true && minima !== null && r.distancia !== null && r.distancia > minima);
+    const candidatosPosibles = rs.filter(r => r.habilitada === null && minima !== null && r.distancia !== null && r.distancia > minima);
+    const ecmp = minima !== null && habilitadas.filter(r => r.distancia === minima).length > 1;
+    const checksPing = rs.filter(r => r.checkGateway === 'ping').length;
+    const alertas = [];
+    if (ecmp) alertas.push('Varias rutas habilitadas comparten la menor distancia: revisar posible ECMP.');
+    if (checksPing) alertas.push('check-gateway=ping no confirma acceso real a Internet ni demuestra failover.');
+    if (estadoDesconocido) alertas.push('Hay estados administrativos o activos desconocidos; no inferirlos.');
+    if (!candidatosConfirmados.length && candidatosPosibles.length)
+      alertas.push('Hay rutas de mayor distancia, pero falta confirmar si están habilitadas.');
+    if (!candidatosConfirmados.length && !candidatosPosibles.length)
+      alertas.push('No se identificó un respaldo de mayor distancia confirmado.');
     return {
-      tabla,
-      rutas: rs.length,
-      rutaPreferidaDistancia: minima,
-      posiblesRespaldosPorDistancia: candidatos.length,
-      ecmpPotencial: ecmp,
-      evaluacion: candidatos.length
-        ? 'Hay rutas de mayor distancia candidatas a respaldo; que no estén activas puede ser normal. No se ha verificado la conmutación.'
-        : 'No se identificaron rutas de mayor distancia habilitadas; no se puede confirmar respaldo.'
+      tabla, rutas: rs.length, rutaPreferidaDistancia: minima,
+      respaldosHabilitadosConfirmados: candidatosConfirmados.length,
+      respaldosConEstadoDesconocido: candidatosPosibles.length,
+      ecmpPotencial: ecmp, estadosDesconocidos: estadoDesconocido,
+      failoverVerificado: false, alertas,
+      conclusion: candidatosConfirmados.length
+        ? 'Existe al menos una ruta habilitada de mayor distancia; respaldo potencial, conmutación no verificada.'
+        : candidatosPosibles.length
+          ? 'Hay rutas de mayor distancia con estado administrativo desconocido; respaldo no confirmado.'
+          : 'No hay respaldo habilitado de mayor distancia confirmado; no se puede asegurar failover.'
     };
   });
   return {
