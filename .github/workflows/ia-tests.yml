@@ -1,0 +1,24 @@
+name: Pruebas NodeCat IA
+on:
+  push:
+    branches: [feature/asistente-ia]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxis del backend y la interfaz
+        run: |
+          node --check servidor/nodecat.js
+          node --check servidor/lib/openrouter-ia.js
+          node --check servidor/lib/diagnostico-ia.js
+          node --check servidor/web/app.js
+      - name: Pruebas unitarias sin credenciales externas
+        run: node --test tests/ia.test.js
