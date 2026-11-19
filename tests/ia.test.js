@@ -56,3 +56,22 @@ test('IA: indica telemetria ausente u obsoleta', () => {
   const x = resumirTelemetria({ ultimo_contacto: 1000, datos: {} }, 200000);
   assert.equal(x.obsoleta, true);
 });
+
+const { resumirRutasMikroTik } = require('../servidor/lib/contexto-ia');
+test('IA: resumen de rutas conserva distancias y oculta gateways', () => {
+  const x = resumirRutasMikroTik({ rutas: [
+    { 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1', 'routing-table': 'main', distance: '1', active: 'true', comment: 'ISP privado' },
+    { 'dst-address': '0.0.0.0/0', gateway: '198.51.100.1', 'routing-table': 'main', distance: '2', active: 'false' },
+    { 'dst-address': '10.0.0.0/8', gateway: '10.0.0.1', active: 'true' }
+  ] });
+  assert.equal(x.totalRutasDefault, 2);
+  assert.equal(x.rutas[0].distancia, 1);
+  assert.equal(x.rutas[1].activa, false);
+  const serial = JSON.stringify(x);
+  for (const secreto of ['192.0.2.1', '198.51.100.1', '10.0.0.1', 'ISP privado', 'main'])
+    assert.equal(serial.includes(secreto), false);
+});
+test('IA: ruta ausente no se interpreta como ruta activa', () => {
+  const x = resumirRutasMikroTik({ rutas: [{ 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1', distance: 1 }] });
+  assert.equal(x.rutas[0].activa, false);
+});
