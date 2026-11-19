@@ -4,6 +4,11 @@
   const root = document.getElementById('nodecatAiWidget');
   if (!root) return;
   let abierto = false, ocupado = false, equipoActual = '', historial = [], usuarioActual = null, solicitud = 0;
+  // Reutilizar exactamente el SVG original de la mascota de NodeCat.
+  if (typeof gatoSVG === 'function') {
+    root.querySelector('.ncai-avatar').innerHTML = gatoSVG('asomando');
+    root.querySelector('.ncai-toggle-gato').innerHTML = gatoSVG('asomando');
+  }
   const boton = root.querySelector('#ncaiToggle');
   const panel = root.querySelector('#ncaiPanel');
   const cerrar = root.querySelector('#ncaiCerrar');
