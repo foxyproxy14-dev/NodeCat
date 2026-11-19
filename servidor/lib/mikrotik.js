@@ -287,6 +287,12 @@ function vivo(id, desde) {
 }
 
 const SECCIONES = {
+  // Separate snapshots: preserve all matchers and order before anonymizing and truncating.
+  // Commands are fixed and read-only, also when relayed through a probe.
+  'ia-filter': con => con.imprimir('/ip/firewall/filter/print'),
+  'ia-nat': con => con.imprimir('/ip/firewall/nat/print'),
+  'ia-mangle': con => con.imprimir('/ip/firewall/mangle/print'),
+  'ia-listas': con => con.imprimir('/ip/firewall/address-list/print'),
   async dhcp(con) {
     const l = await con.imprimir('/ip/dhcp-server/lease/print', { proplist: ['address', 'active-address', 'mac-address', 'active-mac-address', 'host-name', 'status', 'server', 'comment', 'last-seen', 'dynamic', 'disabled'] });
     return l.map(x => ({ ip: x['active-address'] || x.address, mac: x['active-mac-address'] || x['mac-address'], nombre: x['host-name'] || '', estado: x.status || '', servidor: x.server || '', comentario: x.comment || '', visto: segundos(x['last-seen']), dinamica: si(x.dynamic), deshabilitada: si(x.disabled) }));
@@ -444,3 +450,4 @@ function arrancar(sim) {
 }
 
 module.exports = { arrancar, herramienta, probar, crear, editar, quitar, vivo, seccion, leerConfig, publica, wanDeRutas, leerSalud };
+

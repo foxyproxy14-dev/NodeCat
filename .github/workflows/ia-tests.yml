@@ -9,16 +9,27 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
       - name: Verificar sintaxis del backend y la interfaz
         run: |
           node --check servidor/nodecat.js
           node --check servidor/lib/openrouter-ia.js
+          node --check servidor/lib/cliente-ia.js
+          node --check servidor/lib/proveedor-ia.js
+          node --check servidor/lib/privacidad-ia.js
+          node --check servidor/lib/firewall-ia.js
+          node --check servidor/lib/mikrotik.js
+          node --check servidor/web/markdown-ia.js
+          node --check servidor/web/chat-ia.js
           node --check servidor/lib/diagnostico-ia.js
           node --check servidor/web/app.js
       - name: Pruebas unitarias sin credenciales externas
-        run: node --test tests/ia.test.js
+        run: node --test tests/*.test.js servidor/pruebas/*.test.js
+

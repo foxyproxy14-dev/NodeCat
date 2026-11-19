@@ -318,6 +318,36 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 
 ## Cómo está hecho
 
+### NodeCat AI (rama de desarrollo)
+
+Consultas manuales autenticadas, limitadas a los equipos que la cuenta puede ver y protegidas por CSRF. No ejecuta cambios ni herramientas propuestas por el modelo. Las lecturas adicionales de MikroTik usan exclusivamente comandos fijos `print`. El análisis recibe reglas IPv4 estructuradas de filter, NAT, mangle y listas: conserva orden, negaciones, puertos, estados, saltos, traducciones y marcas. Incluye hasta 35 reglas por categoría e indica total y truncamiento; los campos desconocidos marcan la regla como incompleta. INPUT describe tráfico hacia el router, FORWARD tráfico en tránsito y OUTPUT tráfico originado por el router.
+
+Antes del envío se omiten comentarios, identificadores internos y credenciales del contexto. Interfaces, direcciones, listas, marcas y cadenas personalizadas usan alias consistentes dentro de la consulta, sin guardar el mapa. También se redactan IP, MAC, correos, URLs y credenciales reconocibles en la pregunta. No escribas nombres de personas ni secretos en texto libre: esta minimización no garantiza detectar cualquier dato personal. Los alias conservan igualdad, negación y longitud de prefijo; no permiten deducir solapamientos de redes ni pertenencia a listas no consultadas.
+
+El chat admite tablas, negritas, listas y código. Todo texto se escapa; HTML, imágenes y enlaces activos del modelo no se ejecutan. La respuesta sigue siendo una evaluación, no una prueba de conectividad ni una garantía de seguridad. IPv6, raw, bridge, offload, reglas omitidas y condiciones desconocidas se declaran como limitaciones.
+
+Configura en el `.env` local (no subir claves al repositorio):
+
+| Variable | Valor |
+|---|---|
+| `IA_PROVIDER` | `openrouter` (predeterminado) u `openai` |
+| `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | Clave y modelo OpenRouter; modelo predeterminado `openrouter/free` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | Clave y modelo OpenAI explícito compatible con Chat Completions |
+| `IA_TIMEOUT_MS` | 1000–120000; predeterminado 90000 |
+| `IA_MAX_TOKENS` | 256–8000; predeterminado 2400 |
+
+El proveedor se elige explícitamente, sin fallback automático ni endpoints arbitrarios. Las claves se usan solo en el servidor. Se conservan límites de 15 segundos entre consultas y 10 consultas por hora por cuenta. No se envía historial persistente; el seguimiento usa un resumen temporal que vuelve a pasar por la redacción.
+
+Validación sin credenciales, routers reales ni gasto de API:
+
+```bash
+node --test tests/*.test.js servidor/pruebas/*.test.js
+```
+
+CI ejecuta la suite en Node.js 22 y 24. Los contratos HTTP se prueban con transporte simulado, incluidos errores, timeout, redacción y ausencia de herramientas. La prueba de API de la suite necesita localhost habilitado. Validar además en un entorno de pruebas con el proveedor y modelo elegidos antes de producción. El workflow de IA no despliega.
+
+Referencias: [Filter MikroTik](https://help.mikrotik.com/docs/spaces/ROS/pages/48660574/Filter), [OpenRouter Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request), [OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat).
+
 - **Servidor:** Node.js 22 con SQLite integrado, sin ninguna dependencia de npm. Cliente propio de la API de RouterOS y de la API REST de FortiOS. Historial por minuto durante 7 días y cada 5 minutos durante 400 días.
 - **Agente:** C# para .NET Framework 4.5, compilado con Mono (`agente/build.sh`). El ejecutable listo está en `servidor/agente/`.
 - **Web:** HTML, CSS y JavaScript sin frameworks, con tema claro y oscuro y diseño adaptado al móvil.
@@ -326,3 +356,4 @@ Todo está en la carpeta `datos/` junto a `docker-compose.yml`: la base de datos
 ## Próximas fases
 
 - Informes mensuales por cliente en PDF y Excel.
+

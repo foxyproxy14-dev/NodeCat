@@ -40,3 +40,10 @@ body.sin-sesion #nodecatAiWidget, body.iniciando #nodecatAiWidget { display:none
 .ncai-avatar .gato { width:34px; height:31px; display:block; }
 .ncai-toggle-gato { display:inline-flex; width:28px; height:28px; align-items:center; justify-content:center; }
 .ncai-toggle-gato .gato { display:block; width:32px; height:28px; }
+
+.ncai-mensaje { min-width: 0; overflow-wrap: anywhere; }
+.ncai-mensaje p { margin: .4em 0; }
+.ncai-mensaje pre { overflow-x: auto; max-width: 100%; white-space: pre; }
+.ncai-tabla { overflow-x: auto; max-width: 100%; margin: .6em 0; }
+.ncai-tabla table { border-collapse: collapse; font-size: .9em; width: 100%; }
+.ncai-tabla th, .ncai-tabla td { border: 1px solid currentColor; padding: .4em .6em; text-align: left; vertical-align: top; }

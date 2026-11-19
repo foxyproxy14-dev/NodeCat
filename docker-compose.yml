@@ -20,6 +20,11 @@ services:
       # Clave en .env local (no subir a GitHub). Sin clave, el asistente informa que no está configurado.
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openrouter/free}"
+      IA_PROVIDER: "${IA_PROVIDER:-openrouter}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      IA_TIMEOUT_MS: "${IA_TIMEOUT_MS:-90000}"
+      IA_MAX_TOKENS: "${IA_MAX_TOKENS:-2400}"
       # Modo demo con clientes inventados (usuario demo / contraseña nodecat-demo):
       # NODECAT_DEMO: "1"
 
@@ -36,3 +41,4 @@ services:
   #     TUNNEL_TOKEN: "pega-aquí-el-token-del-túnel"
   #   depends_on:
   #     - nodecat
+

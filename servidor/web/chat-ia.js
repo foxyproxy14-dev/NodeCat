@@ -21,7 +21,7 @@
   const estadoTxt = root.querySelector('#ncaiEstado');
   const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const format = s => escapeHtml(s).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  const format = s => window.NodeCatMarkdown.renderizar(s);
   const routers = () => typeof equipos === 'function'
     ? equipos().filter(e => e.tipo === 'mikrotik' || e.tipo === 'fortigate') : [];
   const conectado = () => typeof SESION !== 'undefined' && !!SESION;
@@ -101,7 +101,7 @@
     ocupado = true; enviarBtn.disabled = true; selector.disabled = true;
     pregunta.value = '';
     agregar('usuario', texto);
-    estadoTxt.textContent = 'Consultando OpenRouter…';
+    estadoTxt.textContent = 'Consultando el proveedor de IA…';
     try {
       const respuesta = await enviar('/api/ia/analizar', 'POST', { equipoId: id, pregunta: preguntaApi });
       if (!conectado() || SESION.usuario !== usuario || equipoActual !== id || turno !== solicitud) return;
@@ -133,3 +133,4 @@
   }, true);
   reiniciar();
 })();
+

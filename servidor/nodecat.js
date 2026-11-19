@@ -178,11 +178,15 @@ ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = 
 
 // Asistente IA: consulta manual, solo lectura, con permisos por equipo.
 // Se envía únicamente un resumen limitado de telemetría; nunca configuración ni claves.
-const openrouterIA = require('./lib/openrouter-ia');
+const openrouterIA = require('./lib/cliente-ia');
+const { crearAnonimizador } = require('./lib/privacidad-ia');
 const { resumirTelemetria, resumirRutasMikroTik } = require('./lib/contexto-ia');
 const firewallIA = require('./lib/firewall-ia');
 ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
+  if (typeof cuerpo.pregunta !== 'string' || cuerpo.pregunta.trim().length < 10 || cuerpo.pregunta.length > 2000)
+    throw error(400, 'Escribe una pregunta de entre 10 y 2000 caracteres.');
   const e = routerVisible(sesion, cuerpo.equipoId);
+  const anonimizador = crearAnonimizador();
   // Usar el registro ya recopilado, sin conectar al router ni ejecutar nuevos comandos.
   const registro = flota.vivo.get(e.id);
   const contexto = resumirTelemetria(registro);
@@ -196,12 +200,12 @@ ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
     }
     // Solo ante preguntas relacionadas: lectura RouterOS con proplist restringida.
     if (firewallIA.detectar(cuerpo.pregunta).length) {
-      contexto.firewall = await firewallIA.obtener(mikrotik, e.id, cuerpo.pregunta);
+      contexto.firewall = await firewallIA.obtener(mikrotik, e.id, cuerpo.pregunta, anonimizador);
     }
   } else {
     contexto.enrutamiento = { disponible: false, motivo: 'Resumen de rutas FortiGate pendiente de implementación' };
   }
-  return openrouterIA.consultar({ usuario: sesion.usuario, equipo: e, pregunta: cuerpo.pregunta, contexto });
+  return openrouterIA.consultar({ usuario: sesion.usuario, equipo: e, pregunta: cuerpo.pregunta, contexto, anonimizador });
 });
 
 // Routers MikroTik
@@ -557,3 +561,4 @@ for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => {
   try { flota.guardarPendientes(); require('./lib/db').cerrar(); } catch (e) { log('Al detener: ' + e.message); }
   process.exit(0);
 });
+

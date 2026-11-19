@@ -127,14 +127,14 @@ test('IA firewall: no consulta configuración para preguntas de rendimiento', ()
 });
 test('IA firewall: oculta IP e interfaces sin perder la cadena ni la acción', () => {
   const r = firewallIA.resumirCategoria('filter', [{
-    cadena: 'forward', accion: 'drop', deshabilitada: false,
-    detalle: 'tcp, desde 192.168.10.0/24, hacia 10.20.30.1, puerto 443, entra por ether1-WAN'
+    chain: 'forward', action: 'drop', disabled: false,
+    protocol: 'tcp', 'src-address': '192.168.10.0/24', 'dst-address':'10.20.30.1', 'dst-port':'443', 'in-interface':'ether1-WAN'
   }]);
   assert.equal(r.reglas[0].cadena, 'forward');
   assert.equal(r.reglas[0].accion, 'drop');
   assert.equal(r.reglas[0].deshabilitada, false);
   assert.doesNotMatch(JSON.stringify(r), /192\.168|10\.20|ether1-WAN/);
-  assert.match(r.reglas[0].condiciones, /puerto 443/);
+  assert.equal(r.reglas[0].condiciones['dst-port'], '443');
 });
 test('IA firewall: no transmite comentarios, direcciones de NAT ni listas', () => {
   const nat = firewallIA.resumirCategoria('nat', [{chain:'dstnat',action:'dst-nat', 'to-addresses':'10.1.2.3',comment:'clave supersecreta',disabled:'no'}]);
@@ -147,3 +147,4 @@ test('IA firewall: recorta volumen y marca truncamiento', () => {
   assert.equal(x.reglas.length, 35);
   assert.equal(x.truncado, true);
 });
+
