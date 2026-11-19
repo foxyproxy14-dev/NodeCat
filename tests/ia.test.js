@@ -32,3 +32,27 @@ test('OpenRouter: rechaza consulta sin credenciales', () => {
     if (antes !== undefined) process.env.OPENROUTER_API_KEY = antes;
   }
 });
+
+const { resumirTelemetria } = require('../servidor/lib/contexto-ia');
+test('IA: resume métricas sin filtrar identificadores sensibles', () => {
+  const x = resumirTelemetria({
+    ultimo_contacto: 100000,
+    datos: { cpu: 23, ramPct: 61, red: {
+      identidad: 'CLIENTE-SECRETO', wan: { interfaz: 'pppoe-secret', activa: true, rx: 1000, tx: 2000 },
+      interfaces: [{ nombre: 'wan-privada', mac: '00:11:22:33:44:55', tipo: 'ether', activa: true, rx: 500, tx: 300 }],
+      latencia: [{ ip: '10.0.0.1', nombre: 'GW', ms: 11, perdida: 0 }]
+    } }
+  }, 110000);
+  assert.equal(x.cpuPct, 23);
+  assert.equal(x.ramPct, 61);
+  assert.equal(x.wans[0].rxBps, 1000);
+  assert.equal(x.obsoleta, false);
+  const serial = JSON.stringify(x);
+  for (const secreto of ['CLIENTE-SECRETO', 'pppoe-secret', 'wan-privada', '00:11:22:33:44:55', '10.0.0.1'])
+    assert.equal(serial.includes(secreto), false);
+});
+test('IA: indica telemetria ausente u obsoleta', () => {
+  assert.equal(resumirTelemetria(null).disponible, false);
+  const x = resumirTelemetria({ ultimo_contacto: 1000, datos: {} }, 200000);
+  assert.equal(x.obsoleta, true);
+});
