@@ -176,6 +176,21 @@ ruta('GET', '/api/equipos/:id/salud', {}, ({ sesion, p }) => flota.saludDiscos(e
 ruta('GET', '/api/equipos/:id/proxmox', {}, ({ sesion, p }) => { const e = equipoVisible(sesion, p.id); return { ...flota.detallesPve(e.id), personal: appsPersonal(e.id), logosApps: logosApps() }; });
 ruta('GET', '/api/equipos/:id/trafico', {}, ({ sesion, p, url }) => { const e = equipoVisible(sesion, p.id); return flota.trafico(e.id, url.searchParams.get('rango'), url.searchParams.get('interfaz')); });
 
+// Asistente IA: consulta manual, solo lectura, con permisos por equipo.
+// Se envía únicamente un resumen limitado de telemetría; nunca configuración ni claves.
+const openrouterIA = require('./lib/openrouter-ia');
+ruta('POST', '/api/ia/analizar', {}, async ({ sesion, cuerpo }) => {
+  const e = routerVisible(sesion, cuerpo.equipoId);
+  const vivo = modRed(e).vivo(e.id) || {};
+  const contexto = {
+    estado: String(vivo.estado || 'no determinado').slice(0, 60),
+    tipo: e.tipo,
+    // No se envían direcciones, inventarios, configuraciones, logs ni credenciales.
+    telemetriaDisponible: !!vivo.serie
+  };
+  return openrouterIA.consultar({ usuario: sesion.usuario, equipo: e, pregunta: cuerpo.pregunta, contexto });
+});
+
 // Routers MikroTik
 function routerVisible(sesion, id) { const e = equipoVisible(sesion, id); if (e.tipo !== 'mikrotik' && e.tipo !== 'fortigate') throw error(404, 'Ese equipo no es un equipo de red.'); return e; }
 ruta('GET', '/api/routers/:id/vivo', {}, ({ sesion, p, url }) => { const e = routerVisible(sesion, p.id); const v = modRed(e).vivo(e.id, url.searchParams.get('desde')) || { serie: {} }; if (sesion.rol !== 'admin') delete v.config; return v; });
