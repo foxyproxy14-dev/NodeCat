@@ -73,5 +73,30 @@ test('IA: resumen de rutas conserva distancias y oculta gateways', () => {
 });
 test('IA: ruta ausente no se interpreta como ruta activa', () => {
   const x = resumirRutasMikroTik({ rutas: [{ 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1', distance: 1 }] });
-  assert.equal(x.rutas[0].activa, false);
+  assert.equal(x.rutas[0].activa, null);
+});
+
+test('IA: ruta de respaldo inactiva pero habilitada no es una falla', () => {
+  const x = resumirRutasMikroTik({ rutas: [
+    { 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1', distance: 1, active: true, disabled: false, 'check-gateway': 'ping' },
+    { 'dst-address': '0.0.0.0/0', gateway: '192.0.2.2', distance: 2, active: false, disabled: false }
+  ] });
+  assert.equal(x.rutas[1].activa, false);
+  assert.equal(x.rutas[1].habilitada, true);
+  assert.equal(x.tablasResumen[0].posiblesRespaldosPorDistancia, 1);
+  assert.match(x.tablasResumen[0].evaluacion, /No se ha verificado la conmutación/);
+  assert.equal(x.rutas[0].checkGateway, 'ping');
+});
+test('IA: ruta administrativamente deshabilitada no cuenta como respaldo', () => {
+  const x = resumirRutasMikroTik({ rutas: [
+    { 'dst-address': '0.0.0.0/0', distance: 1, active: true, disabled: false },
+    { 'dst-address': '0.0.0.0/0', distance: 2, active: false, disabled: true }
+  ] });
+  assert.equal(x.tablasResumen[0].posiblesRespaldosPorDistancia, 0);
+});
+test('IA: estados ausentes no se inventan', () => {
+  const x = resumirRutasMikroTik({ rutas: [{ 'dst-address': '0.0.0.0/0', gateway: '192.0.2.1' }] });
+  assert.equal(x.rutas[0].activa, null);
+  assert.equal(x.rutas[0].habilitada, null);
+  assert.equal(x.rutas[0].distancia, null);
 });
