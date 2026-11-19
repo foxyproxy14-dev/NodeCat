@@ -16,6 +16,7 @@
 <link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fuentes/atkinson-hyperlegible-next-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="chat-ia.css">
 <script src="tema.js"></script>
 </head>
 <body class="iniciando">
@@ -82,9 +83,38 @@
 <dialog id="dialogo"></dialog>
 <div class="avisos" id="avisos" aria-live="polite"></div>
 <div class="bocadillos" id="bocadillos" aria-live="polite"></div>
+<!-- Chat IA flotante, visible solo para sesiones autenticadas -->
+<aside id="nodecatAiWidget" aria-label="Asistente NodeCat AI">
+  <section id="ncaiPanel" aria-label="Chat de NodeCat AI" hidden>
+    <header class="ncai-cab">
+      <div class="ncai-titulo">
+        <span class="ncai-avatar" aria-hidden="true">🤖</span>
+        <span><strong>NodeCat AI</strong><small>Asistente de red · Solo lectura</small></span>
+      </div>
+      <div class="ncai-acciones">
+        <button type="button" id="ncaiNuevo" aria-label="Nueva conversación" title="Nueva conversación">↻</button>
+        <button type="button" id="ncaiCerrar" aria-label="Cerrar chat" title="Cerrar">✕</button>
+      </div>
+    </header>
+    <label class="ncai-seleccion" for="ncaiEquipo">Dispositivo
+      <select id="ncaiEquipo" aria-label="Dispositivo para analizar"></select>
+    </label>
+    <div id="ncaiMensajes" role="log" aria-label="Mensajes del asistente" aria-live="polite"></div>
+    <p id="ncaiEstado" role="status">Solo lectura</p>
+    <form id="ncaiForm">
+      <textarea id="ncaiPregunta" rows="2" minlength="10" maxlength="2000" required
+        placeholder="¿Qué necesitas analizar?" aria-label="Pregunta para NodeCat AI"></textarea>
+      <button type="submit" id="ncaiEnviar" aria-label="Enviar pregunta">Enviar</button>
+    </form>
+  </section>
+  <button id="ncaiToggle" type="button" aria-controls="ncaiPanel" aria-expanded="false" aria-label="Abrir NodeCat AI">
+    <span aria-hidden="true">🤖</span> NodeCat AI
+  </button>
+</aside>
 <script src="gato.js"></script>
 <script src="animaciones.js"></script>
 <script src="app.js"></script>
+<script src="chat-ia.js"></script>
 <script src="pve.js"></script>
 <script src="router.js"></script>
 <script src="fglogs.js"></script>
