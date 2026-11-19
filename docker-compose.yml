@@ -17,6 +17,9 @@ services:
       # Pon 1 si NodeCat está detrás de Cloudflare Tunnel o de un proxy inverso (nginx, Caddy, Traefik),
       # para que vea la IP real de quien entra y sepa que la conexión llegó por HTTPS.
       CONFIAR_PROXY: "0"
+      # Clave en .env local (no subir a GitHub). Sin clave, el asistente informa que no está configurado.
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openrouter/free}"
       # Modo demo con clientes inventados (usuario demo / contraseña nodecat-demo):
       # NODECAT_DEMO: "1"
 
