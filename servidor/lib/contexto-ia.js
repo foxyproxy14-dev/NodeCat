@@ -35,4 +35,48 @@ function resumirTelemetria(registro, ahora = Date.now()) {
     nota: 'Tráfico instantáneo en bits/s; no indica capacidad contratada. Valores nulos significan no disponible.'
   };
 }
-module.exports = { resumirTelemetria };
+
+function resumirRutasMikroTik(datos) {
+  const filas = Array.isArray(datos?.rutas) ? datos.rutas : null;
+  if (!filas) return { disponible: false, motivo: 'No se pudieron leer las rutas' };
+  const defecto = filas.filter(r => r['dst-address'] === '0.0.0.0/0').slice(0, 24);
+  const tablas = new Map();
+  for (const r of defecto) {
+    // Los nombres reales de tablas y gateways no se envían al proveedor.
+    const clave = String(r['routing-table'] || r['routing-mark'] || 'main');
+    if (!tablas.has(clave)) tablas.set(clave, 'tabla-' + (tablas.size + 1));
+  }
+  const rutas = defecto.map((r, i) => {
+    const valor = x => x === true || x === 'true' || x === 'yes';
+    const inactiva = valor(r.disabled) || r.active === false || r.active === 'false' || r.active === 'no';
+    const n = Number(r.distance);
+    return {
+      ruta: i + 1,
+      tabla: tablas.get(String(r['routing-table'] || r['routing-mark'] || 'main')),
+      distancia: Number.isFinite(n) && n >= 0 && n <= 255 ? n : null,
+      activa: !inactiva && (r.active === true || r.active === 'true' || r.active === 'yes'),
+      deshabilitada: valor(r.disabled),
+      dinamica: valor(r.dynamic),
+      // Gateway real, comentarios, IPs y nombre de interfaz nunca salen de NodeCat.
+      gatewayDefinido: !!r.gateway
+    };
+  });
+  const alertas = [];
+  for (const tabla of new Set(rutas.map(r => r.tabla))) {
+    const rs = rutas.filter(r => r.tabla === tabla);
+    const activas = rs.filter(r => r.activa);
+    if (!activas.length) alertas.push(tabla + ': sin rutas por defecto activas');
+    if (activas.length === 1) alertas.push(tabla + ': solo una ruta por defecto activa');
+    if (activas.length > 1 && activas.some((r, i) => activas.slice(i + 1).some(s => s.distancia === r.distancia)))
+      alertas.push(tabla + ': posibles rutas ECMP por distancia igual');
+  }
+  return { disponible: true, totalRutasDefault: defecto.length, truncado: filas.filter(r => r['dst-address'] === '0.0.0.0/0').length > 24,
+    rutas, alertas, limitaciones: [
+      'Una ruta activa no demuestra conectividad a Internet.',
+      'No se consultaron reglas de policy routing, mangle ni resolución recursiva.',
+      'No se ejecutaron pruebas de caída de ISP ni sondas adicionales.',
+      'No se incluyen direcciones de gateways, interfaces ni comentarios.'
+    ] };
+}
+
+module.exports = { resumirTelemetria, resumirRutasMikroTik };
