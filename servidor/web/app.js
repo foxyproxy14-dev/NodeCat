@@ -565,7 +565,7 @@ function montarAsistente() {
       if (!document.contains(salida)) return;
       salida.innerHTML = formatearRespuestaIA(d.respuesta);
       salida.hidden = false;
-      status.textContent = 'Modelo: ' + (d.modelo || 'gratuito') + ' · Diagnóstico orientativo, solo lectura.';
+      status.textContent = 'Modelo: ' + (d.modelo || 'gratuito') + ' · Diagnóstico orientativo, solo lectura.' + (d.truncada ? ' ⚠ La respuesta se cortó por límite de tokens; haz una pregunta más específica.' : '');
     } catch (e) {
       if (document.contains(status)) status.textContent = e.message;
     } finally {
