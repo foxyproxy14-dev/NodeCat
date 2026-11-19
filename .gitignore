@@ -16,3 +16,8 @@ Thumbs.db
 docker-compose.override.yml
 __pycache__/
 *.pyc
+
+# Credenciales de proveedores externos
+.env
+.env.*
+!.env.example
