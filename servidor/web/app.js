@@ -512,6 +512,14 @@ function actualizar(r = rutaActual()) {
   finalizarMovimiento(movimiento);
 }
 
+// Renderizador limitado: solo negrita y saltos de línea. Escapa todo el texto de la IA.
+function formatearRespuestaIA(valor) {
+  const seguro = String(valor || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return seguro.replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<strong>$1</strong>')
+    .replace(/\\n/g, '<br>');
+}
+
 /* ---------------- Asistente IA: consultas manuales de solo lectura ---------------- */
 function montarAsistente() {
   const routers = equipos().filter(e => ['mikrotik', 'fortigate'].includes(e.tipo));
@@ -555,7 +563,7 @@ function montarAsistente() {
     try {
       const d = await enviar('/api/ia/analizar', 'POST', { equipoId: id, pregunta });
       if (!document.contains(salida)) return;
-      salida.textContent = d.respuesta;
+      salida.innerHTML = formatearRespuestaIA(d.respuesta);
       salida.hidden = false;
       status.textContent = 'Modelo: ' + (d.modelo || 'gratuito') + ' · Diagnóstico orientativo, solo lectura.';
     } catch (e) {
