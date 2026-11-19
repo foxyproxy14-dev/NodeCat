@@ -118,3 +118,32 @@ test('IA: identifica ECMP potencial solo con rutas habilitadas', () => {
   ] });
   assert.equal(x.tablasResumen[0].ecmpPotencial, true);
 });
+
+const firewallIA = require('../servidor/lib/firewall-ia');
+test('IA firewall: no consulta configuración para preguntas de rendimiento', () => {
+  assert.deepEqual(firewallIA.detectar('¿Cómo está la CPU del router?'), []);
+  assert.deepEqual(firewallIA.detectar('Explica las reglas del firewall'), ['filter', 'nat', 'mangle', 'listas']);
+  assert.deepEqual(firewallIA.detectar('Revisa el NAT'), ['nat']);
+});
+test('IA firewall: oculta IP e interfaces sin perder la cadena ni la acción', () => {
+  const r = firewallIA.resumirCategoria('filter', [{
+    cadena: 'forward', accion: 'drop', deshabilitada: false,
+    detalle: 'tcp, desde 192.168.10.0/24, hacia 10.20.30.1, puerto 443, entra por ether1-WAN'
+  }]);
+  assert.equal(r.reglas[0].cadena, 'forward');
+  assert.equal(r.reglas[0].accion, 'drop');
+  assert.equal(r.reglas[0].deshabilitada, false);
+  assert.doesNotMatch(JSON.stringify(r), /192\.168|10\.20|ether1-WAN/);
+  assert.match(r.reglas[0].condiciones, /puerto 443/);
+});
+test('IA firewall: no transmite comentarios, direcciones de NAT ni listas', () => {
+  const nat = firewallIA.resumirCategoria('nat', [{chain:'dstnat',action:'dst-nat', 'to-addresses':'10.1.2.3',comment:'clave supersecreta',disabled:'no'}]);
+  assert.doesNotMatch(JSON.stringify(nat), /10\.1\.2\.3|supersecreta/);
+  const listas = firewallIA.resumirCategoria('listas', [{list:'CLIENTES-PRIVADOS',address:'192.168.1.1'}]);
+  assert.doesNotMatch(JSON.stringify(listas), /CLIENTES-PRIVADOS|192\.168/);
+});
+test('IA firewall: recorta volumen y marca truncamiento', () => {
+  const x = firewallIA.resumirCategoria('filter', Array.from({length:50}, () => ({cadena:'input',accion:'accept'})));
+  assert.equal(x.reglas.length, 35);
+  assert.equal(x.truncado, true);
+});
