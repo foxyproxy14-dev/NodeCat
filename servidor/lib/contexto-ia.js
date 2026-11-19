@@ -39,44 +39,61 @@ function resumirTelemetria(registro, ahora = Date.now()) {
 function resumirRutasMikroTik(datos) {
   const filas = Array.isArray(datos?.rutas) ? datos.rutas : null;
   if (!filas) return { disponible: false, motivo: 'No se pudieron leer las rutas' };
-  const defecto = filas.filter(r => r['dst-address'] === '0.0.0.0/0').slice(0, 24);
+  const todas = filas.filter(r => r && r['dst-address'] === '0.0.0.0/0');
+  const defecto = todas.slice(0, 24);
   const tablas = new Map();
   for (const r of defecto) {
-    // Los nombres reales de tablas y gateways no se envían al proveedor.
     const clave = String(r['routing-table'] || r['routing-mark'] || 'main');
     if (!tablas.has(clave)) tablas.set(clave, 'tabla-' + (tablas.size + 1));
   }
+  const flag = x => x === true || x === 'true' || x === 'yes';
+  const flagConocido = x => x === true || x === false || ['true', 'false', 'yes', 'no'].includes(x);
   const rutas = defecto.map((r, i) => {
-    const valor = x => x === true || x === 'true' || x === 'yes';
-    const inactiva = valor(r.disabled) || r.active === false || r.active === 'false' || r.active === 'no';
-    const n = Number(r.distance);
+    const n = r.distance === undefined || r.distance === null || r.distance === '' ? NaN : Number(r.distance);
+    const habilitada = flagConocido(r.disabled) ? !flag(r.disabled) : null;
+    const activa = flagConocido(r.active) ? flag(r.active) : null;
+    const check = String(r['check-gateway'] || '').toLowerCase();
     return {
       ruta: i + 1,
       tabla: tablas.get(String(r['routing-table'] || r['routing-mark'] || 'main')),
       distancia: Number.isFinite(n) && n >= 0 && n <= 255 ? n : null,
-      activa: !inactiva && (r.active === true || r.active === 'true' || r.active === 'yes'),
-      deshabilitada: valor(r.disabled),
-      dinamica: valor(r.dynamic),
-      // Gateway real, comentarios, IPs y nombre de interfaz nunca salen de NodeCat.
+      activa,
+      habilitada,
+      dinamica: flagConocido(r.dynamic) ? flag(r.dynamic) : null,
+      checkGateway: ['ping', 'arp', 'bfd', 'none'].includes(check) ? check : 'desconocido',
       gatewayDefinido: !!r.gateway
     };
   });
-  const alertas = [];
-  for (const tabla of new Set(rutas.map(r => r.tabla))) {
+  const tablasResumen = [...new Set(rutas.map(r => r.tabla))].map(tabla => {
     const rs = rutas.filter(r => r.tabla === tabla);
-    const activas = rs.filter(r => r.activa);
-    if (!activas.length) alertas.push(tabla + ': sin rutas por defecto activas');
-    if (activas.length === 1) alertas.push(tabla + ': solo una ruta por defecto activa');
-    if (activas.length > 1 && activas.some((r, i) => activas.slice(i + 1).some(s => s.distancia === r.distancia)))
-      alertas.push(tabla + ': posibles rutas ECMP por distancia igual');
-  }
-  return { disponible: true, totalRutasDefault: defecto.length, truncado: filas.filter(r => r['dst-address'] === '0.0.0.0/0').length > 24,
-    rutas, alertas, limitaciones: [
-      'Una ruta activa no demuestra conectividad a Internet.',
-      'No se consultaron reglas de policy routing, mangle ni resolución recursiva.',
-      'No se ejecutaron pruebas de caída de ISP ni sondas adicionales.',
-      'No se incluyen direcciones de gateways, interfaces ni comentarios.'
-    ] };
+    const distancias = rs.filter(r => r.habilitada !== false && r.distancia !== null).map(r => r.distancia);
+    const minima = distancias.length ? Math.min(...distancias) : null;
+    const candidatos = rs.filter(r => r.habilitada !== false && r.distancia !== null && r.distancia > minima);
+    const ecmp = minima !== null && rs.filter(r => r.habilitada !== false && r.distancia === minima).length > 1;
+    return {
+      tabla,
+      rutas: rs.length,
+      rutaPreferidaDistancia: minima,
+      posiblesRespaldosPorDistancia: candidatos.length,
+      ecmpPotencial: ecmp,
+      evaluacion: candidatos.length
+        ? 'Hay rutas de mayor distancia candidatas a respaldo; que no estén activas puede ser normal. No se ha verificado la conmutación.'
+        : 'No se identificaron rutas de mayor distancia habilitadas; no se puede confirmar respaldo.'
+    };
+  });
+  return {
+    disponible: true, totalRutasDefault: todas.length, truncado: todas.length > 24,
+    rutas, tablasResumen,
+    limitaciones: [
+      'Activa=false NO equivale a deshabilitada ni prueba que el respaldo esté averiado.',
+      'Habilitada indica el estado administrativo; activa indica selección/instalación observada.',
+      'Distancias distintas sugieren preferencia, NO demuestran failover funcional.',
+      'check-gateway=ping comprueba el gateway configurado, que puede seguir accesible sin Internet.',
+      'El failover recursivo requiere inspeccionar rutas de resolución y pruebas externas.',
+      'No se verificaron routing rules, mangle, NAT, resolución recursiva ni pruebas de caída.',
+      'No se incluyen direcciones de gateways, interfaces, nombres de tablas ni comentarios.'
+    ]
+  };
 }
 
 module.exports = { resumirTelemetria, resumirRutasMikroTik };
