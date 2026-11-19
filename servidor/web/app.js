@@ -320,7 +320,7 @@ function rutaActual() {
   if (a === 'c' && b && h.split('/')[2] === 'sesiones') return { vista: 'sesiones', cli: Number(b), clave: 'sesiones-c' + b };
   if (a === 'c' && b) return { vista: 'cliente', id: Number(b), clave: 'c' + b };
   if (a === 'e' && b) return { vista: 'equipo', id: Number(b), clave: 'e' + b };
-  if (a === 'sesiones' || a === 'historial') return { vista: a, clave: a };
+  if (a === 'sesiones' || a === 'historial' || a === 'asistente') return { vista: a, clave: a };
   return { vista: 'resumen', clave: 'resumen' };
 }
 const ir = h => { if (location.hash === h) render(); else location.hash = h; };
@@ -352,7 +352,7 @@ function pintarNav(r) {
   const cc = clienteDeRuta(r), c = cc ? cliente(cc) : null;
   const n = todasLasSesiones(c ? c.equipos : undefined).length;
   const activa = r.vista === 'cliente' || r.vista === 'equipo' ? 'resumen' : r.vista;
-  $('#nav').innerHTML = [['resumen', '#/', 'Clientes'], ['sesiones', c ? `#/c/${c.id}/sesiones` : '#/sesiones', `Sesiones <span class="cuenta"${c ? ` title="Sesiones de ${esc(c.nombre)}"` : ''}>${n}</span>`], ['historial', '#/historial', 'Historial']].map(([id, h, t]) =>
+  $('#nav').innerHTML = [['resumen', '#/', 'Clientes'], ['sesiones', c ? `#/c/${c.id}/sesiones` : '#/sesiones', `Sesiones <span class="cuenta"${c ? ` title="Sesiones de ${esc(c.nombre)}"` : ''}>${n}</span>`], ['historial', '#/historial', 'Historial'], ['asistente', '#/asistente', 'Asistente IA']].map(([id, h, t]) =>
     `<div class="pest ${activa === id ? 'activa' : ''}"><button type="button" ${activa === id ? 'aria-current="page"' : ''} data-ir="${h}">${t}</button></div>`).join('');
 }
 $('#nav').addEventListener('click', e => { const t = e.target.closest('[data-ir]'); if (t) ir(t.dataset.ir); });
@@ -414,6 +414,8 @@ function montar(r) {
       $('#btnForti').addEventListener('click', () => dialogoForti(c.id));
     }
     cargarSucesos();
+  } else if (r.vista === 'asistente') {
+    montarAsistente();
   } else if (r.vista === 'sesiones') {
     const cs = r.cli ? cliente(r.cli) : null;
     v.innerHTML = `
@@ -502,11 +504,48 @@ function actualizar(r = rutaActual()) {
   const movimiento = fotoMovimiento();
   if (r.vista === 'resumen') vistaResumen();
   else if (r.vista === 'cliente') vistaCliente(r.id);
+  else if (r.vista === 'asistente') { /* La vista conserva su selección local. */ }
   else if (r.vista === 'sesiones') vistaSesiones(r);
   else if (r.vista === 'historial') vistaHistorial();
   else if (equipo(r.id) && ['mikrotik', 'fortigate'].includes(equipo(r.id).tipo)) vistaRouter(r.id);
   else vistaEquipo(r.id);
   finalizarMovimiento(movimiento);
+}
+
+/* ---------------- Asistente IA: interfaz inicial sin conexiones externas ---------------- */
+function montarAsistente() {
+  const routers = equipos().filter(e => ['mikrotik', 'fortigate'].includes(e.tipo));
+  const v = $('#vista');
+  v.innerHTML = `
+    <section class="titular"><h1>Asistente IA</h1>
+      <p>Diagnósticos de red desde NodeCat · Versión preliminar de solo lectura</p></section>
+    <div class="dos-col">
+      <section class="hoja" style="padding:24px">
+        <div class="cab-seccion"><h2>Consulta de red</h2><span class="tenue">Preparación</span></div>
+        <label class="campo">Dispositivo
+          <select id="iaEquipo" class="selector">
+            <option value="">Selecciona un dispositivo</option>
+            ${routers.map(e => `<option value="${e.id}">${esc(e.clienteNombre || '')} · ${esc(nombreEq(e))}</option>`).join('')}
+          </select>
+        </label>
+        <label class="campo">¿Qué necesitas analizar?
+          <textarea id="iaPregunta" rows="5" maxlength="2000" placeholder="Ej.: Revisa el failover de este MikroTik" style="width:100%;resize:vertical" disabled></textarea>
+        </label>
+        <button class="btn prim" type="button" disabled>Analizar con IA</button>
+        <p class="ayuda" role="status">El asistente aún no está conectado a un proveedor de IA.
+          Esta pantalla no envía información de clientes ni ejecuta comandos.</p>
+      </section>
+      <aside class="hoja" style="padding:24px">
+        <h2>Próximas funciones</h2>
+        <p>Diagnóstico de rutas y failover, revisión de interfaces WAN, VPN y firewall.</p>
+        <p>Primero habilitaremos consultas de solo lectura con permisos por cliente.
+          Los cambios de configuración requerirán autorización explícita.</p>
+      </aside>
+    </div>`;
+  if (!routers.length) {
+    const sel = $('#iaEquipo');
+    sel.innerHTML = '<option value="">No hay dispositivos de red disponibles</option>';
+  }
 }
 
 /* ---------------- Resumen de clientes ---------------- */
