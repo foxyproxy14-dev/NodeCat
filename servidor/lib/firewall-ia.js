@@ -34,8 +34,8 @@ function resumirCategoria(tipo, filas, limite = MAX_POR_CATEGORIA) {
       r.cadena = limpiar(f.cadena, 24);
       r.accion = limpiar(f.accion, 30);
       r.deshabilitada = estado(f.deshabilitada);
-      // "detalle" contiene direcciones e identificadores de interfaces; no enviarlo.
-      r.condiciones = 'Condiciones detalladas omitidas por privacidad';
+      // Preservar tipos de coincidencia, pero nunca nombres de interfaces ni direcciones.
+      r.condiciones = limpiar(String(f.detalle || '').replace(/entra por [^,]+/g, 'entra por [interfaz]'), 240);
     } else {
       for (const campo of CATEGORIAS[tipo] || []) {
         if (campo === 'disabled') r.deshabilitada = estado(f[campo]);
@@ -52,7 +52,7 @@ function resumirCategoria(tipo, filas, limite = MAX_POR_CATEGORIA) {
 async function obtener(mikrotik, id, pregunta) {
   const categorias = detectar(pregunta);
   if (!categorias.length) return null;
-  const resultado = { soloLectura: true, alcance: 'Metadatos de reglas; IP, interfaces y comentarios omitidos', categorias: {} };
+  const resultado = { soloLectura: true, alcance: 'Metadatos de reglas; Direcciones e identificadores de interfaces anonimizados; comentarios omitidos', categorias: {} };
   const secciones = { filter: 'firewall', nat: 'nat', mangle: 'mangle', listas: 'listas' };
   let restantes = MAX_TOTAL;
   for (const categoria of categorias) {
