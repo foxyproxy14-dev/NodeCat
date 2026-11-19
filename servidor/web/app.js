@@ -516,8 +516,8 @@ function actualizar(r = rutaActual()) {
 function formatearRespuestaIA(valor) {
   const seguro = String(valor || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  return seguro.replace(/\\*\\*([^*\\n]+)\\*\\*/g, '<strong>$1</strong>')
-    .replace(/\\n/g, '<br>');
+  return seguro.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
 }
 
 /* ---------------- Asistente IA: consultas manuales de solo lectura ---------------- */
