@@ -99,15 +99,63 @@ function preferencias(usuario) {
 }
 const hay = () => !!q('SELECT 1 FROM push_subs LIMIT 1').get();
 
-/** Manda un aviso a los dispositivos de las cuentas que deben recibirlo. */
+// Ráfagas de notificaciones por usuario: se agrupan durante una breve ventana para no saturar el dispositivo
+// cuando caen o vuelven varios equipos/VMs a la vez (p. ej. al apagarse un servidor o recuperar Internet).
+const VENTANA_PUSH_MS = Number(process.env.NODECAT_PUSH_VENTANA_MS ?? 4000);
+const rafagas = new Map();
+
+function resumirRafaga(items) {
+  if (items.length === 1) {
+    const a = items[0];
+    return { t: a.titulo, b: a.cuerpo, u: a.equipo ? `/#/e/${a.equipo}` : `/#/c/${a.clienteId}`, g: `nodecat-${a.equipo || a.clienteId}-${a.tipo}` };
+  }
+  const clientes = new Set(items.map(x => x.clienteId));
+  const equipos = new Set(items.map(x => x.equipo).filter(Boolean));
+  const soloCliente = clientes.size === 1 ? [...clientes][0] : null;
+  const soloEquipo = equipos.size === 1 ? [...equipos][0] : null;
+  let nombreCli = '';
+  if (soloCliente) {
+    const fila = q('SELECT nombre FROM clientes WHERE id = ?').get(soloCliente);
+    if (fila && fila.nombre) nombreCli = fila.nombre;
+  }
+  const vueltas = items.filter(x => /^[🟢✅]/u.test(x.titulo)).length;
+  const caidas = items.filter(x => /^[🔴🟠⚠️]/u.test(x.titulo)).length;
+  const icono = vueltas === items.length ? '🟢' : caidas > 0 ? '🔴' : '🔔';
+  const que = vueltas === items.length ? `${items.length} equipos/servicios volvieron`
+    : caidas === items.length ? `${items.length} alertas activas`
+    : `${items.length} avisos (${caidas} alertas, ${vueltas} resueltas)`;
+  const titulo = `${icono} ${nombreCli ? `${nombreCli}: ` : 'NodeCat: '}${que}`.slice(0, 120);
+  const lineas = items.slice(0, 6).map(x => '• ' + x.titulo.replace(/^[🔴🟠🟢✅⬆️🆕⚠️🌡️⏰🔔]\s*/u, ''));
+  if (items.length > 6) lineas.push(`…y ${items.length - 6} más`);
+  const cuerpo = lineas.join('\n').slice(0, 400);
+  const u = soloEquipo ? `/#/e/${soloEquipo}` : soloCliente ? `/#/c/${soloCliente}` : '/';
+  const g = soloCliente ? `nodecat-rafaga-c${soloCliente}` : 'nodecat-rafaga';
+  return { t: titulo, b: cuerpo, u, g };
+}
+
+function despacharUsuario(u) {
+  const r = rafagas.get(u);
+  if (!r) return;
+  rafagas.delete(u);
+  if (!r.items.length) return;
+  const subs = q('SELECT * FROM push_subs WHERE LOWER(usuario) = ?').all(u);
+  if (!subs.length) return;
+  const datos = resumirRafaga(r.items);
+  for (const s of subs) enviarA(s, datos);
+}
+
+/** Fuerza el envío inmediato de las notificaciones encoladas (útil al cerrar o en pruebas). */
+function vaciarCola() {
+  for (const [u, r] of rafagas) { clearTimeout(r.timer); despacharUsuario(u); }
+}
+
+/** Manda un aviso a los dispositivos de las cuentas que deben recibirlo (agrupando ráfagas). */
 function notificar({ titulo, cuerpo, clienteId, tipo, equipo, vm }) {
   if (!clienteId || !TIPOS[tipo]) return;
   const subs = q('SELECT * FROM push_subs').all();
   if (!subs.length) return;
-  const porUsuario = new Map();
-  for (const s of subs) { if (!porUsuario.has(s.usuario.toLowerCase())) porUsuario.set(s.usuario.toLowerCase(), []); porUsuario.get(s.usuario.toLowerCase()).push(s); }
-  const datos = { t: titulo, b: cuerpo, u: equipo ? `/#/e/${equipo}` : `/#/c/${clienteId}`, g: `nodecat-${equipo || clienteId}-${tipo}` };
-  for (const [u, lista] of porUsuario) {
+  const usuarios = new Set(subs.map(s => s.usuario.toLowerCase()));
+  for (const u of usuarios) {
     const c = cuenta(u);
     if (!c) { q('DELETE FROM push_subs WHERE usuario = ?').run(u); continue; }
     if (!c.permitido) continue;
@@ -118,7 +166,22 @@ function notificar({ titulo, cuerpo, clienteId, tipo, equipo, vm }) {
     const p = preferencias(u);
     if (p.clientes && !p.clientes.includes(clienteId)) continue;        // los que eligió
     if (!p.tipos.includes(tipo)) continue;
-    for (const s of lista) enviarA(s, datos);
+    let r = rafagas.get(u);
+    if (!r) {
+      r = { items: [], timer: null };
+      rafagas.set(u, r);
+    }
+    // Si llega otro aviso del mismo equipo/VM y tipo dentro de la misma ráfaga, actualiza el anterior en vez de duplicar
+    const claveItem = `${clienteId}|${equipo || ''}|${vm || ''}|${tipo}`;
+    const idx = r.items.findIndex(x => x.clave === claveItem);
+    const item = { clave: claveItem, titulo, cuerpo, clienteId, tipo, equipo, vm };
+    if (idx >= 0) r.items[idx] = item; else r.items.push(item);
+    if (VENTANA_PUSH_MS <= 0) {
+      despacharUsuario(u);
+    } else if (!r.timer) {
+      r.timer = setTimeout(() => despacharUsuario(u), VENTANA_PUSH_MS);
+      if (r.timer.unref) r.timer.unref();
+    }
   }
 }
 // Desde un texto de Telegram (HTML): la primera línea es el título, el resto el cuerpo
@@ -163,4 +226,4 @@ async function probar(sesion) {
 }
 const permitir = (usuario, si) => q('UPDATE usuarios SET push = ? WHERE usuario = ?').run(si ? 1 : 0, usuario);
 
-module.exports = { TIPOS, hay, notificar, desdeTexto, estado, suscribir, quitar, guardarPreferencias, probar, permitir, _cifrarMensaje: cifrarMensaje };
+module.exports = { TIPOS, hay, notificar, vaciarCola, desdeTexto, estado, suscribir, quitar, guardarPreferencias, probar, permitir, _cifrarMensaje: cifrarMensaje, _resumirRafaga: resumirRafaga };

@@ -10,7 +10,7 @@ const { cifrar, descifrar } = require('./secreto');
 // ---------------------------------------------------------------- ajustes
 const DEFECTO = {
   activo: false, token: '', chats: [], porCliente: {}, bots: [],
-  caidas: true, caidaMin: 0,
+  caidas: true, caidaMin: 1,
   cpu: true, cpuUmbral: 90, cpuMin: 5,
   ram: true, ramUmbral: 95, ramMin: 10,
   disco: true, discoUmbral: 90,
@@ -237,6 +237,7 @@ const discoVisto = new Map();
 const ESTADO_DISCO = { malo: 'MALO', precaucion: 'PRECAUCIÓN', bueno: 'BUENO' };
 // VM que se vieron encendidas (solo se avisa si una VM que estaba encendida se apaga; las que siempre están apagadas no avisan)
 const vmsEncendidas = new Set();
+const hostGracia = new Map();
 const ESTADO_VM = { stopped: 'apagada', paused: 'en pausa', saved: 'guardada (estado guardado)', suspended: 'suspendida', stopping: 'apagándose' };
 const canalActivo = () => A.activo || push().hay();
 const push = () => require('./push');
@@ -342,9 +343,17 @@ function evaluar(forzar) {
     const s = `${e.id}`, hs = `${H(e.alias || e.nombre)}`, hc = cli ? `\n<i>${H(cli)}</i>` : '';
     vigentes.add(s);
     const caido = e.estado === 'caido', vivo = e.estado === 'ok' || e.estado === 'sinMetricas';
+    const estabaCaido = estados.has(s + '|caida');
     regla(s + '|caida', A.caidas, e.estado === 'pendiente' ? null : caido, vivo, A.caidaMin,
       () => `🔴 <b>${hs} no responde</b>${hc}\n${!flota.esAgente(e.tipo) ? `NodeCat no puede conectar con el equipo${e.errorConexion ? ': ' + H(e.errorConexion) : '.'}` : `Sin noticias del agente desde ${new Date(e.ultimo).toLocaleTimeString('es', { timeZone: config.ZONA_HORARIA, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}.`}`,
       t => `🟢 <b>${hs} vuelve a responder</b>${hc}\nEstuvo sin responder ${duracion(t)}.`, ahora, primera, e.cliente);
+    // Si el equipo entero está caído, no acumular ni mantener alertas individuales de sus VMs o enlaces WAN
+    if (caido) {
+      for (const k of [...estados.keys()]) if (k.startsWith(s + '|vm|') || k.startsWith(s + '|wan|')) estados.delete(k);
+    }
+    // Si el hipervisor acaba de volver o de reiniciarse (menos de 5 min encendido), dar margen a que arranquen sus VMs sin disparar ráfagas
+    if (vivo && estabaCaido) hostGracia.set(s, ahora + 5 * 60000);
+    const enGraciaHost = (e.arranque && ahora - e.arranque < 5 * 60000) || (hostGracia.get(s) || 0) > ahora;
     const cpu = vivo ? e.cpu : null, ram = vivo ? e.ramPct : null;
     regla(s + '|cpu', A.cpu, cpu == null ? null : cpu >= A.cpuUmbral, cpu != null && cpu < A.cpuUmbral - 5, A.cpuMin,
       () => `🟠 <b>${hs}: CPU al ${cpu} %</b>${hc}\nLleva ${A.cpuMin > 0 ? `más de ${A.cpuMin} min ` : ''}por encima del ${A.cpuUmbral} %.`,
@@ -365,6 +374,8 @@ function evaluar(forzar) {
         actuales.add(k);
         const enc = vm.estado === 'running' || vm.estado === 'starting';
         if (enc) vmsEncendidas.add(k);
+        // Mientras el hipervisor está recién encendido/reconectado, si una VM aún no arrancó no iniciamos cuenta de caída, y si ya encendió limpiamos sin ruido
+        if (enGraciaHost) { if (enc) estados.delete(k); continue; }
         regla(k, A.vms !== false, enc ? false : vmsEncendidas.has(k) ? true : null, enc, A.vmMin == null ? 2 : A.vmMin,
           () => `🔴 <b>${hs}: ${tipoVm} ${n} se apagó</b>${hc}\nEstado: ${H((ESTADO_VM[vm.estado] || vm.estado || 'apagada').replace(/a\b/, vm.tipo === 'lxc' ? 'o' : 'a'))}.`,
           t => `🟢 <b>${hs}: ${tipoVm} ${n} volvió a encenderse</b>${hc}\nEstuvo ${vm.tipo === 'lxc' ? 'apagado' : 'apagada'} ${duracion(t)}.`, ahora, primera, e.cliente, true);

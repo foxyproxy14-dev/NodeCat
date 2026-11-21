@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.21.4 (noviembre de 2026)
+
+- Agrupa las ráfagas de notificaciones Web Push en un solo aviso resumen cuando caen o vuelven varios equipos y máquinas virtuales al mismo tiempo.
+- Evita avisos individuales de máquinas virtuales, contenedores y enlaces WAN cuando el hipervisor o servidor está caído o recién encendido/reconectado.
+
 ## 0.21.3 (noviembre de 2026)
 
 - Las filas muestran completos los nombres, el sistema operativo y los detalles de memoria y disco. El texto pasa a varias líneas y la fila crece según lo necesario, manteniendo separadas las columnas y la campana.

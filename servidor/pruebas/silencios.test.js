@@ -26,6 +26,7 @@ test('campanas personales: filtran envíos, conservan invitados y persisten', as
     async function enviar(equipo, vm) {
       destinos = [];
       push.notificar({ titulo: 'Prueba', cuerpo: 'Aviso', clienteId: 1, tipo: vm ? 'vms' : 'caidas', equipo, vm });
+      push.vaciarCola();
       await new Promise(resolve => setImmediate(resolve));
       return destinos.map(x => x.split('/').pop()).sort();
     }
